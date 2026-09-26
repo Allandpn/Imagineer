@@ -1,0 +1,51 @@
+# Sobe a stack do Imagineer: a API e o banco, conforme a Etapa 1.4 da
+# especificação. Use "docker compose up --build" na primeira vez.
+
+services:
+  api:
+    build: .
+    # Reinicia sozinho se cair ou se o Raspberry Pi for reiniciado — o servidor
+    # roda 24/7 e não deve depender de alguém subir o serviço à mão.
+    restart: unless-stopped
+    env_file:
+      # O .env é opcional: as variáveis essenciais já estão definidas abaixo,
+      # então a stack sobe mesmo antes de você criar o arquivo.
+      - path: .env
+        required: false
+    environment:
+      # Dentro da rede do compose, o banco é alcançado pelo nome do serviço
+      # ("db"), não por localhost. Definir aqui evita depender do .env estar certo.
+      URL_BANCO: postgresql+psycopg://imagineer:${SENHA_BANCO:-senha_local}@db:5432/imagineer
+      DIRETORIO_IMAGENS: /dados/imagens
+    ports:
+      - "8000:8000"
+    volumes:
+      # Volume dedicado ao catálogo: as imagens ficam em arquivo, nunca no
+      # banco (o banco guarda só a referência). Por ser um volume, sobrevivem
+      # a rebuilds e remoções do container.
+      - imagens:/dados/imagens
+    depends_on:
+      db:
+        # Espera o banco estar realmente aceitando conexões, não apenas o
+        # container ter iniciado — são coisas diferentes, e a API falharia no
+        # primeiro request se subisse antes.
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: imagineer
+      POSTGRES_PASSWORD: ${SENHA_BANCO:-senha_local}
+      POSTGRES_DB: imagineer
+    volumes:
+      - dados_banco:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U imagineer -d imagineer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  dados_banco:
+  imagens:

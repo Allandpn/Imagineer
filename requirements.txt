@@ -1,0 +1,25 @@
+# Versões fixadas com "==" para o ambiente ser idêntico no PC de
+# desenvolvimento e no Raspberry Pi. Listamos só as dependências diretas —
+# as indiretas o pip resolve sozinho.
+
+# API web assíncrona e o servidor que a executa
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+
+# Banco de dados: ORM, driver e migrations
+sqlalchemy==2.1.1
+psycopg[binary]==3.3.6
+alembic==1.20.0
+
+# Leitura das variáveis de ambiente com validação
+pydantic-settings==2.15.0
+
+# Parsing de EPUB (Etapa 1.3)
+EbookLib==0.20
+
+# Cliente HTTP assíncrono — usado nas chamadas ao OpenRouter (Etapa 4)
+# e também pelo TestClient do FastAPI nos testes
+httpx==0.28.1
+
+# Testes
+pytest==9.1.1

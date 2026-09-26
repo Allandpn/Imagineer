@@ -1,0 +1,22 @@
+# Segredos — nunca versionar
+.env
+
+# Ambiente virtual Python
+venv/
+.venv/
+
+# Artefatos do Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Dados locais (imagens do catálogo e volume do banco)
+dados/
+
+# IDE
+.idea/
+
+# Sistema operacional
+Thumbs.db
+.DS_Store

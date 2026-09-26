@@ -1,0 +1,186 @@
+# Imagineer — Especificação do Sistema
+
+## Sobre este documento
+
+Este documento reúne as definições de arquitetura, modelagem de dados e fluxo do sistema Imagineer. Ele é um **documento vivo**: conforme cada item for implementado, a seção correspondente deve ser atualizada com uma explicação, em linguagem simples, do que foi feito e por quê — não apenas o plano original, mas o resultado real.
+
+A estrutura segue o padrão **Etapa → Item**. Cada etapa representa uma fase lógica do sistema; cada item dentro dela é uma decisão ou funcionalidade específica que pode ser especificada, documentada, implementada e testada de forma independente.
+
+**Idioma do sistema**: todo o sistema — nomes de entidades, campos, classes, endpoints, mensagens de log, textos de interface — é em português. Termos técnicos já naturalizados no vocabulário de desenvolvimento em português (ex: *prompt*, *backend*, *endpoint*, *deploy*, *docker*) são mantidos como estão, por não terem equivalente melhor e já serem de uso corrente. Assumindo essa interpretação (código e nomes de domínio em português, termos técnicos genéricos mantidos); ajuste se a intenção era outra.
+
+---
+
+## Etapa 1 — Visão Geral e Arquitetura
+
+### 1.1 Objetivo do projeto
+
+Sistema pessoal (não comercial) chamado **Imagineer**, que gera prompts de imagem a partir da leitura de e-books (EPUB), pensado para pessoas com afantasia (dificuldade de visualizar mentalmente cenas, personagens e ambientes durante a leitura).
+
+### 1.2 Arquitetura geral
+
+Modelo cliente-servidor:
+
+- **Servidor (Raspberry Pi, rodando 24/7)**: recebe o EPUB, faz o parsing e estruturação em capítulos, guarda todos os dados em banco, chama as IAs de texto (extração de elementos e montagem de prompt), expõe uma API REST, e armazena as imagens do catálogo.
+- **App mobile (cliente)**: importa o EPUB e envia ao servidor, exibe a estrutura do livro, permite ao usuário selecionar/ajustar personagens, ambientes, objetos, criaturas e cenas por capítulo, exibe o prompt gerado para cópia manual, e permite importar de volta a imagem gerada externamente para compor o catálogo.
+
+### 1.3 Stack tecnológica
+
+- **Backend**: Python + FastAPI (assíncrono, adequado para chamadas de IA que dependem de I/O externo).
+- **Parsing de EPUB**: `ebooklib` (extração de capítulos via TOC/spine e texto).
+- **Banco de dados**: PostgreSQL, rodando em container próprio.
+- **ORM**: SQLAlchemy.
+- **Mobile**: **assumido** Kotlin + Jetpack Compose (Android nativo), aproveitando a familiaridade com JVM. **Ainda não confirmado formalmente** — ver Etapa 6 (Pendências).
+
+### 1.4 Infraestrutura
+
+- Backend e banco rodando via `docker-compose` no Raspberry Pi (serviços `api`, `db`, e um volume dedicado para armazenamento das imagens do catálogo — imagens não ficam no banco, só a referência ao arquivo).
+- Exposição do servidor para acesso fora da rede local via Tailscale (VPN) ou reverse proxy (Caddy/Nginx) com HTTPS.
+### 1.5 Estrutura de pastas e módulos do backend
+
+O backend é organizado por **responsabilidade**, não por entidade. Cada pasta responde a uma pergunta diferente sobre o sistema:
+
+```
+Imagineer/
+├── README.md              # como subir o projeto (dev local e Raspberry Pi)
+├── requirements.txt       # dependências Python com versões fixas
+├── pytest.ini             # configuração de testes
+├── .env.exemplo           # modelo das variáveis de ambiente, sem valores reais
+├── Dockerfile
+├── docker-compose.yml
+├── alembic.ini
+├── migracoes/             # migrations do banco (Alembic)
+├── imagineer/             # o pacote da aplicação
+│   ├── principal.py       # cria a instância FastAPI e registra as rotas
+│   ├── configuracao.py    # leitura das variáveis de ambiente
+│   ├── banco/             # conexão, sessão e base declarativa do SQLAlchemy
+│   ├── modelos/           # tabelas do banco (Etapa 3)
+│   ├── esquemas/          # contratos de entrada e saída da API (Pydantic)
+│   ├── rotas/             # endpoints HTTP
+│   ├── servicos/          # regras de negócio
+│   └── ia/                # integração com provedores de IA (Etapa 4)
+└── testes/
+```
+
+**Por que separar assim:**
+
+- **`modelos`** — como o dado é guardado no banco.
+- **`esquemas`** — o que entra e sai pela API. É deliberadamente separado de `modelos`: o formato que o app mobile envia não precisa ser igual ao formato da tabela, e a API não deve expor colunas internas sem querer.
+- **`rotas`** — qual URL aciona o quê. Só cuidam de HTTP: recebem o pedido, chamam um serviço, devolvem a resposta.
+- **`servicos`** — a regra de negócio (estruturar o EPUB, montar o prompt, salvar a imagem no catálogo). Não conhece HTTP. É essa separação que permite testar a lógica sem subir a API.
+- **`ia`** — a fronteira com o mundo externo, isolada atrás da interface da Etapa 4.2.
+
+As pastas `modelos`, `esquemas`, `servicos` e `ia` nascem **vazias**, contendo apenas o `__init__.py`. Elas existem para que cada item seguinte tenha um destino óbvio, sem que nada seja implementado antes da hora.
+
+**O que foi entregue neste item:** o esqueleto acima, subindo em Docker e respondendo em `GET /saude` — um endpoint que confirma que a API está no ar *e* conversando com o PostgreSQL. Nenhuma entidade de domínio foi implementada ainda.
+
+---
+
+## Etapa 2 — Fluxo do Sistema
+
+### 2.1 Fluxo passo a passo
+
+1. Usuário importa o EPUB no app.
+2. App envia o EPUB para o servidor.
+3. Servidor faz a estruturação em capítulos.
+4. Servidor devolve a estrutura para o app.
+5. Usuário escolhe um capítulo.
+6. Servidor chama a IA para sugerir personagens, ambientes, objetos, criaturas e cenas daquele capítulo — usando como contexto o **último estado conhecido** de cada elemento já cadastrado (ver item 4.4).
+7. Usuário revisa as sugestões: confirma, ajusta ou descarta cada uma; decide se cada elemento mantém o estado atual ou ganha um novo estado.
+8. Servidor usa o histórico (estado atual dos elementos escolhidos) para montar o prompt de geração de imagem.
+9. Usuário copia o prompt e gera a imagem numa IA de imagem gratuita externa.
+10. Usuário importa a imagem gerada de volta para o app.
+11. Imagem é enviada e salva no servidor, associada ao capítulo/elementos/cena de origem, compondo o catálogo.
+
+---
+
+## Etapa 3 — Modelagem de Dados
+
+### 3.1 Entidades principais
+
+- **Livro**: metadados do EPUB importado; possui um `PerfilRenderizacao` padrão.
+- **Capítulo**: pertence a um Livro; contém o texto extraído do EPUB.
+- **Elemento**: entidade genérica com campo `tipo` (enum: `PERSONAGEM`, `AMBIENTE`, `OBJETO`, `CRIATURA`, `GRUPO`, `VEICULO`, `EDIFICACAO`). Representa a *identidade* de algo recorrente na história (quem/o que é), não sua aparência num momento específico.
+- **EstadoElemento**: como um Elemento está em um ponto específico da narrativa (aparência, roupas, ferimentos, condição). Pode referenciar uma imagem já gerada como âncora visual para gerações futuras daquele estado.
+- **Cena**: recorte narrativo de um capítulo; referencia um ou mais Elementos (com seus Estados na ocasião); guarda atributos situacionais próprios (horário, clima, humor) diretamente nela — sem entidade "Contexto" separada.
+- **PerfilRenderizacao**: perfil de estilo visual (estilo, artista de referência, iluminação, paleta, formato, modelo alvo). Configurado por padrão a nível de Livro, com possibilidade de override pontual ao gerar um prompt específico.
+- **Prompt**: registro de cada prompt gerado (modelo de IA usado, texto, data, resultado, imagem associada), permitindo regenerar ou comparar modelos depois.
+- **Imagem**: arquivo final importado pelo usuário, com referência ao Prompt/Cena/Elementos de origem, compondo o catálogo.
+
+### 3.2 Relacionamentos
+
+- Um Elemento pode aparecer em várias Cenas de vários Capítulos (muitos-para-muitos).
+- Um Elemento tem vários EstadoElemento ao longo da história (um por "momento narrativo relevante").
+- Uma Cena referencia vários Elementos (com o Estado vigente de cada um naquele ponto).
+- Um Prompt está associado a uma Cena (e, por meio dela, aos Elementos/Estados usados como contexto) e a uma Imagem.
+
+### 3.3 Decisões de modelagem (justificativas)
+
+- **Elemento genérico em vez de tabelas por tipo**: personagens, ambientes, objetos, criaturas etc. compartilham a mesma necessidade — manter consistência visual ao longo da narrativa. Um enum `tipo` evita duplicação de schema e lógica.
+- **EstadoElemento separado da identidade do Elemento**: personagens envelhecem, se ferem, trocam de roupa; objetos quebram; ambientes são destruídos/reconstruídos. Fixar uma única "descrição visual" no Elemento geraria inconsistência entre capítulos distantes da história.
+- **Cena com atributos situacionais embutidos**: evita criar uma entidade "Contexto" isolada para informações (horário, clima) que já são naturalmente parte da própria cena.
+- **PerfilRenderizacao em vez de campo único de "estilo"**: permite reutilizar combinações de estilo/iluminação/paleta entre livros, e adaptar à ferramenta de geração de imagem usada (cada uma tem sintaxe própria).
+- **Relações entre elementos e Grupos com membros explícitos**: ideia boa, mas adiada para uma v2 — exige tabela de relacionamento tipo grafo e telas extras no app; não é essencial para o MVP (Elemento + Estado + Cena + Prompt + Imagem).
+
+---
+
+## Etapa 4 — Integração com IA
+
+### 4.1 Provedor de IA
+
+**OpenRouter** como ponto único de integração — agrega múltiplos modelos (incluindo opções gratuitas) atrás de uma API só, evitando escrever um adapter por fornecedor (Gemini, Groq etc.) na v1.
+
+### 4.2 Interface abstrata
+
+Camada de abstração `ProvedorIA` com dois métodos:
+- `extrair_elementos(texto_capitulo, estados_conhecidos) -> lista estruturada`
+- `montar_prompt(elementos_selecionados, estados, perfil_renderizacao) -> texto do prompt`
+
+Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_modelo`. Provedores nativos adicionais (Groq, Gemini) podem ser adicionados depois seguindo a mesma interface, se necessário.
+
+> **Divergência registrada (item 1.5):** a primeira versão desta seção nomeava a interface como `AIProvider`, a implementação como `OpenRouterProvider` e o parâmetro como `render_profile`. Os nomes foram traduzidos para `ProvedorIA`, `ProvedorOpenRouter` e `perfil_renderizacao` por coerência com a regra de idioma: existe tradução natural, então o português prevalece. Definido antes de a pasta `ia/` ser preenchida, para não renomear código depois.
+
+### 4.3 Configuração de modelos
+
+Tela de configuração permitindo:
+- Cadastro da API key do OpenRouter (armazenada em variável de ambiente/config segura, nunca hardcoded).
+- Seleção de modelo para extração de elementos (passo 6) e para montagem de prompt (passo 8), com opção "usar o mesmo modelo para os dois" marcada por padrão.
+- Lista de modelos obtida dinamicamente do endpoint `/models` do OpenRouter (com filtro opcional para mostrar só os gratuitos).
+
+### 4.4 Regra de decisão de novo Estado
+
+A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evita depender de uma regra algorítmica perfeita para decidir sozinha se um capítulo representa mudança de estado:
+
+1. Ao processar um capítulo, o backend busca o último `EstadoElemento` conhecido de cada elemento relevante.
+2. Esse estado é enviado como contexto à IA junto do texto do capítulo.
+3. A IA retorna uma sugestão: "manter estado atual" ou "possível novo estado: [detalhes]".
+4. O app mostra a sugestão ao usuário, que confirma ou edita antes de qualquer gravação no banco.
+
+---
+
+## Etapa 5 — Decisões Técnicas e Justificativas
+
+| Decisão | Motivo |
+|---|---|
+| Python + FastAPI em vez de Java + Spring Boot | `ebooklib` mais maduro que as opções Java para parsing de EPUB; footprint mais leve no Raspberry Pi; chamadas assíncronas naturais para IA; oportunidade de aprendizado (conhecimento básico prévio em Python) |
+| OpenRouter como gateway único de IA | Evita multiplicar adapters por fornecedor; ainda permite ao usuário escolher modelo; tem opções gratuitas |
+| Elemento genérico com enum `tipo` | Reduz duplicação de schema entre personagens/ambientes/objetos/criaturas |
+| EstadoElemento separado do Elemento | Elementos mudam de aparência ao longo da narrativa; é essencial para consistência visual entre capítulos |
+| Cena sem entidade "Contexto" separada | Informação situacional já é natural da própria cena; evita tabela desnecessária |
+| PerfilRenderizacao em vez de campo único de estilo | Permite reaproveitar/trocar estilo visual sem alterar dados narrativos; adapta-se a diferentes ferramentas de geração |
+| Extração semi-automática (não totalmente automática) | Decisão de "novo estado ou não" fica sob controle do usuário, evitando erros de uma IA decidindo sozinha |
+| Relações/Grupos adiados para v2 | Complexidade real (modelo tipo grafo + telas extras) não essencial para o MVP |
+| Backend organizado por responsabilidade (modelos/esquemas/rotas/serviços/ia) | Mantém a regra de negócio independente de HTTP e de banco, o que a torna testável isoladamente; cada item novo tem um destino óbvio |
+| Alembic desde o primeiro item, em vez de `create_all()` | O modelo de dados vai mudar muito nos próximos itens; `create_all()` exigiria apagar e recriar o banco a cada ajuste, e adotar Alembic depois daria retrabalho |
+| `requirements.txt` + venv em vez de Poetry/uv | Transparência: o arquivo lista exatamente o que está instalado; funciona igual no PC de desenvolvimento e no Raspberry Pi, sem ferramenta extra para aprender agora |
+| `psycopg` (v3) em vez de `psycopg2` | Tem wheels pré-compiladas para ARM64, evitando compilar driver no Raspberry Pi |
+| Testes com prefixo `teste_` | Coerência com a regra de idioma; custa uma linha de configuração no pytest |
+
+---
+
+## Etapa 6 — Pendências / Próximos Passos
+
+- [ ] Confirmar formalmente o stack mobile (assumido Kotlin + Jetpack Compose nativo Android).
+- [x] ~~Definir estrutura de pastas/módulos do projeto Python (FastAPI).~~ Concluído — ver item **1.5**.
+- [ ] Desenhar as rotas da API (endpoints, contratos de request/response).
+- [ ] Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).
+- [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).
