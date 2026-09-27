@@ -84,4 +84,12 @@ Não rode dois comandos do Alembic ao mesmo tempo contra o mesmo banco: o segund
 | `elementos`, `estados_elemento` | 3.4 (b) |
 | `cenas`, `cenas_estados_elemento`, `perfis_renderizacao`, `prompts`, `imagens` | 3.4 (c) |
 
-O modelo do MVP está completo. Nenhuma rota de domínio existe ainda — só `/saude`.
+O modelo do MVP está completo.
+
+### Serviços já implementados
+
+| Serviço | Item | O que faz |
+|---|---|---|
+| `servicos/importacao_epub.py` | 2.2 | Lê um EPUB e o estrutura em Livro + Capítulos |
+
+Nenhuma rota de domínio existe ainda — só `/saude`. A importação já funciona, mas ainda só é alcançável de dentro do Python.
