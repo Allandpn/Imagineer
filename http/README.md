@@ -13,8 +13,8 @@ importar nada no Postman.
    imagineer.principal:aplicacao --reload` a partir do venv).
 4. Rode as requisições **na ordem do arquivo**: as de criação guardam o id
    criado numa variável global (`client.global.set(...)`), e as de baixo
-   reaproveitam essa variável (`{{livroId}}`, `{{cenaId}}` etc.) — é assim que
-   dá para abrir um elemento ou criar uma cena sem copiar id na mão.
+   reaproveitam essa variável (`{{livroId}}`, `{{frameId}}` etc.) — é assim que
+   dá para abrir um elemento ou criar um frame sem copiar id na mão.
 5. Variáveis globais persistem entre arquivos na mesma sessão do PyCharm. Se
    fechar a IDE ou quiser recomeçar do zero, rode de novo a requisição de
    importação do livro (`01-livros.http`) para gerar ids novos.
@@ -29,7 +29,7 @@ Segue a ordem do fluxo (Etapa 2 da especificação) e da Etapa 6:
 | `01-livros.http` | Item 6.2 — importar, listar, abrir, ajustar, remover |
 | `02-capitulos.http` | Item 6.2 — abrir um capítulo, marcar como ignorado |
 | `03-elementos-e-estados.http` | Item 6.3 — cadastrar elementos, registrar estados, estados vigentes |
-| `04-cenas-e-perfis.http` | Itens 6.4 e 6.5 — cenas e perfis de renderização |
+| `04-frames-e-perfis.http` | Itens 6.4 e 6.5 — frames (tipo PERSONAGEM ou CENA) e perfis de renderização |
 | `05-configuracao-ia.http` | Item 6.7 — chave, modelos, escolha de modelo |
 | `06-sugestoes.http` | Item 6.7 — `POST /capitulos/{id}/sugestoes` (passo 6, precisa de chave configurada) |
 | `07-prompts-e-imagens.http` | Item 6.6 — montar prompt, catálogo de imagens |
@@ -50,13 +50,24 @@ gratuitos às vezes respondem 429 (limite de uso) por estarem sobrecarregados �
 não é erro do sistema; troque de modelo na requisição de configuração e tente
 de novo.
 
-## Sobre a leitura profunda (item 4.4, fase 2)
+## Sobre a leitura profunda e a fundamentação (item 4.4, fases 2 e 3)
 
-`POST /cenas/{id}/prompts` relê o capítulo de origem de cada estado da cena
-antes de montar o prompt, e **sobrescreve** a descrição salva no banco — o
-livro é a fonte de verdade, mesmo que substitua o que foi digitado à mão. Por
-padrão (`prioridade_ia: ECONOMIA`) isso só acontece uma vez por estado; rodar
-a mesma requisição de novo é rápido e barato, porque reaproveita a leitura
-anterior. Com `prioridade_ia: QUALIDADE`, relê toda vez — mais fiel, mais
-lento, mais caro. Um comentário no corpo (`comentario`) tem prioridade sobre
-os dois.
+`POST /frames/{id}/prompts` pode reler o capítulo em dois momentos diferentes,
+com efeitos e prioridades diferentes:
+
+- **Fase 2 — leitura profunda do elemento**: relê o capítulo de origem de
+  cada estado do frame e **sobrescreve** a descrição salva no banco — para a
+  aparência de um elemento, o livro é a fonte de verdade, mesmo que substitua
+  o que foi digitado à mão.
+- **Fase 3 — fundamentação do frame** (só para `tipo: CENA`): relê o capítulo
+  para montar um `contexto_do_livro` que **apoia** o prompt, mas **não**
+  sobrescreve título, descrição nem atributos do frame — o que o usuário
+  escreveu sobre a cena tem prioridade, exatamente para evitar que uma
+  alucinação ou ambiguidade da IA desvie o prompt. Frames do tipo PERSONAGEM
+  pulam esta fase — é retrato solo, não há cena para fundamentar.
+
+Por padrão (`prioridade_ia: ECONOMIA`) as duas fases só acontecem uma vez por
+estado/frame; rodar a mesma requisição de novo é rápido e barato, porque
+reaproveita a leitura anterior. Com `prioridade_ia: QUALIDADE`, relê toda vez
+— mais fiel, mais lento, mais caro. Um comentário no corpo (`comentario`) tem
+prioridade máxima sobre as duas fases.

@@ -1,11 +1,14 @@
-### Monta o prompt de imagem a partir da cena (passo 8)
-# Precisa de cenaId (04-cenas-e-perfis.http), de chave, modelo_extracao e
-# modelo_prompt configurados (05-configuracao-ia.http) — modelo_extracao
-# também é usado na leitura profunda (item 4.4, fase 2), que roda aqui dentro
-# antes de montar o prompt e sobrescreve a descrição do estado no banco. Sem
-# perfil_renderizacao_id no corpo, usa o perfil padrão do livro — defina um em
-# 04-cenas-e-perfis.http antes.
-POST {{baseUrl}}/cenas/{{cenaId}}/prompts
+### Monta o prompt de imagem a partir do frame (passo 8)
+# Precisa de frameId (04-frames-e-perfis.http), de chave, modelo_extracao e
+# modelo_prompt configurados (05-configuracao-ia.http). Para um frame do tipo
+# CENA, modelo_extracao também é usado na fundamentação do frame (item 4.4,
+# fase 3) — a IA relê o capítulo e monta um "contexto do livro" que apoia o
+# prompt, mas nunca substitui o que foi digitado à mão nem o estado dos
+# elementos. Para um frame do tipo PERSONAGEM não há fundamentação: é retrato
+# solo, só a descrição do próprio elemento. Sem perfil_renderizacao_id no
+# corpo, usa o perfil padrão do livro — defina um em 04-frames-e-perfis.http
+# antes.
+POST {{baseUrl}}/frames/{{frameId}}/prompts
 Content-Type: application/json
 
 {}
@@ -18,7 +21,7 @@ Content-Type: application/json
 %}
 
 ### O mesmo, mas com perfil e modelo explícitos no pedido
-POST {{baseUrl}}/cenas/{{cenaId}}/prompts
+POST {{baseUrl}}/frames/{{frameId}}/prompts
 Content-Type: application/json
 
 {
@@ -26,19 +29,29 @@ Content-Type: application/json
   "modelo": "nvidia/nemotron-3-super-120b-a12b:free"
 }
 
-### Gera de novo com um comentário — prioridade sobre a leitura automática
+### Monta o prompt de um retrato solo (frame do tipo PERSONAGEM)
+# Usa framePersonagemId (04-frames-e-perfis.http) — a descrição vem só do
+# estado do elemento, sem referenciar outros personagens da cena.
+POST {{baseUrl}}/frames/{{framePersonagemId}}/prompts
+Content-Type: application/json
+
+{}
+
+### Gera de novo com um comentário — prioridade máxima sobre tudo
 # Não existe rota separada de "refinar" (item 4.4): é a mesma chamada, com um
-# comentario a mais. Útil depois de ler o capítulo ou ver a imagem anterior e
-# notar algo que a IA não captou sozinha.
-POST {{baseUrl}}/cenas/{{cenaId}}/prompts
+# comentario a mais. Ordem de prioridade na montagem final: comentário do
+# usuário > descrição do frame escrita à mão > contexto do livro (fundamentação
+# automática, que nunca contradiz o que já foi escrito). Útil depois de ler o
+# capítulo ou ver a imagem anterior e notar algo que a IA não captou sozinha.
+POST {{baseUrl}}/frames/{{frameId}}/prompts
 Content-Type: application/json
 
 {
   "comentario": "A cicatriz no rosto dele, mencionada no capítulo seguinte, deveria aparecer."
 }
 
-### Histórico de prompts da cena
-GET {{baseUrl}}/cenas/{{cenaId}}/prompts
+### Histórico de prompts do frame
+GET {{baseUrl}}/frames/{{frameId}}/prompts
 
 ### Abre um prompt, com as imagens que saíram dele
 GET {{baseUrl}}/prompts/{{promptId}}
