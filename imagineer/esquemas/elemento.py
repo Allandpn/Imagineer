@@ -102,7 +102,7 @@ class ElementoSugerido(BaseModel):
     `POST /elementos/{id}/estados`).
 
     Não traz descrição de aparência: essa parte é a leitura profunda (fase 2),
-    que acontece depois, dentro de `POST /cenas/{id}/prompts` — pedir isso de
+    que acontece depois, dentro de `POST /frames/{id}/prompts` — pedir isso de
     vários elementos na mesma resposta misturou atributos entre personagens
     num teste com IA real.
     """
@@ -140,11 +140,12 @@ class ParticipanteSugerido(BaseModel):
     )
 
 
-class CenaSugerida(BaseModel):
-    """Uma cena sugerida pela IA (item 4.4): elementos interagindo num momento.
+class FrameSugerido(BaseModel):
+    """Um frame do tipo CENA sugerido pela IA (item 4.4): elementos interagindo
+    num momento.
 
-    Não é gravada no banco por esta rota — é um rascunho para o usuário usar ao
-    criar a cena de verdade (`POST /capitulos/{id}/cenas`), pré-preenchendo
+    Não é gravado no banco por esta rota — é um rascunho para o usuário usar ao
+    criar o frame de verdade (`POST /capitulos/{id}/frames`), pré-preenchendo
     título, atributos situacionais e quais estados marcar.
     """
 
@@ -161,10 +162,10 @@ class SugestoesDeCapitulo(BaseModel):
 
     modelo: str
     elementos: list[ElementoSugerido]
-    cenas: list[CenaSugerida] = Field(
+    frames: list[FrameSugerido] = Field(
         default_factory=list,
         description=(
-            "Recortes narrativos sugeridos, combinando elementos identificados "
+            "Frames do tipo CENA sugeridos, combinando elementos identificados "
             "acima — o que de fato vale a pena ilustrar, não só uma lista solta "
             "de quem existe no capítulo."
         ),

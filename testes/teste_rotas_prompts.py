@@ -70,10 +70,15 @@ def _elemento_com_estado(cliente: TestClient, livro_id: int, capitulo_id: int, n
     return resposta.json()
 
 
-def _cena(cliente: TestClient, capitulo_id: int, estados_ids: list[int] | None = None) -> dict:
+def _frame(
+    cliente: TestClient,
+    capitulo_id: int,
+    estados_ids: list[int] | None = None,
+    tipo: str = "CENA",
+) -> dict:
     resposta = cliente.post(
-        f"/capitulos/{capitulo_id}/cenas",
-        json={"titulo": "No pátio", "estados_ids": estados_ids or []},
+        f"/capitulos/{capitulo_id}/frames",
+        json={"tipo": tipo, "titulo": "No pátio", "estados_ids": estados_ids or []},
     )
     assert resposta.status_code == 201, resposta.text
     return resposta.json()
@@ -86,24 +91,27 @@ def _perfil(cliente: TestClient, **kwargs) -> dict:
     return resposta.json()
 
 
-def _montar_cena_completa(
-    cliente: TestClient, usar_provedor_falso, provedor: ProvedorFalso | None = None
+def _montar_frame_completo(
+    cliente: TestClient,
+    usar_provedor_falso,
+    provedor: ProvedorFalso | None = None,
+    tipo: str = "CENA",
 ) -> tuple[dict, dict]:
-    """Livro, capítulo, elemento com estado, cena com ele e perfil padrão do livro."""
+    """Livro, capítulo, elemento com estado, frame com ele e perfil padrão do livro."""
     usar_provedor_falso(provedor or ProvedorFalso(prompt="uma pintura de teste"))
     livro = _livro(cliente)
     capitulo = livro["capitulos"][0]
     ned = _elemento_com_estado(cliente, livro["id"], capitulo["id"], "Ned Stark")
-    cena = _cena(cliente, capitulo["id"], [ned["estados"][0]["id"]])
+    frame = _frame(cliente, capitulo["id"], [ned["estados"][0]["id"]], tipo=tipo)
     perfil = _perfil(cliente)
     cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
-    # modelo_extracao também é usado na leitura profunda (item 4.4, fase 2),
-    # que roda dentro de POST /cenas/{id}/prompts antes de montar o prompt.
+    # modelo_extracao também é usado nas leituras profundas (item 4.4), que
+    # rodam dentro de POST /frames/{id}/prompts antes de montar o prompt.
     cliente.put(
         "/configuracao",
         json={"modelo_extracao": MODELO_FALSO, "modelo_prompt": MODELO_FALSO},
     )
-    return livro, cena
+    return livro, frame
 
 
 # --------------------------------------------------------------------------- #
@@ -115,9 +123,9 @@ def teste_criar_prompt_usa_perfil_padrao_do_livro_e_modelo_da_configuracao(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     provedor = ProvedorFalso(prompt="uma pintura de teste")
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
 
-    resposta = cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+    resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={})
 
     assert resposta.status_code == 201, resposta.text
     corpo = resposta.json()
@@ -125,8 +133,8 @@ def teste_criar_prompt_usa_perfil_padrao_do_livro_e_modelo_da_configuracao(
     assert corpo["modelo_ia"] == MODELO_FALSO
     assert corpo["imagens"] == []
 
-    # A leitura profunda (fase 2) já rodou antes de montar o prompt e
-    # sobrescreveu a descrição do estado — o livro é a fonte de verdade.
+    # A leitura profunda por elemento (item 4.4) já rodou antes de montar o
+    # prompt e sobrescreveu a descrição do estado — o livro é a fonte de verdade.
     chamada = provedor.chamadas_de_prompt[0]
     assert "Ned Stark: watercolor-ready appearance description" in chamada["elementos"]
     assert "Aquarela sombria" in chamada["perfil_renderizacao"]
@@ -138,10 +146,10 @@ def teste_criar_prompt_manda_comentario_com_prioridade(
 ) -> None:
     """O comentário do usuário chega até o provedor (item 4.4)."""
     provedor = ProvedorFalso(prompt="pintura")
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
 
     resposta = cliente.post(
-        f"/cenas/{cena['id']}/prompts", json={"comentario": "A barba dele é rala."}
+        f"/frames/{frame['id']}/prompts", json={"comentario": "A barba dele é rala."}
     )
 
     assert resposta.status_code == 201, resposta.text
@@ -153,10 +161,10 @@ def teste_leitura_profunda_em_modo_economia_roda_so_uma_vez(
 ) -> None:
     """ECONOMIA (padrão): a segunda chamada reaproveita o que já foi lido."""
     provedor = ProvedorFalso(prompt="pintura")
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
 
-    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
-    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
 
     assert len(provedor.chamadas_de_estado) == 1
 
@@ -166,11 +174,11 @@ def teste_leitura_profunda_em_modo_qualidade_roda_toda_vez(
 ) -> None:
     """QUALIDADE: cada prompt novo relê o capítulo de origem do estado."""
     provedor = ProvedorFalso(prompt="pintura")
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
     cliente.put("/configuracao", json={"prioridade_ia": "QUALIDADE"})
 
-    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
-    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
 
     assert len(provedor.chamadas_de_estado) == 2
 
@@ -178,11 +186,11 @@ def teste_leitura_profunda_em_modo_qualidade_roda_toda_vez(
 def teste_leitura_profunda_le_o_capitulo_de_origem_do_estado(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
-    """Relê o capítulo onde o estado foi registrado, não o da cena."""
+    """Relê o capítulo onde o estado foi registrado, não o do frame."""
     provedor = ProvedorFalso(prompt="pintura")
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
 
-    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
 
     chamada = provedor.chamadas_de_estado[0]
     assert chamada["nome"] == "Ned Stark"
@@ -197,13 +205,13 @@ def teste_criar_prompt_sem_modelo_de_extracao_para_leitura_profunda_responde_422
     livro = _livro(cliente)
     capitulo = livro["capitulos"][0]
     ned = _elemento_com_estado(cliente, livro["id"], capitulo["id"], "Ned Stark")
-    cena = _cena(cliente, capitulo["id"], [ned["estados"][0]["id"]])
+    frame = _frame(cliente, capitulo["id"], [ned["estados"][0]["id"]])
     perfil = _perfil(cliente)
     cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
     # Só o modelo de prompt é configurado — falta o de extração/leitura profunda.
     cliente.put("/configuracao", json={"modelo_prompt": MODELO_FALSO})
 
-    resposta = cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+    resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={})
 
     assert resposta.status_code == 422
 
@@ -213,9 +221,9 @@ def teste_criar_prompt_sem_perfil_e_sem_padrao_responde_422(
 ) -> None:
     usar_provedor_falso(ProvedorFalso())
     livro = _livro(cliente)
-    cena = _cena(cliente, livro["capitulos"][0]["id"])
+    frame = _frame(cliente, livro["capitulos"][0]["id"])
 
-    resposta = cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+    resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={})
 
     assert resposta.status_code == 422
 
@@ -223,11 +231,11 @@ def teste_criar_prompt_sem_perfil_e_sem_padrao_responde_422(
 def teste_criar_prompt_sem_modelo_responde_422(cliente: TestClient, usar_provedor_falso) -> None:
     usar_provedor_falso(ProvedorFalso())
     livro = _livro(cliente)
-    cena = _cena(cliente, livro["capitulos"][0]["id"])
+    frame = _frame(cliente, livro["capitulos"][0]["id"])
     perfil = _perfil(cliente)
     cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
 
-    resposta = cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+    resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={})
 
     assert resposta.status_code == 422
 
@@ -237,11 +245,11 @@ def teste_criar_prompt_com_perfil_e_modelo_explicitos_no_pedido(
 ) -> None:
     usar_provedor_falso(ProvedorFalso(prompt="outra pintura"))
     livro = _livro(cliente)
-    cena = _cena(cliente, livro["capitulos"][0]["id"])
+    frame = _frame(cliente, livro["capitulos"][0]["id"])
     perfil = _perfil(cliente, nome="Traço a nanquim")
 
     resposta = cliente.post(
-        f"/cenas/{cena['id']}/prompts",
+        f"/frames/{frame['id']}/prompts",
         json={"perfil_renderizacao_id": perfil["id"], "modelo": MODELO_FALSO},
     )
 
@@ -249,7 +257,7 @@ def teste_criar_prompt_com_perfil_e_modelo_explicitos_no_pedido(
     assert resposta.json()["perfil_renderizacao_id"] == perfil["id"]
 
 
-def teste_prompt_traz_a_imagem_ancora_dos_elementos_da_cena(
+def teste_prompt_traz_a_imagem_ancora_dos_elementos_do_frame(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     """Consistência de personagem (item 3.1): a API avisa qual referência existe.
@@ -258,19 +266,19 @@ def teste_prompt_traz_a_imagem_ancora_dos_elementos_da_cena(
     avisa o app de que ela existe, para o usuário anexá-la também.
     """
     provedor = ProvedorFalso(prompt="pintura")
-    livro, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+    livro, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
 
     # Gera um primeiro prompt e importa uma imagem para ele, depois marca essa
     # imagem como a âncora do estado do Ned Stark.
-    primeiro = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    primeiro = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
     imagem = _importar_imagem(cliente, primeiro["id"])
-    estado_id = cena["elementos"][0]["estado_id"]
+    estado_id = frame["elementos"][0]["estado_id"]
     ajuste = cliente.patch(f"/estados/{estado_id}", json={"imagem_ancora_id": imagem["id"]})
     assert ajuste.status_code == 200, ajuste.text
 
     assert primeiro["referencias_visuais"] == []  # ainda não havia âncora nessa hora
 
-    segundo = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    segundo = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
     assert [r["id"] for r in segundo["referencias_visuais"]] == [imagem["id"]]
 
     # GET /prompts/{id} também traz a referência atual, não uma foto congelada
@@ -282,9 +290,9 @@ def teste_prompt_traz_a_imagem_ancora_dos_elementos_da_cena(
 def teste_criar_prompt_sem_imagem_ancora_nao_traz_referencias(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso)
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
 
-    resposta = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
 
     assert resposta["referencias_visuais"] == []
 
@@ -294,11 +302,11 @@ def teste_criar_prompt_com_chave_ausente_responde_422(
 ) -> None:
     usar_provedor_falso(ProvedorFalso(erro=ChaveDeApiAusente("sem chave")))
     livro = _livro(cliente)
-    cena = _cena(cliente, livro["capitulos"][0]["id"])
+    frame = _frame(cliente, livro["capitulos"][0]["id"])
     perfil = _perfil(cliente)
 
     resposta = cliente.post(
-        f"/cenas/{cena['id']}/prompts",
+        f"/frames/{frame['id']}/prompts",
         json={"perfil_renderizacao_id": perfil["id"], "modelo": MODELO_FALSO},
     )
 
@@ -310,22 +318,118 @@ def teste_criar_prompt_com_erro_de_rede_responde_502(
 ) -> None:
     usar_provedor_falso(ProvedorFalso(erro=ErroDoProvedorIA("o serviço caiu")))
     livro = _livro(cliente)
-    cena = _cena(cliente, livro["capitulos"][0]["id"])
+    frame = _frame(cliente, livro["capitulos"][0]["id"])
     perfil = _perfil(cliente)
 
     resposta = cliente.post(
-        f"/cenas/{cena['id']}/prompts",
+        f"/frames/{frame['id']}/prompts",
         json={"perfil_renderizacao_id": perfil["id"], "modelo": MODELO_FALSO},
     )
 
     assert resposta.status_code == 502
 
 
-def teste_criar_prompt_de_cena_inexistente_responde_404(
+def teste_criar_prompt_de_frame_inexistente_responde_404(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     usar_provedor_falso(ProvedorFalso())
-    assert cliente.post("/cenas/999/prompts", json={}).status_code == 404
+    assert cliente.post("/frames/999/prompts", json={}).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Frame do tipo PERSONAGEM: retrato solo, sem fundamentação de cena (item 4.4)
+# --------------------------------------------------------------------------- #
+
+
+def teste_prompt_de_personagem_nao_referencia_titulo_nem_descricao_do_frame(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Um retrato usa só a descrição do elemento — nunca o texto do frame."""
+    provedor = ProvedorFalso(prompt="retrato")
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor, tipo="PERSONAGEM")
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    chamada = provedor.chamadas_de_prompt[0]
+    assert chamada["descricao_do_frame"] == ""
+
+
+def teste_prompt_de_personagem_nao_fundamenta_o_frame(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Um retrato não tem "quem, onde, o quê" de cena para conferir."""
+    provedor = ProvedorFalso()
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor, tipo="PERSONAGEM")
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    assert provedor.chamadas_de_fundamentacao == []
+
+
+# --------------------------------------------------------------------------- #
+# Frame do tipo CENA: fundamentação contra o capítulo (item 4.4)
+# --------------------------------------------------------------------------- #
+
+
+def teste_prompt_de_cena_fundamenta_e_manda_contexto_com_prioridade_menor(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor = ProvedorFalso(contexto="o capítulo confirma que é de manhã")
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor, tipo="CENA")
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    fundamentacao = provedor.chamadas_de_fundamentacao[0]
+    assert fundamentacao["titulo"] == "No pátio"
+    assert TEXTO_LONGO in fundamentacao["texto_capitulo"]
+    assert "Ned Stark: watercolor-ready appearance description" in fundamentacao["participantes"]
+
+    chamada_de_prompt = provedor.chamadas_de_prompt[0]
+    assert chamada_de_prompt["contexto_do_livro"] == "o capítulo confirma que é de manhã"
+    assert chamada_de_prompt["descricao_do_frame"] == "No pátio"
+
+
+def teste_fundamentacao_em_modo_economia_roda_so_uma_vez(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor = ProvedorFalso()
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor, tipo="CENA")
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    assert len(provedor.chamadas_de_fundamentacao) == 1
+
+
+def teste_fundamentacao_em_modo_qualidade_roda_toda_vez(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor = ProvedorFalso()
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor, tipo="CENA")
+    cliente.put("/configuracao", json={"prioridade_ia": "QUALIDADE"})
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    assert len(provedor.chamadas_de_fundamentacao) == 2
+
+
+def teste_frame_de_cena_sem_participantes_nao_fundamenta(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Nada para confirmar "quem, onde, o quê" quando ninguém está ligado ainda."""
+    provedor = ProvedorFalso()
+    usar_provedor_falso(provedor)
+    livro = _livro(cliente)
+    frame = _frame(cliente, livro["capitulos"][0]["id"], tipo="CENA")
+    perfil = _perfil(cliente)
+    cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
+    cliente.put("/configuracao", json={"modelo_prompt": MODELO_FALSO})
+
+    resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    assert resposta.status_code == 201, resposta.text
+    assert provedor.chamadas_de_fundamentacao == []
 
 
 # --------------------------------------------------------------------------- #
@@ -333,20 +437,20 @@ def teste_criar_prompt_de_cena_inexistente_responde_404(
 # --------------------------------------------------------------------------- #
 
 
-def teste_listar_prompts_da_cena(cliente: TestClient, usar_provedor_falso) -> None:
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso)
-    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
-    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+def teste_listar_prompts_do_frame(cliente: TestClient, usar_provedor_falso) -> None:
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
 
-    resposta = cliente.get(f"/cenas/{cena['id']}/prompts")
+    resposta = cliente.get(f"/frames/{frame['id']}/prompts")
 
     assert resposta.status_code == 200
     assert len(resposta.json()) == 2
 
 
 def teste_ajustar_prompt_anota_avaliacao(cliente: TestClient, usar_provedor_falso) -> None:
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso)
-    prompt = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+    prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
 
     resposta = cliente.patch(f"/prompts/{prompt['id']}", json={"avaliacao": "Ficou ótima."})
 
@@ -373,8 +477,8 @@ def _importar_imagem(cliente: TestClient, prompt_id: int, nome: str = "resultado
 
 
 def teste_importar_imagem_e_baixar_o_arquivo(cliente: TestClient, usar_provedor_falso) -> None:
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso)
-    prompt = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+    prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
 
     imagem = _importar_imagem(cliente, prompt["id"])
     assert imagem["prompt_id"] == prompt["id"]
@@ -390,8 +494,8 @@ def teste_importar_imagem_e_baixar_o_arquivo(cliente: TestClient, usar_provedor_
 def teste_importar_imagem_com_extensao_invalida_responde_422(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso)
-    prompt = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+    prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
 
     resposta = cliente.post(
         f"/prompts/{prompt['id']}/imagens",
@@ -412,8 +516,8 @@ def teste_importar_imagem_de_prompt_inexistente_responde_404(cliente: TestClient
 def teste_remover_imagem_apaga_o_arquivo_do_disco(
     cliente: TestClient, usar_provedor_falso, _diretorio_de_imagens
 ) -> None:
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso)
-    prompt = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+    prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
     imagem = _importar_imagem(cliente, prompt["id"])
 
     arquivos_antes = list(_diretorio_de_imagens.rglob("*.png"))
@@ -429,8 +533,8 @@ def teste_remover_imagem_apaga_o_arquivo_do_disco(
 def teste_remover_prompt_apaga_as_imagens_e_os_arquivos(
     cliente: TestClient, usar_provedor_falso, _diretorio_de_imagens
 ) -> None:
-    _, cena = _montar_cena_completa(cliente, usar_provedor_falso)
-    prompt = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+    prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
     _importar_imagem(cliente, prompt["id"])
     _importar_imagem(cliente, prompt["id"], nome="outra.png")
 

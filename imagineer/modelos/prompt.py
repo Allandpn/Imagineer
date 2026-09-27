@@ -19,8 +19,8 @@ class Prompt(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    cena_id: Mapped[int] = mapped_column(
-        ForeignKey("cenas.id", ondelete="CASCADE"),
+    frame_id: Mapped[int] = mapped_column(
+        ForeignKey("frames.id", ondelete="CASCADE"),
         index=True,
     )
 
@@ -61,7 +61,7 @@ class Prompt(Base):
         server_default=func.now(),
     )
 
-    cena: Mapped["Cena"] = relationship(back_populates="prompts")  # noqa: F821
+    frame: Mapped["Frame"] = relationship(back_populates="prompts")  # noqa: F821
     perfil_renderizacao: Mapped["PerfilRenderizacao | None"] = relationship()  # noqa: F821
 
     imagens: Mapped[list["Imagem"]] = relationship(
@@ -70,7 +70,7 @@ class Prompt(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Prompt id={self.id} cena_id={self.cena_id}>"
+        return f"<Prompt id={self.id} frame_id={self.frame_id}>"
 
 
 class Imagem(Base):

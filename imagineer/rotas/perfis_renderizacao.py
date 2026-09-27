@@ -11,10 +11,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
-from imagineer.esquemas.cena import (
+from imagineer.esquemas.frame import (
     PerfilRenderizacao as EsquemaPerfil,
 )
-from imagineer.esquemas.cena import (
+from imagineer.esquemas.frame import (
     PerfilRenderizacaoAjuste,
     PerfilRenderizacaoNovo,
 )

@@ -96,8 +96,8 @@ class ParticipanteSugerido:
 
 
 @dataclass
-class CenaSugerida:
-    """Um recorte narrativo que a IA identificou como digno de virar imagem.
+class FrameSugerido:
+    """Um frame do tipo CENA que a IA identificou como digno de virar imagem.
 
     Ao contrário de ``ElementoSugerido`` (um elemento isolado), isto é uma
     combinação de elementos interagindo num momento específico do capítulo —
@@ -118,8 +118,8 @@ class ExtracaoDeElementos:
     """O resultado de uma extração, com o rastro do que foi usado."""
 
     elementos: list[ElementoSugerido] = field(default_factory=list)
-    cenas: list[CenaSugerida] = field(default_factory=list)
-    """Recortes narrativos sugeridos, combinando elementos identificados acima."""
+    frames: list[FrameSugerido] = field(default_factory=list)
+    """Frames do tipo CENA sugeridos, combinando elementos identificados acima."""
 
     modelo: str = ""
     """O modelo que produziu isto. Guardado para o usuário saber a quem creditar
@@ -140,6 +140,21 @@ class EstadoSugerido:
 
 
 @dataclass
+class FrameFundamentado:
+    """O contexto que a leitura profunda de um frame do tipo CENA confirmou.
+
+    Ao contrário de ``EstadoSugerido`` (que sobrescreve a descrição do
+    elemento), isto **não substitui** o que o usuário escreveu no frame — é
+    contexto de apoio. Quem decide o texto final é ``montar_prompt``, e a
+    prioridade é do usuário: ele já leu o capítulo; esta leitura é uma segunda
+    conferência, não a palavra final (item 4.4).
+    """
+
+    contexto: str
+    modelo: str = ""
+
+
+@dataclass
 class PromptMontado:
     """O prompt de imagem pronto para o usuário copiar."""
 
@@ -150,8 +165,9 @@ class PromptMontado:
 class ProvedorIA(ABC):
     """O que a aplicação espera de um provedor de IA de texto.
 
-    Três operações: identificação e montagem de prompt (passos 6 e 8 do fluxo
-    da Etapa 2), e a leitura profunda entre elas (item 4.4, fase 2).
+    Quatro operações: identificação e montagem de prompt (passos 6 e 8 do fluxo
+    da Etapa 2), e as duas leituras profundas entre elas (item 4.4) — de um
+    elemento (``sugerir_estado``) e de um frame do tipo CENA (``fundamentar_frame``).
     """
 
     @abstractmethod
@@ -197,7 +213,7 @@ class ProvedorIA(ABC):
 
         Relê o capítulo inteiro, mas focado só neste elemento — é essa
         concentração que evita a mistura de atributos entre elementos que a
-        fase 1 antiga produzia. Chamado dentro de ``POST /cenas/{id}/prompts``,
+        fase 1 antiga produzia. Chamado dentro de ``POST /frames/{id}/prompts``,
         antes de montar o prompt (item 6.6).
 
         Args:
@@ -212,17 +228,54 @@ class ProvedorIA(ABC):
         """
 
     @abstractmethod
+    def fundamentar_frame(
+        self,
+        texto_capitulo: str,
+        titulo: str,
+        descricao: str | None,
+        horario: str | None,
+        clima: str | None,
+        humor: str | None,
+        participantes: list[str],
+        modelo: str,
+    ) -> FrameFundamentado:
+        """A leitura profunda de um frame do tipo CENA — item 4.4.
+
+        Relê o capítulo do frame para confirmar quem, onde e o quê, com base no
+        que o usuário já escreveu e em quem participa. **Não sobrescreve** o
+        que o usuário escreveu — devolve um contexto de apoio que
+        ``montar_prompt`` usa com prioridade menor que a descrição do usuário
+        (item 4.4: a palavra de quem já leu o capítulo vale mais que uma nova
+        leitura automática, para não deixar uma alucinação ou ambiguidade da
+        IA divergir do que o usuário confirmou).
+
+        Args:
+            texto_capitulo: o capítulo do frame.
+            titulo, descricao, horario, clima, humor: o que o usuário escreveu.
+            participantes: "Nome: descrição do estado" de cada elemento ligado
+                ao frame, já com a aparência estabelecida.
+            modelo: o identificador do modelo a usar.
+        """
+
+    @abstractmethod
     def montar_prompt(
         self,
-        descricao_da_cena: str,
+        descricao_do_frame: str,
         elementos: list[str],
         perfil_renderizacao: str,
         modelo: str,
+        contexto_do_livro: str | None = None,
         comentario_do_usuario: str | None = None,
     ) -> PromptMontado:
         """Monta o prompt de imagem a partir do que foi escolhido (passo 8).
 
         Args:
+            descricao_do_frame: o que o usuário escreveu sobre o frame — vazio
+                para um frame do tipo PERSONAGEM (item 4.4: um retrato não
+                referencia nada além do próprio elemento).
+            contexto_do_livro: a leitura profunda do frame (``fundamentar_frame``),
+                só para frames do tipo CENA — contexto de apoio, prioridade
+                menor que ``descricao_do_frame``.
             comentario_do_usuario: uma correção pontual do usuário, com
-                prioridade sobre a leitura automática do capítulo (item 4.4).
+                prioridade sobre tudo o mais (item 4.4).
         """

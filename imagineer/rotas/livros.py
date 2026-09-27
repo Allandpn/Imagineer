@@ -8,7 +8,7 @@ from sqlalchemy import Integer, case, func, select
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
-from imagineer.esquemas.cena import LivroAjuste
+from imagineer.esquemas.frame import LivroAjuste
 from imagineer.esquemas.livro import (
     CapituloResumo,
     LivroDetalhe,
@@ -143,7 +143,7 @@ def ajustar_livro(
 def remover_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> None:
     """Apaga o livro e, em cascata, tudo que só existia por causa dele.
 
-    Capítulos, elementos, estados, cenas, prompts e imagens vão junto (item 3.4).
+    Capítulos, elementos, estados, frames, prompts e imagens vão junto (item 3.4).
     Os perfis de renderização não: eles não pertencem ao livro.
     """
     sessao.delete(_buscar_livro(sessao, livro_id))

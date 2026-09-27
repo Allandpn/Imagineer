@@ -27,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
-from imagineer.modelos.cena import cenas_estados_elemento
+from imagineer.modelos.frame import frames_estados_elemento
 
 
 class TipoElemento(enum.Enum):
@@ -179,14 +179,14 @@ class EstadoElemento(Base):
     capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
     imagem_ancora: Mapped["Imagem | None"] = relationship()  # noqa: F821
 
-    cenas: Mapped[list["Cena"]] = relationship(  # noqa: F821
-        secondary=cenas_estados_elemento,
+    frames: Mapped[list["Frame"]] = relationship(  # noqa: F821
+        secondary=frames_estados_elemento,
         back_populates="estados_elemento",
     )
-    """As cenas em que o elemento aparece neste estado.
+    """Os frames em que o elemento aparece neste estado.
 
     É o outro lado do muitos-para-muitos do item 3.2: um elemento aparece em
-    várias cenas de vários capítulos.
+    vários frames de vários capítulos.
     """
 
     def __repr__(self) -> str:

@@ -11,12 +11,13 @@ import re
 import httpx
 
 from imagineer.ia.provedor import (
-    CenaSugerida,
     ChaveDeApiAusente,
     ElementoSugerido,
     ErroDoProvedorIA,
     EstadoSugerido,
     ExtracaoDeElementos,
+    FrameFundamentado,
+    FrameSugerido,
     ModeloDisponivel,
     ModeloNaoEscolhido,
     ParticipanteSugerido,
@@ -181,27 +182,66 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 Escreva em português.
 """
 
+_INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME = """\
+Você lê um capítulo de livro para conferir uma cena que o usuário já descreveu \
+com as próprias palavras — você é uma segunda opinião, não a palavra final.
+
+Você recebe como o usuário descreveu a cena (título, descrição, horário, clima, \
+humor) e quem participa dela, cada um já com a aparência estabelecida. Releia o \
+capítulo e escreva um parágrafo curto (até 3 frases) confirmando, com base só \
+no texto:
+- Onde a cena acontece: o ambiente ou construção, com detalhes físicos que o \
+texto sustente.
+- O que fisicamente acontece nesse momento específico: uma ação ou gesto \
+concreto, não uma sequência de eventos.
+- Qualquer detalhe visual do ambiente (iluminação, clima, objetos presentes) \
+que o texto mostre e a descrição do usuário não tenha coberto.
+
+Regras:
+- Você NÃO substitui a descrição do usuário. Se o que você lê parecer \
+contradizer o que ele escreveu, não corrija — apenas registre o que o texto \
+mostra; quem monta o prompt final decide, e a palavra do usuário vale mais que \
+a sua (ele já leu o capítulo; você pode estar enganado ou lendo o trecho errado).
+- Não invente. Se o capítulo não deixar algo claro, diga que não é claro em vez \
+de supor.
+- Não repita a aparência física dos participantes — isso já foi estabelecido \
+em outra etapa. Foque em local, ação e ambiente.
+- Escreva em português.
+
+Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
+
+{
+  "contexto": "o parágrafo de confirmação, seguindo as regras acima"
+}
+"""
+
 _INSTRUCAO_DE_PROMPT = """\
 Você monta prompts para ferramentas de geração de imagem (Midjourney, DALL-E, \
-Imagen e afins), a partir de uma cena de livro já traduzida para descrições \
-concretas de aparência. Produza UM prompt em inglês, numa linha só, pronto \
-para colar na ferramenta.
+Imagen e afins), a partir de um frame de livro já traduzido para descrições \
+concretas de aparência. Um frame pode ser um RETRATO (um elemento só, sem \
+nenhum outro) ou uma CENA (vários elementos interagindo) — a diferença fica \
+clara pelo que foi preenchido abaixo. Produza UM prompt em inglês, numa linha \
+só, pronto para colar na ferramenta.
+
+Se não vier nenhuma descrição de cena (só um elemento na lista), monte um \
+RETRATO: use exclusivamente a aparência desse elemento e o estilo pedido — não \
+mencione, sugira ou implique a presença de mais ninguém.
 
 Monte o prompt seguindo esta ordem de blocos, separados por vírgula (pule um \
 bloco se não houver informação para ele — nunca invente para preencher):
 
 1. Enquadramento e câmera: um tipo de plano (medium shot, close-up, wide shot, \
-low-angle, over-the-shoulder) coerente com a cena.
+low-angle, over-the-shoulder) coerente com a cena ou o retrato.
 2. Sujeito principal, num instante congelado: quem/o que é o foco, numa pose \
 ou gesto específico e parado — nunca uma ação contínua ("ele caminha e olha \
 para trás" vira "mid-stride, glancing back").
 3. Vestuário, texturas e expressão física de cada elemento presente.
-4. Cenário imediato e objetos ao redor.
-5. Ambiente de fundo, arquitetura e época.
+4. Cenário imediato e objetos ao redor (só se houver cena — num retrato, pule).
+5. Ambiente de fundo, arquitetura e época (só se houver cena).
 6. Iluminação e atmosfera: fonte de luz (candlelight, golden hour, cool \
 moonlight, harsh neon) e o que há no ar (dust motes, mist, smoke) — derive isso \
-do horário/clima da cena e do estilo pedido, não invente uma fonte que \
-contradiga a cena.
+do horário/clima informados e do estilo pedido, não invente uma fonte que \
+contradiga o que foi dito.
 7. Estética final: estilo, granulado de filme, qualidade — vindo do perfil de \
 renderização indicado.
 
@@ -214,9 +254,15 @@ e postura visíveis.
 - Mantenha fielmente a aparência de cada elemento como foi descrita; não invente \
 elementos que não estão na lista.
 - Incorpore o estilo, a iluminação e a paleta do perfil indicado.
-- Se houver um comentário do usuário, ele tem PRIORIDADE sobre as regras e \
-descrições acima em caso de conflito — é uma correção de quem já viu o \
-resultado anterior ou leu o capítulo com atenção.
+
+Ordem de prioridade quando houver conflito entre as fontes abaixo:
+1. Comentário do usuário (se houver) — é uma correção de quem já viu o \
+resultado anterior ou releu o capítulo com atenção. Vale mais que tudo.
+2. A descrição da cena escrita pelo usuário — ele já leu o capítulo; é a conta \
+oficial do que acontece.
+3. O contexto do livro (se houver) — uma releitura automática, só para \
+preencher o que a descrição do usuário não cobriu. Nunca use isso para \
+contradizer o que o usuário escreveu.
 
 Responda APENAS com o texto do prompt, sem aspas, sem explicação, sem título, \
 sem numerar os blocos.
@@ -292,7 +338,7 @@ class ProvedorOpenRouter(ProvedorIA):
             )
         return ExtracaoDeElementos(
             elementos=_interpretar_elementos(bruto),
-            cenas=_interpretar_cenas(bruto),
+            frames=_interpretar_frames_sugeridos(bruto),
             modelo=modelo,
         )
 
@@ -317,23 +363,56 @@ class ProvedorOpenRouter(ProvedorIA):
         resposta = self._conversar(modelo, _INSTRUCAO_DE_ESTADO, pedido)
         return EstadoSugerido(descricao=_interpretar_estado(resposta), modelo=modelo)
 
+    def fundamentar_frame(
+        self,
+        texto_capitulo: str,
+        titulo: str,
+        descricao: str | None,
+        horario: str | None,
+        clima: str | None,
+        humor: str | None,
+        participantes: list[str],
+        modelo: str,
+    ) -> FrameFundamentado:
+        """Pede ao modelo para conferir a cena contra o capítulo (item 4.4)."""
+        lista = "\n".join(f"- {p}" for p in participantes) or "(nenhum)"
+        pedido = (
+            f"O QUE O USUÁRIO ESCREVEU SOBRE A CENA:\n"
+            f"Título: {titulo}\n"
+            f"Descrição: {descricao or '(nenhuma)'}\n"
+            f"Horário: {horario or '(não informado)'}\n"
+            f"Clima: {clima or '(não informado)'}\n"
+            f"Humor: {humor or '(não informado)'}\n\n"
+            f"PARTICIPANTES, COM A APARÊNCIA JÁ ESTABELECIDA:\n{lista}\n\n"
+            f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
+        )
+
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME, pedido)
+        return FrameFundamentado(
+            contexto=_interpretar_contexto(resposta), modelo=modelo
+        )
+
     def montar_prompt(
         self,
-        descricao_da_cena: str,
+        descricao_do_frame: str,
         elementos: list[str],
         perfil_renderizacao: str,
         modelo: str,
+        contexto_do_livro: str | None = None,
         comentario_do_usuario: str | None = None,
     ) -> PromptMontado:
         """Pede ao modelo o prompt de imagem (passo 8)."""
         lista = "\n".join(f"- {elemento}" for elemento in elementos) or "(nenhum)"
         pedido = (
-            f"CENA:\n{descricao_da_cena}\n\n"
+            f"CENA (escrita pelo usuário; vazio significa retrato solo):\n"
+            f"{descricao_do_frame or '(nenhuma — monte um retrato)'}\n\n"
             f"ELEMENTOS QUE APARECEM, COM A APARÊNCIA DE CADA UM:\n{lista}\n\n"
             f"ESTILO VISUAL:\n{perfil_renderizacao}"
         )
+        if contexto_do_livro:
+            pedido += f"\n\nCONTEXTO DO LIVRO (apoio, não substitui a cena acima):\n{contexto_do_livro}"
         if comentario_do_usuario:
-            pedido += f"\n\nCOMENTÁRIO DO USUÁRIO (prioridade sobre o resto):\n{comentario_do_usuario}"
+            pedido += f"\n\nCOMENTÁRIO DO USUÁRIO (prioridade máxima):\n{comentario_do_usuario}"
 
         resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido)
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
@@ -531,13 +610,15 @@ def _interpretar_elementos(bruto: dict) -> list[ElementoSugerido]:
     return sugeridos
 
 
-def _interpretar_cenas(bruto: dict) -> list[CenaSugerida]:
+def _interpretar_frames_sugeridos(bruto: dict) -> list[FrameSugerido]:
     """Lê a lista de cenas sugeridas de dentro do JSON já interpretado.
 
-    Mesma tolerância de ``_interpretar_elementos``: uma cena malformada, ou sem
-    nenhum participante, é descartada em silêncio em vez de derrubar as outras.
+    Cada uma vira um ``FrameSugerido`` (rascunho de um frame do tipo CENA).
+    Mesma tolerância de ``_interpretar_elementos``: uma entrada malformada, ou
+    sem nenhum participante, é descartada em silêncio em vez de derrubar as
+    outras.
     """
-    sugeridas = []
+    sugeridos = []
     for entrada in bruto.get("cenas") or []:
         if not isinstance(entrada, dict):
             continue
@@ -561,8 +642,8 @@ def _interpretar_cenas(bruto: dict) -> list[CenaSugerida]:
         if not participantes:
             continue
 
-        sugeridas.append(
-            CenaSugerida(
+        sugeridos.append(
+            FrameSugerido(
                 titulo=titulo,
                 descricao=_texto_ou_nulo(entrada.get("descricao")),
                 horario=_texto_ou_nulo(entrada.get("horario")),
@@ -572,7 +653,7 @@ def _interpretar_cenas(bruto: dict) -> list[CenaSugerida]:
             )
         )
 
-    return sugeridas
+    return sugeridos
 
 
 def _interpretar_estado(resposta: str) -> str:
@@ -594,6 +675,26 @@ def _interpretar_estado(resposta: str) -> str:
             "O modelo devolveu um JSON sem o campo 'descricao'."
         )
     return descricao
+
+
+def _interpretar_contexto(resposta: str) -> str:
+    """Lê o JSON da fundamentação de um frame do tipo CENA (item 4.4).
+
+    Mesma leitura tolerante das demais interpretações desta camada.
+    """
+    bruto = _extrair_json(resposta)
+    if bruto is None:
+        raise ErroDoProvedorIA(
+            "O modelo não devolveu JSON. Tente outro modelo: alguns modelos "
+            "pequenos não seguem bem instruções de formato."
+        )
+
+    contexto = _texto_ou_nulo(bruto.get("contexto"))
+    if contexto is None:
+        raise ErroDoProvedorIA(
+            "O modelo devolveu um JSON sem o campo 'contexto'."
+        )
+    return contexto
 
 
 def _extrair_json(resposta: str) -> dict | None:

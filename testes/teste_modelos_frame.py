@@ -1,8 +1,8 @@
-"""Testes de Cena, PerfilRenderizacao, Prompt e Imagem (item 3.4c).
+"""Testes de Frame, PerfilRenderizacao, Prompt e Imagem (item 3.4c).
 
 Além de cada entidade isolada, há um teste que percorre a cadeia inteira do
-fluxo — livro, capítulo, elemento, estado, cena, prompt, imagem, âncora — porque
-é a integração entre elas que o modelo existe para sustentar.
+fluxo — livro, capítulo, elemento, estado, frame, prompt, imagem, âncora —
+porque é a integração entre elas que o modelo existe para sustentar.
 """
 
 import pytest
@@ -12,13 +12,14 @@ from sqlalchemy.orm import Session
 
 from imagineer.modelos import (
     Capitulo,
-    Cena,
     Elemento,
     EstadoElemento,
+    Frame,
     Imagem,
     Livro,
     PerfilRenderizacao,
     Prompt,
+    TipoDeFrame,
     TipoElemento,
 )
 
@@ -98,31 +99,44 @@ def teste_apagar_perfil_nao_apaga_o_livro(sessao_com_tabelas: Session) -> None:
     assert livro.perfil_renderizacao_padrao_id is None
 
 
-def teste_cena_guarda_os_atributos_situacionais(sessao_com_tabelas: Session) -> None:
-    """Horário, clima e humor ficam na própria Cena, sem entidade "Contexto"."""
+def teste_frame_guarda_os_atributos_situacionais(sessao_com_tabelas: Session) -> None:
+    """Horário, clima e humor ficam no próprio Frame, sem entidade "Contexto"."""
     _livro, capitulo = _livro_com_um_capitulo(sessao_com_tabelas)
-    cena = Cena(
+    frame = Frame(
         capitulo_id=capitulo.id,
+        tipo=TipoDeFrame.CENA,
         titulo="A chegada do rei a Winterfell",
         descricao="A comitiva real atravessa o portão.",
         horario="fim de tarde",
         clima="neve fina",
         humor="tensão contida",
     )
-    sessao_com_tabelas.add(cena)
+    sessao_com_tabelas.add(frame)
     sessao_com_tabelas.commit()
 
-    assert cena.horario == "fim de tarde"
-    assert cena.capitulo is capitulo
+    assert frame.horario == "fim de tarde"
+    assert frame.capitulo is capitulo
 
 
-def teste_cena_referencia_o_estado_e_nao_apenas_o_elemento(
+def teste_frame_padrao_e_do_tipo_cena(sessao_com_tabelas: Session) -> None:
+    """O `server_default` existe para as linhas já criadas antes deste campo."""
+    _livro, capitulo = _livro_com_um_capitulo(sessao_com_tabelas)
+    frame = Frame(capitulo_id=capitulo.id, titulo="No pátio")
+    sessao_com_tabelas.add(frame)
+    sessao_com_tabelas.commit()
+    sessao_com_tabelas.refresh(frame)
+
+    assert frame.tipo is TipoDeFrame.CENA
+    assert frame.confirmado_pela_leitura_profunda is False
+
+
+def teste_frame_referencia_o_estado_e_nao_apenas_o_elemento(
     sessao_com_tabelas: Session,
 ) -> None:
-    """A cena sabe *como* o personagem estava, não só que ele estava lá.
+    """O frame sabe *como* o personagem estava, não só que ele estava lá.
 
-    É a razão de a tabela de associação ligar Cena a EstadoElemento: ligada ao
-    Elemento, a cena não saberia qual das versões do personagem usar no prompt.
+    É a razão de a tabela de associação ligar Frame a EstadoElemento: ligado ao
+    Elemento, o frame não saberia qual das versões do personagem usar no prompt.
     """
     livro, capitulo = _livro_com_um_capitulo(sessao_com_tabelas)
     personagem = Elemento(
@@ -133,41 +147,41 @@ def teste_cena_referencia_o_estado_e_nao_apenas_o_elemento(
     sessao_com_tabelas.add(personagem)
     sessao_com_tabelas.commit()
 
-    cena = Cena(capitulo_id=capitulo.id, titulo="No pátio")
-    cena.estados_elemento = [estado]
-    sessao_com_tabelas.add(cena)
+    frame = Frame(capitulo_id=capitulo.id, titulo="No pátio")
+    frame.estados_elemento = [estado]
+    sessao_com_tabelas.add(frame)
     sessao_com_tabelas.commit()
 
-    # A cena chega até a aparência, passando pelo estado.
-    assert cena.estados_elemento[0].descricao == "Capa de pele, barba grisalha."
+    # O frame chega até a aparência, passando pelo estado.
+    assert frame.estados_elemento[0].descricao == "Capa de pele, barba grisalha."
     # E até a identidade, passando pelo elemento.
-    assert cena.estados_elemento[0].elemento.nome == "Ned Stark"
+    assert frame.estados_elemento[0].elemento.nome == "Ned Stark"
     # A navegação funciona no sentido inverso (item 3.2: muitos-para-muitos).
-    assert estado.cenas == [cena]
+    assert estado.frames == [frame]
 
 
-def teste_apagar_cena_nao_apaga_os_estados_que_ela_usava(
+def teste_apagar_frame_nao_apaga_os_estados_que_ele_usava(
     sessao_com_tabelas: Session,
 ) -> None:
-    """Um estado pertence ao elemento e à narrativa, não à cena que o citou.
+    """Um estado pertence ao elemento e à narrativa, não ao frame que o citou.
 
-    Apagar uma cena desfaz as ligações, mas o estado do personagem continua
-    valendo para as outras cenas e para os capítulos seguintes.
+    Apagar um frame desfaz as ligações, mas o estado do personagem continua
+    valendo para os outros frames e para os capítulos seguintes.
     """
     livro, capitulo = _livro_com_um_capitulo(sessao_com_tabelas)
     personagem = Elemento(livro_id=livro.id, tipo=TipoElemento.PERSONAGEM, nome="Ned")
     estado = EstadoElemento(capitulo_id=capitulo.id, descricao="Capa de pele.")
     personagem.estados = [estado]
-    cena = Cena(capitulo_id=capitulo.id, titulo="No pátio")
-    cena.estados_elemento = [estado]
-    sessao_com_tabelas.add_all([personagem, cena])
+    frame = Frame(capitulo_id=capitulo.id, titulo="No pátio")
+    frame.estados_elemento = [estado]
+    sessao_com_tabelas.add_all([personagem, frame])
     sessao_com_tabelas.commit()
 
-    sessao_com_tabelas.delete(cena)
+    sessao_com_tabelas.delete(frame)
     sessao_com_tabelas.commit()
 
     assert sessao_com_tabelas.get(EstadoElemento, estado.id) is not None
-    assert sessao_com_tabelas.scalars(select(Cena)).all() == []
+    assert sessao_com_tabelas.scalars(select(Frame)).all() == []
 
 
 def teste_um_prompt_pode_ter_varias_imagens(sessao_com_tabelas: Session) -> None:
@@ -177,14 +191,14 @@ def teste_um_prompt_pode_ter_varias_imagens(sessao_com_tabelas: Session) -> None
     gera o mesmo prompt mais de uma vez, ou em duas ferramentas diferentes.
     """
     _livro, capitulo = _livro_com_um_capitulo(sessao_com_tabelas)
-    cena = Cena(capitulo_id=capitulo.id, titulo="No pátio")
-    sessao_com_tabelas.add(cena)
+    frame = Frame(capitulo_id=capitulo.id, titulo="No pátio")
+    sessao_com_tabelas.add(frame)
     sessao_com_tabelas.commit()
 
-    prompt = Prompt(cena_id=cena.id, texto="aquarela, pátio nevado, ...")
+    prompt = Prompt(frame_id=frame.id, texto="aquarela, pátio nevado, ...")
     prompt.imagens = [
-        Imagem(caminho_arquivo="livro-1/cena-1/tentativa-a.png"),
-        Imagem(caminho_arquivo="livro-1/cena-1/tentativa-b.png"),
+        Imagem(caminho_arquivo="livro-1/frame-1/tentativa-a.png"),
+        Imagem(caminho_arquivo="livro-1/frame-1/tentativa-b.png"),
     ]
     sessao_com_tabelas.add(prompt)
     sessao_com_tabelas.commit()
@@ -196,10 +210,10 @@ def teste_um_prompt_pode_ter_varias_imagens(sessao_com_tabelas: Session) -> None
 def teste_caminho_do_arquivo_e_unico(sessao_com_tabelas: Session) -> None:
     """Dois registros apontando para o mesmo arquivo seriam duplicata no catálogo."""
     _livro, capitulo = _livro_com_um_capitulo(sessao_com_tabelas)
-    cena = Cena(capitulo_id=capitulo.id, titulo="No pátio")
-    sessao_com_tabelas.add(cena)
+    frame = Frame(capitulo_id=capitulo.id, titulo="No pátio")
+    sessao_com_tabelas.add(frame)
     sessao_com_tabelas.commit()
-    prompt = Prompt(cena_id=cena.id, texto="...")
+    prompt = Prompt(frame_id=frame.id, texto="...")
     sessao_com_tabelas.add(prompt)
     sessao_com_tabelas.commit()
 
@@ -218,11 +232,11 @@ def teste_apagar_perfil_nao_apaga_o_historico_de_prompts(
     """Uma limpeza de perfis não pode destruir o registro do que foi gerado."""
     perfil = _perfil(sessao_com_tabelas)
     _livro, capitulo = _livro_com_um_capitulo(sessao_com_tabelas)
-    cena = Cena(capitulo_id=capitulo.id, titulo="No pátio")
-    sessao_com_tabelas.add(cena)
+    frame = Frame(capitulo_id=capitulo.id, titulo="No pátio")
+    sessao_com_tabelas.add(frame)
     sessao_com_tabelas.commit()
     prompt = Prompt(
-        cena_id=cena.id, texto="aquarela, ...", perfil_renderizacao_id=perfil.id
+        frame_id=frame.id, texto="aquarela, ...", perfil_renderizacao_id=perfil.id
     )
     sessao_com_tabelas.add(prompt)
     sessao_com_tabelas.commit()
@@ -239,10 +253,10 @@ def teste_apagar_perfil_nao_apaga_o_historico_de_prompts(
 def teste_apagar_imagem_ancora_nao_apaga_o_estado(sessao_com_tabelas: Session) -> None:
     """Apagar a imagem de referência não pode apagar a aparência do personagem."""
     livro, capitulo = _livro_com_um_capitulo(sessao_com_tabelas)
-    cena = Cena(capitulo_id=capitulo.id, titulo="No pátio")
-    sessao_com_tabelas.add(cena)
+    frame = Frame(capitulo_id=capitulo.id, titulo="No pátio")
+    sessao_com_tabelas.add(frame)
     sessao_com_tabelas.commit()
-    prompt = Prompt(cena_id=cena.id, texto="...")
+    prompt = Prompt(frame_id=frame.id, texto="...")
     prompt.imagens = [Imagem(caminho_arquivo="ned.png")]
     personagem = Elemento(livro_id=livro.id, tipo=TipoElemento.PERSONAGEM, nome="Ned")
     estado = EstadoElemento(capitulo_id=capitulo.id, descricao="Capa de pele.")
@@ -267,7 +281,7 @@ def teste_fluxo_completo_do_livro_ate_a_imagem_ancorada(
 ) -> None:
     """Percorre a cadeia inteira do fluxo da Etapa 2, de ponta a ponta.
 
-    Livro -> Capítulo -> Elemento -> Estado -> Cena -> Prompt -> Imagem, e a
+    Livro -> Capítulo -> Elemento -> Estado -> Frame -> Prompt -> Imagem, e a
     imagem voltando a ser a âncora visual do estado. É esta integração que
     justifica a modelagem toda.
     """
@@ -297,18 +311,18 @@ def teste_fluxo_completo_do_livro_ate_a_imagem_ancorada(
     sessao_com_tabelas.add(personagem)
     sessao_com_tabelas.commit()
 
-    cena = Cena(
+    frame = Frame(
         capitulo_id=capitulo.id,
         titulo="A chegada do rei",
         horario="fim de tarde",
         clima="neve fina",
     )
-    cena.estados_elemento = [estado]
-    sessao_com_tabelas.add(cena)
+    frame.estados_elemento = [estado]
+    sessao_com_tabelas.add(frame)
     sessao_com_tabelas.commit()
 
     prompt = Prompt(
-        cena_id=cena.id,
+        frame_id=frame.id,
         perfil_renderizacao_id=perfil.id,
         modelo_ia="algum-modelo-gratuito",
         texto="aquarela, pátio nevado ao fim da tarde, homem de capa de pele...",
@@ -323,7 +337,7 @@ def teste_fluxo_completo_do_livro_ate_a_imagem_ancorada(
     sessao_com_tabelas.commit()
 
     # A partir da imagem do catálogo, é possível voltar até o livro de origem.
-    assert imagem.prompt.cena.capitulo.livro.titulo == "A Guerra dos Tronos"
+    assert imagem.prompt.frame.capitulo.livro.titulo == "A Guerra dos Tronos"
     # E o estado do personagem agora tem uma referência visual aprovada.
     assert estado.imagem_ancora.caminho_arquivo == "guerra/cap-1/chegada-do-rei.png"
     # O perfil usado no prompt é recuperável para comparar modelos depois.
@@ -342,21 +356,21 @@ def teste_apagar_livro_limpa_a_cadeia_inteira(sessao_com_tabelas: Session) -> No
     personagem = Elemento(livro_id=livro.id, tipo=TipoElemento.PERSONAGEM, nome="Ned")
     estado = EstadoElemento(capitulo_id=capitulo.id, descricao="Capa de pele.")
     personagem.estados = [estado]
-    cena = Cena(capitulo_id=capitulo.id, titulo="No pátio")
-    cena.estados_elemento = [estado]
-    # Ligar pelo relacionamento, e não por cena_id: a cena ainda não foi
-    # gravada, então o id dela ainda é None. O SQLAlchemy resolve a ordem das
+    frame = Frame(capitulo_id=capitulo.id, titulo="No pátio")
+    frame.estados_elemento = [estado]
+    # Ligar pelo relacionamento, e não por frame_id: o frame ainda não foi
+    # gravado, então o id dele ainda é None. O SQLAlchemy resolve a ordem das
     # inserções e preenche a chave estrangeira sozinho.
     prompt = Prompt(texto="...", perfil_renderizacao_id=perfil.id)
     prompt.imagens = [Imagem(caminho_arquivo="ned.png")]
-    cena.prompts = [prompt]
-    sessao_com_tabelas.add_all([personagem, cena])
+    frame.prompts = [prompt]
+    sessao_com_tabelas.add_all([personagem, frame])
     sessao_com_tabelas.commit()
 
     sessao_com_tabelas.delete(livro)
     sessao_com_tabelas.commit()
 
-    for modelo in (Livro, Capitulo, Elemento, EstadoElemento, Cena, Prompt, Imagem):
+    for modelo in (Livro, Capitulo, Elemento, EstadoElemento, Frame, Prompt, Imagem):
         assert sessao_com_tabelas.scalars(select(modelo)).all() == [], modelo.__name__
 
     # O perfil sobrevive: não era do livro.

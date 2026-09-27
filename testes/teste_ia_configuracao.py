@@ -246,12 +246,12 @@ def teste_extrair_elementos_interpreta_cenas_sugeridas() -> None:
 
     extracao = provedor.extrair_elementos("t", [], "m")
 
-    assert len(extracao.cenas) == 1
-    cena = extracao.cenas[0]
-    assert cena.titulo == "A execução"
-    assert cena.horario == "manhã"
-    assert [p.nome for p in cena.participantes] == ["Ned Stark", "Gelo"]
-    assert cena.participantes[1].tipo is TipoElemento.OBJETO
+    assert len(extracao.frames) == 1
+    frame = extracao.frames[0]
+    assert frame.titulo == "A execução"
+    assert frame.horario == "manhã"
+    assert [p.nome for p in frame.participantes] == ["Ned Stark", "Gelo"]
+    assert frame.participantes[1].tipo is TipoElemento.OBJETO
 
 
 def teste_extrair_elementos_descarta_cena_sem_titulo_ou_sem_participantes() -> None:
@@ -269,9 +269,9 @@ def teste_extrair_elementos_descarta_cena_sem_titulo_ou_sem_participantes() -> N
     )
     provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
 
-    cenas = provedor.extrair_elementos("t", [], "m").cenas
+    frames = provedor.extrair_elementos("t", [], "m").frames
 
-    assert [c.titulo for c in cenas] == ["Cena boa"]
+    assert [f.titulo for f in frames] == ["Cena boa"]
 
 
 def teste_resposta_sem_json_da_erro_com_orientacao() -> None:
@@ -423,6 +423,55 @@ def teste_montar_prompt_sem_comentario_nao_menciona_prioridade() -> None:
     assert "COMENTÁRIO" not in enviado
 
 
+def teste_montar_prompt_inclui_contexto_do_livro_como_apoio() -> None:
+    """O contexto do livro (item 4.4) vai como apoio, não como prioridade."""
+    capturado = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado["corpo"] = json.loads(pedido.content)
+        return httpx.Response(200, json=_resposta_de_conversa("prompt"))
+
+    provedor = ProvedorOpenRouter(
+        chave_api="k",
+        cliente=httpx.Client(
+            base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder)
+        ),
+    )
+
+    provedor.montar_prompt(
+        "O pátio ao anoitecer",
+        ["Ned Stark: capa de pele"],
+        "aquarela sombria",
+        "m",
+        contexto_do_livro="O capítulo confirma que é no pátio principal.",
+    )
+
+    enviado = capturado["corpo"]["messages"][1]["content"]
+    assert "CONTEXTO DO LIVRO" in enviado
+    assert "O capítulo confirma que é no pátio principal." in enviado
+
+
+def teste_montar_prompt_com_frame_vazio_sinaliza_retrato() -> None:
+    """Descrição vazia é como o frame do tipo PERSONAGEM pede um retrato solo."""
+    capturado = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado["corpo"] = json.loads(pedido.content)
+        return httpx.Response(200, json=_resposta_de_conversa("prompt"))
+
+    provedor = ProvedorOpenRouter(
+        chave_api="k",
+        cliente=httpx.Client(
+            base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder)
+        ),
+    )
+
+    provedor.montar_prompt("", ["Ned Stark: capa de pele"], "aquarela", "m")
+
+    enviado = capturado["corpo"]["messages"][1]["content"]
+    assert "monte um retrato" in enviado
+
+
 # --------------------------------------------------------------------------- #
 # Leitura profunda de um elemento (item 4.4, fase 2)
 # --------------------------------------------------------------------------- #
@@ -488,6 +537,80 @@ def teste_sugerir_estado_sem_json_levanta_erro() -> None:
             nome="Ned",
             descricao_do_elemento=None,
             estado_atual=None,
+            modelo="m",
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Fundamentação de um frame do tipo CENA (item 4.4)
+# --------------------------------------------------------------------------- #
+
+
+def teste_fundamentar_frame_interpreta_o_json() -> None:
+    resposta = json.dumps({"contexto": "O capítulo confirma que a cena é na sala da guarda."})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    fundamentado = provedor.fundamentar_frame(
+        texto_capitulo="texto do capítulo",
+        titulo="A partida de Fundação",
+        descricao="Vis e Hrolf jogam.",
+        horario="início da noite",
+        clima=None,
+        humor=None,
+        participantes=["Vis Solum: jovem magro"],
+        modelo="algum/modelo",
+    )
+
+    assert fundamentado.contexto == "O capítulo confirma que a cena é na sala da guarda."
+    assert fundamentado.modelo == "algum/modelo"
+
+
+def teste_fundamentar_frame_manda_o_que_o_usuario_escreveu_e_os_participantes() -> None:
+    capturado = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado["corpo"] = json.loads(pedido.content)
+        return httpx.Response(200, json=_resposta_de_conversa('{"contexto": "x"}'))
+
+    provedor = ProvedorOpenRouter(
+        chave_api="k",
+        cliente=httpx.Client(
+            base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder)
+        ),
+    )
+
+    provedor.fundamentar_frame(
+        texto_capitulo="O texto do capítulo em si.",
+        titulo="A partida de Fundação",
+        descricao="Vis e Hrolf jogam uma partida.",
+        horario="início da noite",
+        clima="frio",
+        humor="tenso",
+        participantes=["Vis Solum: jovem magro", "Hrolf: velho grisalho"],
+        modelo="m",
+    )
+
+    enviado = capturado["corpo"]["messages"][1]["content"]
+    assert "A partida de Fundação" in enviado
+    assert "Vis e Hrolf jogam uma partida." in enviado
+    assert "início da noite" in enviado
+    assert "Vis Solum: jovem magro" in enviado
+    assert "Hrolf: velho grisalho" in enviado
+    assert "O texto do capítulo em si." in enviado
+
+
+def teste_fundamentar_frame_sem_json_levanta_erro() -> None:
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa("não é json")})
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.fundamentar_frame(
+            texto_capitulo="t",
+            titulo="X",
+            descricao=None,
+            horario=None,
+            clima=None,
+            humor=None,
+            participantes=[],
             modelo="m",
         )
 

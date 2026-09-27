@@ -1,6 +1,6 @@
 """Rotas de prompts e catálogo de imagens (Etapa 6.6).
 
-Cobrem os passos 8 a 11 do fluxo da Etapa 2: montar o prompt a partir da cena,
+Cobrem os passos 8 a 11 do fluxo da Etapa 2: montar o prompt a partir do frame,
 levá-lo a uma ferramenta de geração de imagem fora do sistema, e trazer o
 resultado de volta para o catálogo.
 """
@@ -28,13 +28,14 @@ from imagineer.ia.provedor import (
 )
 from imagineer.modelos import (
     Capitulo,
-    Cena,
     Configuracao,
+    Frame,
     Imagem,
     Livro,
     PerfilRenderizacao,
     PrioridadeIA,
     Prompt,
+    TipoDeFrame,
 )
 from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.catalogo_imagens import (
@@ -47,55 +48,58 @@ from imagineer.servicos.catalogo_imagens import (
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.upload import ler_com_limite
 
-rotas_de_cena = APIRouter(prefix="/cenas", tags=["Prompts"])
+rotas_de_frame = APIRouter(prefix="/frames", tags=["Prompts"])
 rotas = APIRouter(prefix="/prompts", tags=["Prompts"])
 rotas_de_imagem = APIRouter(prefix="/imagens", tags=["Prompts"])
 
 
 # --------------------------------------------------------------------------- #
-# Prompts de uma cena
+# Prompts de um frame
 # --------------------------------------------------------------------------- #
 
 
-@rotas_de_cena.get(
-    "/{cena_id}/prompts",
+@rotas_de_frame.get(
+    "/{frame_id}/prompts",
     response_model=list[PromptResumo],
-    summary="O histórico de prompts da cena",
+    summary="O histórico de prompts do frame",
 )
-def listar_prompts(cena_id: int, sessao: Session = Depends(obter_sessao)) -> list[PromptResumo]:
-    """Os prompts já montados para a cena, do mais antigo ao mais recente."""
-    _buscar_cena(sessao, cena_id)
+def listar_prompts(frame_id: int, sessao: Session = Depends(obter_sessao)) -> list[PromptResumo]:
+    """Os prompts já montados para o frame, do mais antigo ao mais recente."""
+    _buscar_frame(sessao, frame_id)
 
     prompts = list(
-        sessao.scalars(select(Prompt).where(Prompt.cena_id == cena_id).order_by(Prompt.id))
+        sessao.scalars(select(Prompt).where(Prompt.frame_id == frame_id).order_by(Prompt.id))
     )
     contagens = _contar_imagens(sessao, [prompt.id for prompt in prompts])
     return [_resumo(prompt, contagens.get(prompt.id, 0)) for prompt in prompts]
 
 
-@rotas_de_cena.post(
-    "/{cena_id}/prompts",
+@rotas_de_frame.post(
+    "/{frame_id}/prompts",
     response_model=PromptDetalhe,
     status_code=status.HTTP_201_CREATED,
     summary="Monta o prompt com a IA",
 )
 def criar_prompt(
-    cena_id: int,
+    frame_id: int,
     corpo: PromptNovo,
     sessao: Session = Depends(obter_sessao),
     provedor: ProvedorIA = Depends(obter_provedor),
 ) -> PromptDetalhe:
-    """Monta o prompt de imagem a partir da cena (passo 8).
+    """Monta o prompt de imagem a partir do frame (passo 8).
 
-    Antes de montar o prompt, faz a leitura profunda (item 4.4, fase 2) de cada
-    estado da cena que ainda precisa dela — sempre, em modo `QUALIDADE`; só se
-    nunca lido, em modo `ECONOMIA`. O texto do capítulo de origem sobrescreve a
-    descrição salva, porque o livro é a fonte de verdade, não o que foi digitado
-    à mão no passo 7. O perfil vem do pedido ou do padrão do livro, e os modelos
-    vêm do pedido ou da configuração — sempre nessa ordem de preferência.
+    Antes de montar o prompt: (1) faz a leitura profunda (item 4.4) de cada
+    estado do frame que ainda precisa dela — sempre, em modo `QUALIDADE`; só se
+    nunca lido, em modo `ECONOMIA`; e (2), só para frames do tipo CENA, confere
+    o que o usuário escreveu contra o capítulo (`fundamentar_frame`) — sem
+    sobrescrever: o resultado é contexto de apoio, a descrição do usuário
+    continua tendo prioridade na montagem final. Um frame do tipo PERSONAGEM
+    não passa por isso — o prompt usa só a descrição do próprio elemento, sem
+    citar mais ninguém. O perfil vem do pedido ou do padrão do livro, e os
+    modelos vêm do pedido ou da configuração — sempre nessa ordem de preferência.
     """
-    cena = _buscar_cena(sessao, cena_id)
-    livro = cena.capitulo.livro
+    frame = _buscar_frame(sessao, frame_id)
+    livro = frame.capitulo.livro
     configuracao = obter_ou_criar(sessao)
 
     perfil = _resolver_perfil(sessao, corpo.perfil_renderizacao_id, livro)
@@ -107,12 +111,14 @@ def criar_prompt(
         )
 
     try:
-        _fazer_leitura_profunda(sessao, provedor, cena, configuracao)
+        _fazer_leitura_profunda(sessao, provedor, frame, configuracao)
+        contexto_do_livro = _fundamentar_se_necessario(sessao, provedor, frame, configuracao)
         resultado = provedor.montar_prompt(
-            descricao_da_cena=_descricao_da_cena(cena),
-            elementos=_elementos_da_cena(cena),
+            descricao_do_frame=_descricao_do_frame(frame),
+            elementos=_elementos_do_frame(frame),
             perfil_renderizacao=_descricao_do_perfil(perfil),
             modelo=modelo_prompt,
+            contexto_do_livro=contexto_do_livro,
             comentario_do_usuario=corpo.comentario,
         )
     except (ChaveDeApiAusente, ModeloNaoEscolhido) as erro:
@@ -125,7 +131,7 @@ def criar_prompt(
         ) from erro
 
     prompt = Prompt(
-        cena_id=cena.id,
+        frame_id=frame.id,
         perfil_renderizacao_id=perfil.id if perfil else None,
         modelo_ia=resultado.modelo,
         texto=resultado.texto,
@@ -133,7 +139,7 @@ def criar_prompt(
     sessao.add(prompt)
     sessao.commit()
     sessao.refresh(prompt)
-    return _detalhe(prompt, [], _referencias_visuais(cena))
+    return _detalhe(prompt, [], _referencias_visuais(frame))
 
 
 # --------------------------------------------------------------------------- #
@@ -150,7 +156,7 @@ def abrir_prompt(prompt_id: int, sessao: Session = Depends(obter_sessao)) -> Pro
             select(Imagem).where(Imagem.prompt_id == prompt_id).order_by(Imagem.id)
         )
     )
-    return _detalhe(prompt, imagens, _referencias_visuais(prompt.cena))
+    return _detalhe(prompt, imagens, _referencias_visuais(prompt.frame))
 
 
 @rotas.patch("/{prompt_id}", response_model=PromptDetalhe, summary="Anota a avaliação do resultado")
@@ -265,22 +271,24 @@ def remover_imagem(imagem_id: int, sessao: Session = Depends(obter_sessao)) -> N
 def _fazer_leitura_profunda(
     sessao: Session,
     provedor: ProvedorIA,
-    cena: Cena,
+    frame: Frame,
     configuracao: Configuracao,
 ) -> None:
-    """Relê o capítulo de origem de cada estado que precisa (item 4.4, fase 2).
+    """Relê o capítulo de origem de cada estado que precisa (item 4.4).
 
-    Em modo ``QUALIDADE``, relê todos os estados da cena. Em modo ``ECONOMIA``
+    Em modo ``QUALIDADE``, relê todos os estados do frame. Em modo ``ECONOMIA``
     (padrão), só os que ainda não passaram pela leitura profunda — o campo
     ``confirmado_pela_leitura_profunda`` é quem marca isso. Sobrescreve
-    ``EstadoElemento.descricao`` no lugar: o livro é a fonte de verdade, mesmo
-    que substitua o que foi digitado à mão no passo 7.
+    ``EstadoElemento.descricao`` no lugar: o livro é a fonte de verdade para a
+    aparência de um elemento, mesmo que substitua o que foi digitado à mão no
+    passo 7 — diferente da descrição do frame em si (ver ``_fundamentar_se_necessario``),
+    onde quem tem prioridade é o usuário.
 
     Usa o modelo de **extração** (``modelo_extracao``), não o de prompt: ler e
     entender o capítulo é a mesma tarefa da fase 1, não a de escrever texto
     criativo que ``montar_prompt`` faz.
     """
-    estados = list(cena.estados_elemento)
+    estados = list(frame.estados_elemento)
     a_reler = [
         estado
         for estado in estados
@@ -294,7 +302,7 @@ def _fazer_leitura_profunda(
     if not modelo:
         raise ModeloNaoEscolhido(
             "Nenhum modelo de extração foi escolhido — ele também é usado na "
-            "leitura profunda dos estados da cena. Configure um em /configuracao."
+            "leitura profunda dos estados do frame. Configure um em /configuracao."
         )
 
     for estado in a_reler:
@@ -310,6 +318,56 @@ def _fazer_leitura_profunda(
         estado.descricao = sugestao.descricao
         estado.confirmado_pela_leitura_profunda = True
         sessao.add(estado)
+
+
+def _fundamentar_se_necessario(
+    sessao: Session,
+    provedor: ProvedorIA,
+    frame: Frame,
+    configuracao: Configuracao,
+) -> str | None:
+    """A leitura profunda de um frame do tipo CENA — item 4.4.
+
+    Só se aplica a ``TipoDeFrame.CENA`` com pelo menos um elemento — um
+    PERSONAGEM não tem "quem, onde, o quê" para conferir, e um frame sem
+    ninguém ligado ainda não tem o que verificar. Respeita a mesma cache de
+    ``prioridade_ia`` do item 4.4: em modo ``ECONOMIA``, reaproveita
+    ``Frame.contexto_do_livro`` se já foi lido uma vez.
+
+    **Não sobrescreve** ``titulo``/``descricao`` do frame — só grava o contexto
+    obtido, que ``montar_prompt`` usa com prioridade menor que o que o usuário
+    escreveu (a diferença central em relação a ``_fazer_leitura_profunda``).
+    """
+    if frame.tipo != TipoDeFrame.CENA or not frame.estados_elemento:
+        return None
+
+    if (
+        configuracao.prioridade_ia == PrioridadeIA.ECONOMIA
+        and frame.confirmado_pela_leitura_profunda
+    ):
+        return frame.contexto_do_livro
+
+    modelo = configuracao.modelo_extracao
+    if not modelo:
+        raise ModeloNaoEscolhido(
+            "Nenhum modelo de extração foi escolhido — ele também é usado na "
+            "leitura profunda do frame. Configure um em /configuracao."
+        )
+
+    fundamentado = provedor.fundamentar_frame(
+        texto_capitulo=frame.capitulo.texto,
+        titulo=frame.titulo,
+        descricao=frame.descricao,
+        horario=frame.horario,
+        clima=frame.clima,
+        humor=frame.humor,
+        participantes=_elementos_do_frame(frame),
+        modelo=modelo,
+    )
+    frame.contexto_do_livro = fundamentado.contexto
+    frame.confirmado_pela_leitura_profunda = True
+    sessao.add(frame)
+    return fundamentado.contexto
 
 
 def _resolver_perfil(
@@ -340,18 +398,26 @@ def _resolver_perfil(
     return perfil
 
 
-def _descricao_da_cena(cena: Cena) -> str:
-    """O texto que descreve a cena para a IA montar o prompt."""
-    partes = [cena.titulo]
-    if cena.descricao:
-        partes.append(cena.descricao)
+def _descricao_do_frame(frame: Frame) -> str:
+    """O texto que descreve o frame para a IA montar o prompt.
+
+    Vazio para um frame do tipo PERSONAGEM: um retrato não referencia título,
+    descrição nem atributos situacionais — só a aparência do próprio elemento
+    (item 4.4). ``montar_prompt`` trata "vazio" como sinal de retrato solo.
+    """
+    if frame.tipo == TipoDeFrame.PERSONAGEM:
+        return ""
+
+    partes = [frame.titulo]
+    if frame.descricao:
+        partes.append(frame.descricao)
 
     situacionais = ", ".join(
         f"{rotulo}: {valor}"
         for rotulo, valor in (
-            ("horário", cena.horario),
-            ("clima", cena.clima),
-            ("humor", cena.humor),
+            ("horário", frame.horario),
+            ("clima", frame.clima),
+            ("humor", frame.humor),
         )
         if valor
     )
@@ -361,16 +427,16 @@ def _descricao_da_cena(cena: Cena) -> str:
     return "\n".join(partes)
 
 
-def _elementos_da_cena(cena: Cena) -> list[str]:
-    """"Nome: descrição do estado", para cada elemento que aparece na cena."""
+def _elementos_do_frame(frame: Frame) -> list[str]:
+    """"Nome: descrição do estado", para cada elemento que aparece no frame."""
     return [
         f"{estado.elemento.nome}: {estado.descricao}"
-        for estado in sorted(cena.estados_elemento, key=lambda e: (e.elemento.tipo.name, e.elemento.nome))
+        for estado in sorted(frame.estados_elemento, key=lambda e: (e.elemento.tipo.name, e.elemento.nome))
     ]
 
 
-def _referencias_visuais(cena: Cena) -> list[Imagem]:
-    """As imagens-âncora (item 3.1) já aprovadas para os elementos da cena.
+def _referencias_visuais(frame: Frame) -> list[Imagem]:
+    """As imagens-âncora (item 3.1) já aprovadas para os elementos do frame.
 
     O fluxo de geração é manual (o usuário copia o prompt e cola numa
     ferramenta externa — passo 9), então a API não consegue anexar a imagem
@@ -380,7 +446,7 @@ def _referencias_visuais(cena: Cena) -> list[Imagem]:
     ferramenta de imagem inventar um rosto novo a cada geração.
     """
     vistas: dict[int, Imagem] = {}
-    for estado in cena.estados_elemento:
+    for estado in frame.estados_elemento:
         if estado.imagem_ancora is not None:
             vistas[estado.imagem_ancora.id] = estado.imagem_ancora
     return [vistas[identificador] for identificador in sorted(vistas)]
@@ -425,7 +491,7 @@ def _contar_imagens(sessao: Session, prompts_ids: list[int]) -> dict[int, int]:
 def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
     return PromptResumo(
         id=prompt.id,
-        cena_id=prompt.cena_id,
+        frame_id=prompt.frame_id,
         perfil_renderizacao_id=prompt.perfil_renderizacao_id,
         modelo_ia=prompt.modelo_ia,
         texto=prompt.texto,
@@ -447,14 +513,14 @@ def _detalhe(
     )
 
 
-def _buscar_cena(sessao: Session, cena_id: int) -> Cena:
-    cena = sessao.get(Cena, cena_id)
-    if cena is None:
+def _buscar_frame(sessao: Session, frame_id: int) -> Frame:
+    frame = sessao.get(Frame, frame_id)
+    if frame is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe cena com id {cena_id}.",
+            detail=f"Não existe frame com id {frame_id}.",
         )
-    return cena
+    return frame
 
 
 def _buscar_prompt(sessao: Session, prompt_id: int) -> Prompt:

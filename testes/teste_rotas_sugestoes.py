@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 
 from imagineer.ia.falso import MODELO_FALSO, ProvedorFalso
 from imagineer.ia.provedor import (
-    CenaSugerida,
     ChaveDeApiAusente,
     ElementoSugerido,
     ErroDoProvedorIA,
+    FrameSugerido,
     ParticipanteSugerido,
 )
 from imagineer.modelos import TipoElemento
@@ -91,15 +91,15 @@ def teste_sugestoes_devolve_o_que_o_provedor_deu(
     ]
 
 
-def teste_sugestoes_devolve_cenas_com_participantes_casados(
+def teste_sugestoes_devolve_frames_com_participantes_casados(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     """Cada participante casa com o elemento já cadastrado, igual à lista de elementos."""
     usar_provedor_falso(
         ProvedorFalso(
             elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
-            cenas=[
-                CenaSugerida(
+            frames_sugeridos=[
+                FrameSugerido(
                     titulo="A vigília no Muro",
                     descricao="Jon observa a neve cair.",
                     horario="noite",
@@ -121,15 +121,15 @@ def teste_sugestoes_devolve_cenas_com_participantes_casados(
     resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
 
     assert resposta.status_code == 200
-    (cena,) = resposta.json()["cenas"]
-    assert cena["titulo"] == "A vigília no Muro"
-    assert cena["horario"] == "noite"
-    assert cena["participantes"] == [
+    (frame,) = resposta.json()["frames"]
+    assert frame["titulo"] == "A vigília no Muro"
+    assert frame["horario"] == "noite"
+    assert frame["participantes"] == [
         {"tipo": "PERSONAGEM", "nome": "Jon", "elemento_id": jon["id"]}
     ]
 
 
-def teste_sugestoes_sem_cenas_devolve_lista_vazia(
+def teste_sugestoes_sem_frames_devolve_lista_vazia(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     usar_provedor_falso(ProvedorFalso())
@@ -138,7 +138,7 @@ def teste_sugestoes_sem_cenas_devolve_lista_vazia(
 
     resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
 
-    assert resposta.json()["cenas"] == []
+    assert resposta.json()["frames"] == []
 
 
 def teste_sugestoes_manda_o_texto_e_os_estados_conhecidos_ao_provedor(

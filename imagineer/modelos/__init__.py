@@ -9,24 +9,25 @@ disco, mas nunca no mapa de tabelas.
 """
 
 from imagineer.modelos.capitulo import Capitulo
-from imagineer.modelos.cena import Cena, cenas_estados_elemento
 from imagineer.modelos.configuracao import Configuracao, PrioridadeIA
 from imagineer.modelos.elemento import Elemento, EstadoElemento, TipoElemento
+from imagineer.modelos.frame import Frame, TipoDeFrame, frames_estados_elemento
 from imagineer.modelos.livro import Livro
 from imagineer.modelos.perfil_renderizacao import PerfilRenderizacao
 from imagineer.modelos.prompt import Imagem, Prompt
 
 __all__ = [
     "Capitulo",
-    "Cena",
     "Configuracao",
     "Elemento",
     "EstadoElemento",
+    "Frame",
     "Imagem",
     "Livro",
     "PerfilRenderizacao",
     "PrioridadeIA",
     "Prompt",
+    "TipoDeFrame",
     "TipoElemento",
-    "cenas_estados_elemento",
+    "frames_estados_elemento",
 ]

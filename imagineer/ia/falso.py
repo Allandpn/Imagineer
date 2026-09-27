@@ -13,10 +13,11 @@ erros.
 """
 
 from imagineer.ia.provedor import (
-    CenaSugerida,
     ElementoSugerido,
     EstadoSugerido,
     ExtracaoDeElementos,
+    FrameFundamentado,
+    FrameSugerido,
     ModeloDisponivel,
     PromptMontado,
     ProvedorIA,
@@ -49,18 +50,21 @@ class ProvedorFalso(ProvedorIA):
     def __init__(
         self,
         elementos: list[ElementoSugerido] | None = None,
-        cenas: list[CenaSugerida] | None = None,
+        frames_sugeridos: list[FrameSugerido] | None = None,
         estado: str = "watercolor-ready appearance description",
+        contexto: str = "the book confirms this happens in the guard room",
         prompt: str = "watercolor painting of a snowy courtyard at dusk",
         erro: Exception | None = None,
     ):
         self._elementos = elementos if elementos is not None else []
-        self._cenas = cenas if cenas is not None else []
+        self._frames_sugeridos = frames_sugeridos if frames_sugeridos is not None else []
         self._estado = estado
+        self._contexto = contexto
         self._prompt = prompt
         self._erro = erro
         self.chamadas_de_extracao: list[dict] = []
         self.chamadas_de_estado: list[dict] = []
+        self.chamadas_de_fundamentacao: list[dict] = []
         self.chamadas_de_prompt: list[dict] = []
 
     def listar_modelos(self) -> list[ModeloDisponivel]:
@@ -81,7 +85,9 @@ class ProvedorFalso(ProvedorIA):
         if self._erro is not None:
             raise self._erro
         return ExtracaoDeElementos(
-            elementos=list(self._elementos), cenas=list(self._cenas), modelo=modelo
+            elementos=list(self._elementos),
+            frames=list(self._frames_sugeridos),
+            modelo=modelo,
         )
 
     def sugerir_estado(
@@ -107,20 +113,49 @@ class ProvedorFalso(ProvedorIA):
             raise self._erro
         return EstadoSugerido(descricao=self._estado, modelo=modelo)
 
+    def fundamentar_frame(
+        self,
+        texto_capitulo: str,
+        titulo: str,
+        descricao: str | None,
+        horario: str | None,
+        clima: str | None,
+        humor: str | None,
+        participantes: list[str],
+        modelo: str,
+    ) -> FrameFundamentado:
+        self.chamadas_de_fundamentacao.append(
+            {
+                "texto_capitulo": texto_capitulo,
+                "titulo": titulo,
+                "descricao": descricao,
+                "horario": horario,
+                "clima": clima,
+                "humor": humor,
+                "participantes": participantes,
+                "modelo": modelo,
+            }
+        )
+        if self._erro is not None:
+            raise self._erro
+        return FrameFundamentado(contexto=self._contexto, modelo=modelo)
+
     def montar_prompt(
         self,
-        descricao_da_cena: str,
+        descricao_do_frame: str,
         elementos: list[str],
         perfil_renderizacao: str,
         modelo: str,
+        contexto_do_livro: str | None = None,
         comentario_do_usuario: str | None = None,
     ) -> PromptMontado:
         self.chamadas_de_prompt.append(
             {
-                "descricao_da_cena": descricao_da_cena,
+                "descricao_do_frame": descricao_do_frame,
                 "elementos": elementos,
                 "perfil_renderizacao": perfil_renderizacao,
                 "modelo": modelo,
+                "contexto_do_livro": contexto_do_livro,
                 "comentario_do_usuario": comentario_do_usuario,
             }
         )

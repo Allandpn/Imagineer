@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.elemento import (
-    CenaSugerida as CenaSugeridaResposta,
     ElementoAjuste,
     ElementoDetalhe,
     ElementoNovo,
@@ -23,6 +22,7 @@ from imagineer.esquemas.elemento import (
     EstadoAjuste,
     EstadoNovo,
     EstadoResumo,
+    FrameSugerido as FrameSugeridoResposta,
     ParticipanteSugerido as ParticipanteSugeridoResposta,
     SugestoesDeCapitulo,
 )
@@ -226,7 +226,7 @@ def ajustar_estado(
     "/{estado_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Remove um estado"
 )
 def remover_estado(estado_id: int, sessao: Session = Depends(obter_sessao)) -> None:
-    """Apaga um estado. O elemento e as cenas que o citavam permanecem."""
+    """Apaga um estado. O elemento e os frames que o citavam permanecem."""
     sessao.delete(_buscar_estado(sessao, estado_id))
     sessao.commit()
 
@@ -316,23 +316,23 @@ def sugerir_elementos(
             )
             for sugestao in extracao.elementos
         ],
-        cenas=[
-            CenaSugeridaResposta(
-                titulo=cena.titulo,
-                descricao=cena.descricao,
-                horario=cena.horario,
-                clima=cena.clima,
-                humor=cena.humor,
+        frames=[
+            FrameSugeridoResposta(
+                titulo=frame.titulo,
+                descricao=frame.descricao,
+                horario=frame.horario,
+                clima=frame.clima,
+                humor=frame.humor,
                 participantes=[
                     ParticipanteSugeridoResposta(
                         tipo=participante.tipo,
                         nome=participante.nome,
                         elemento_id=_elemento_id_de(participante.tipo, participante.nome),
                     )
-                    for participante in cena.participantes
+                    for participante in frame.participantes
                 ],
             )
-            for cena in extracao.cenas
+            for frame in extracao.frames
         ],
     )
 

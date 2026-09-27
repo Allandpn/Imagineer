@@ -371,25 +371,25 @@ Esse mesmo arquivo também traz metadados de **outro livro** — declara-se *Dea
 - **Capítulo**: pertence a um Livro; contém o texto extraído do EPUB.
 - **Elemento**: entidade genérica com campo `tipo` (enum: `PERSONAGEM`, `AMBIENTE`, `OBJETO`, `CRIATURA`, `GRUPO`, `VEICULO`, `EDIFICACAO`). Representa a *identidade* de algo recorrente na história (quem/o que é), não sua aparência num momento específico.
 - **EstadoElemento**: como um Elemento está em um ponto específico da narrativa (aparência, roupas, ferimentos, condição). Pode referenciar uma imagem já gerada como âncora visual para gerações futuras daquele estado.
-- **Cena**: recorte narrativo de um capítulo; referencia um ou mais Elementos (com seus Estados na ocasião); guarda atributos situacionais próprios (horário, clima, humor) diretamente nela — sem entidade "Contexto" separada.
+- **Frame**: recorte de um capítulo que vai virar uma imagem — um retrato solo de um Elemento (`tipo=PERSONAGEM`) ou uma cena com vários Elementos interagindo (`tipo=CENA`); referencia um ou mais Elementos (com seus Estados na ocasião); guarda atributos situacionais próprios (horário, clima, humor) diretamente nele — sem entidade "Contexto" separada. Chamava-se `Cena`; ver a divergência registrada no item 3.4c.
 - **PerfilRenderizacao**: perfil de estilo visual (estilo, artista de referência, iluminação, paleta, formato, modelo alvo). Configurado por padrão a nível de Livro, com possibilidade de override pontual ao gerar um prompt específico.
 - **Prompt**: registro de cada prompt gerado (modelo de IA usado, texto, data, resultado, imagem associada), permitindo regenerar ou comparar modelos depois.
-- **Imagem**: arquivo final importado pelo usuário, com referência ao Prompt/Cena/Elementos de origem, compondo o catálogo.
+- **Imagem**: arquivo final importado pelo usuário, com referência ao Prompt/Frame/Elementos de origem, compondo o catálogo.
 
 ### 3.2 Relacionamentos
 
-- Um Elemento pode aparecer em várias Cenas de vários Capítulos (muitos-para-muitos).
+- Um Elemento pode aparecer em vários Frames de vários Capítulos (muitos-para-muitos).
 - Um Elemento tem vários EstadoElemento ao longo da história (um por "momento narrativo relevante").
-- Uma Cena referencia vários Elementos (com o Estado vigente de cada um naquele ponto).
-- Um Prompt está associado a uma Cena (e, por meio dela, aos Elementos/Estados usados como contexto) e a uma Imagem.
+- Um Frame referencia um ou mais Elementos (com o Estado vigente de cada um naquele ponto) — exatamente um, se `tipo=PERSONAGEM`.
+- Um Prompt está associado a um Frame (e, por meio dele, aos Elementos/Estados usados como contexto) e a uma Imagem.
 
 ### 3.3 Decisões de modelagem (justificativas)
 
 - **Elemento genérico em vez de tabelas por tipo**: personagens, ambientes, objetos, criaturas etc. compartilham a mesma necessidade — manter consistência visual ao longo da narrativa. Um enum `tipo` evita duplicação de schema e lógica.
 - **EstadoElemento separado da identidade do Elemento**: personagens envelhecem, se ferem, trocam de roupa; objetos quebram; ambientes são destruídos/reconstruídos. Fixar uma única "descrição visual" no Elemento geraria inconsistência entre capítulos distantes da história.
-- **Cena com atributos situacionais embutidos**: evita criar uma entidade "Contexto" isolada para informações (horário, clima) que já são naturalmente parte da própria cena.
+- **Frame com atributos situacionais embutidos**: evita criar uma entidade "Contexto" isolada para informações (horário, clima) que já são naturalmente parte do próprio frame.
 - **PerfilRenderizacao em vez de campo único de "estilo"**: permite reutilizar combinações de estilo/iluminação/paleta entre livros, e adaptar à ferramenta de geração de imagem usada (cada uma tem sintaxe própria).
-- **Relações entre elementos e Grupos com membros explícitos**: ideia boa, mas adiada para uma v2 — exige tabela de relacionamento tipo grafo e telas extras no app; não é essencial para o MVP (Elemento + Estado + Cena + Prompt + Imagem).
+- **Relações entre elementos e Grupos com membros explícitos**: ideia boa, mas adiada para uma v2 — exige tabela de relacionamento tipo grafo e telas extras no app; não é essencial para o MVP (Elemento + Estado + Frame + Prompt + Imagem).
 
 ### 3.4 Campos das entidades
 
@@ -397,7 +397,7 @@ Esta seção detalha as colunas de cada tabela. Foi preenchida em três partes, 
 
 - **(a)** `Livro` e `Capitulo` — a base da importação do EPUB.
 - **(b)** `Elemento` e `EstadoElemento` — o coração da consistência visual.
-- **(c)** `Cena`, `PerfilRenderizacao`, `Prompt` e `Imagem` — a geração e o catálogo.
+- **(c)** `Frame`, `PerfilRenderizacao`, `Prompt` e `Imagem` — a geração e o catálogo.
 
 O modelo do MVP está completo: 9 tabelas, criadas por três migrations que encadeiam a partir de um banco vazio.
 
@@ -523,34 +523,39 @@ Todos os campos de estilo aceitam nulo porque cada ferramenta de imagem entende 
 
 `modelo_alvo` existe porque cada ferramenta tem sintaxe própria — o mesmo estilo se escreve de um jeito numa e de outro jeito noutra.
 
-#### (c) Cena
+#### (c) Frame
 
-O recorte narrativo de um capítulo que vai virar uma imagem.
+O recorte de um capítulo que vai virar uma imagem — um retrato solo ou uma cena.
 
 | Coluna | Tipo | Nulo? | Observação |
 |---|---|---|---|
 | `id` | inteiro | não | chave primária |
 | `capitulo_id` | inteiro | não | referência ao Capítulo; indexado |
-| `titulo` | texto (300) | não | como identificar a cena na lista |
-| `descricao` | texto longo | sim | o trecho ou o resumo do que acontece |
+| `tipo` | enum (`PERSONAGEM`, `CENA`) | não | `PERSONAGEM` só aceita um estado ligado (item 4.4); padrão `CENA` |
+| `titulo` | texto (300) | não | como identificar o frame na lista |
+| `descricao` | texto longo | sim | o trecho ou o resumo do que acontece; vazio para `PERSONAGEM` |
 | `horario` | texto (100) | sim | atributo situacional |
 | `clima` | texto (100) | sim | atributo situacional |
 | `humor` | texto (100) | sim | atributo situacional |
+| `contexto_do_livro` | texto longo | sim | o que a leitura profunda do frame (item 4.4) confirmou no capítulo — só para `tipo=CENA` |
+| `confirmado_pela_leitura_profunda` | booleano | não | se `contexto_do_livro` já foi lido; controla o modo `ECONOMIA` da `prioridade_ia` (item 4.3) |
 
-Os três atributos situacionais ficam **na própria Cena**, sem uma entidade "Contexto" separada: horário, clima e humor já são naturalmente parte da cena, e uma tabela extra só acrescentaria uma junção (item 3.3).
+Os três atributos situacionais ficam **no próprio Frame**, sem uma entidade "Contexto" separada: horário, clima e humor já são naturalmente parte dele, e uma tabela extra só acrescentaria uma junção (item 3.3).
 
-**Sem campo `ordem`**, diferente do Capítulo. A ordem dos capítulos vem do índice do EPUB e precisa ser preservada explicitamente; as cenas são criadas pelo usuário enquanto lê um capítulo, então a ordem de criação já é a ordem narrativa. Acrescentar o campo depois é uma migration trivial, se a necessidade aparecer.
+**Sem campo `ordem`**, diferente do Capítulo. A ordem dos capítulos vem do índice do EPUB e precisa ser preservada explicitamente; os frames são criados pelo usuário enquanto lê um capítulo, então a ordem de criação já é a ordem narrativa. Acrescentar o campo depois é uma migration trivial, se a necessidade aparecer.
 
-#### (c) Ligação entre Cena e EstadoElemento
+> **Divergência registrada, pós-validação com IA real.** Esta tabela chamava-se `Cena`, e não distinguia um retrato solo de um elemento de uma cena de verdade com vários elementos — a mesma entidade servia para as duas coisas. Um teste real expôs o problema: um prompt pedido para um personagem sozinho citou outro elemento por engano, porque a descrição do "recorte" (título + descrição livre) sempre entrava na montagem do prompt, mesmo quando a intenção era um retrato. A tabela foi renomeada para `Frame` — termo em inglês, escolhido deliberadamente pelo usuário como exceção à regra de idioma do `CLAUDE.md` por já ser um termo comumente entendido em português técnico, como "site" — e ganhou o campo `tipo` para tornar a intenção explícita, mais `contexto_do_livro` e `confirmado_pela_leitura_profunda` para a leitura profunda do frame (item 4.4). A migration renomeou tabela, colunas e restrições em vez de recriar, preservando os dados já existentes.
 
-Tabela de associação `cenas_estados_elemento`, com as duas colunas formando a chave primária.
+#### (c) Ligação entre Frame e EstadoElemento
+
+Tabela de associação `frames_estados_elemento` (chamava-se `cenas_estados_elemento`), com as duas colunas formando a chave primária.
 
 | Coluna | Observação |
 |---|---|
-| `cena_id` | referência à Cena |
+| `frame_id` | referência ao Frame |
 | `estado_elemento_id` | referência ao EstadoElemento |
 
-A ligação é com o **Estado**, não com o Elemento. É isso que faz a cena guardar *como* cada elemento estava naquele ponto — que é o dado que entra no prompt. Ligar direto ao Elemento perderia essa informação, e o prompt não saberia qual das versões do personagem usar.
+A ligação é com o **Estado**, não com o Elemento. É isso que faz o frame guardar *como* cada elemento estava naquele ponto — que é o dado que entra no prompt. Ligar direto ao Elemento perderia essa informação, e o prompt não saberia qual das versões do personagem usar.
 
 Não tem colunas próprias além das duas chaves, então é uma tabela simples de associação e não uma entidade do modelo.
 
@@ -561,7 +566,7 @@ O registro de cada prompt gerado, que permite regenerar e comparar modelos depoi
 | Coluna | Tipo | Nulo? | Observação |
 |---|---|---|---|
 | `id` | inteiro | não | chave primária |
-| `cena_id` | inteiro | não | referência à Cena; indexado |
+| `frame_id` | inteiro | não | referência ao Frame; indexado |
 | `perfil_renderizacao_id` | inteiro | sim | o perfil realmente usado |
 | `modelo_ia` | texto (200) | sim | identificador do modelo no OpenRouter |
 | `texto` | texto longo | não | o prompt em si, como foi copiado |
@@ -631,12 +636,13 @@ Ambas aceitam nulo, e ambas usam `SET NULL`: apagar um perfil de estilo não pod
 
 ### 4.2 Interface abstrata
 
-Camada de abstração `ProvedorIA` com três métodos:
-- `extrair_elementos(texto_capitulo, estados_conhecidos, modelo) -> lista estruturada` — identifica **quem/o que aparece** no capítulo (passo 6, fase 1 — ver item 4.4).
+Camada de abstração `ProvedorIA` com quatro métodos:
+- `extrair_elementos(texto_capitulo, estados_conhecidos, modelo) -> lista estruturada` — identifica **quem/o que aparece** no capítulo, e sugere frames do tipo `CENA` (passo 6, fase 1 — ver item 4.4).
 - `sugerir_estado(texto_capitulo, elemento, estado_atual, modelo) -> descrição de aparência` — a **leitura profunda** de um elemento específico (fase 2 — ver item 4.4).
-- `montar_prompt(descricao_da_cena, elementos, perfil_renderizacao, modelo, comentario_do_usuario) -> texto do prompt` — passo 8, agora aceitando um comentário opcional do usuário com prioridade sobre a leitura automática.
+- `fundamentar_frame(texto_capitulo, titulo, descricao, horario, clima, humor, participantes, modelo) -> contexto` — confere "quem, onde, o quê" de um frame do tipo `CENA` contra o capítulo, sem sobrescrever o que o usuário escreveu (fase 3 — ver item 4.4).
+- `montar_prompt(descricao_do_frame, elementos, perfil_renderizacao, modelo, contexto_do_livro, comentario_do_usuario) -> texto do prompt` — passo 8, combinando as fontes acima por ordem de prioridade (item 4.4).
 
-Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_modelo`. Os três métodos devolvem objetos tipados, não texto cru, para que a rota não tenha que adivinhar o formato da resposta. Provedores nativos adicionais (Groq, Gemini) podem ser adicionados depois seguindo a mesma interface, se necessário.
+Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_modelo`. Os quatro métodos devolvem objetos tipados, não texto cru, para que a rota não tenha que adivinhar o formato da resposta. Provedores nativos adicionais (Groq, Gemini) podem ser adicionados depois seguindo a mesma interface, se necessário.
 
 > **Divergência registrada (item 1.5):** a primeira versão desta seção nomeava a interface como `AIProvider`, a implementação como `OpenRouterProvider` e o parâmetro como `render_profile`. Os nomes foram traduzidos para `ProvedorIA`, `ProvedorOpenRouter` e `perfil_renderizacao` por coerência com a regra de idioma: existe tradução natural, então o português prevalece. Definido antes de a pasta `ia/` ser preenchida, para não renomear código depois.
 
@@ -714,26 +720,47 @@ O usuário revisa a lista (passo 7): confirma, ajusta ou descarta cada elemento,
 
 **A mesma chamada também sugere cenas.** Revisão feita a partir de um teste real seu: a extração original só listava elementos soltos ("quem existe no capítulo"), sem indicar quais combinações formam um momento que vale a pena ilustrar — e um jogo de tabuleiro saiu classificado como `AMBIENTE`, uma porta como `VEICULO`. Dois ajustes:
 
-- `extrair_elementos` devolve, além de `elementos`, uma lista `cenas`: recortes narrativos específicos (título, descrição, horário/clima/humor quando o texto sustenta, e os participantes — por nome, casados contra os elementos já cadastrados do mesmo jeito que a lista de elementos já fazia). É rascunho, não grava nada — o usuário usa isso para pré-preencher `POST /capitulos/{id}/cenas` em vez de montar cada cena do zero. Uma cena sem nenhum participante é descartada (mesma tolerância a entrada malformada do item 4.2).
+- `extrair_elementos` devolve, além de `elementos`, uma lista `frames`: recortes narrativos específicos do tipo `CENA` (título, descrição, horário/clima/humor quando o texto sustenta, e os participantes — por nome, casados contra os elementos já cadastrados do mesmo jeito que a lista de elementos já fazia). É rascunho, não grava nada — o usuário usa isso para pré-preencher `POST /capitulos/{id}/frames` em vez de montar cada cena do zero. Um frame sugerido sem nenhum participante é descartado (mesma tolerância a entrada malformada do item 4.2).
 - A instrução ganhou definições explícitas de cada `tipo` (o que distingue `OBJETO` de `VEICULO`, `AMBIENTE` de `EDIFICACAO`) e um filtro de relevância para objetos — só inclui um objeto com peso visual memorável na cena, não papelada ou móvel genérico de fundo.
 
 Testado com `gpt-4o-mini` no capítulo I de *A Vontade de Muitos*: da segunda vez, o tabuleiro saiu corretamente como `OBJETO`, e a extração sugeriu cinco cenas cobrindo os momentos certos do capítulo (o resgate na rocha, a partida de tabuleiro, a chegada de Hospius, o interrogatório de Nateo, o contato acidental com o Sapador) — nenhuma delas precisou ser inventada pelo usuário.
 
-#### Fase 2 — Leitura profunda (passo 8, dentro de `POST /cenas/{id}/prompts`)
+#### Fase 2 — Leitura profunda do elemento (passo 8, dentro de `POST /frames/{id}/prompts`)
 
-Antes de montar o prompt, para **cada** estado ligado à cena, o servidor relê o texto do **capítulo onde aquele estado foi originalmente registrado** (não necessariamente o capítulo da cena) e chama `sugerir_estado`, focando num elemento por vez — é essa concentração, um elemento por chamada, que evita a mistura de atributos da fase 1 antiga. O texto que volta:
+Antes de montar o prompt, para **cada** estado ligado ao frame, o servidor relê o texto do **capítulo onde aquele estado foi originalmente registrado** (não necessariamente o capítulo do frame) e chama `sugerir_estado`, focando num elemento por vez — é essa concentração, um elemento por chamada, que evita a mistura de atributos da fase 1 antiga. O texto que volta:
 
-- **Sobrescreve** `EstadoElemento.descricao` no banco — o livro é a fonte de verdade, mesmo que substitua o que foi digitado à mão no passo 7. Chapters futuros que usam "o último estado conhecido" como contexto (fase 1) também passam a se beneficiar da versão mais fiel.
+- **Sobrescreve** `EstadoElemento.descricao` no banco — o livro é a fonte de verdade para a aparência de um elemento, mesmo que substitua o que foi digitado à mão no passo 7. Capítulos futuros que usam "o último estado conhecido" como contexto (fase 1) também passam a se beneficiar da versão mais fiel.
 - É o que entra na montagem do prompt.
 
-Repetir essa releitura toda vez que um prompt é montado para a mesma cena tem custo: cada chamada de `sugerir_estado` é uma chamada de IA a mais, em cima da chamada que monta o prompt em si. Por isso existe `prioridade_ia` (item 4.3):
+Vale tanto para um frame `PERSONAGEM` quanto para um `CENA` — os dois têm elementos com estado, e os dois se beneficiam de uma aparência bem descrita.
 
-- **`QUALIDADE`**: relê o capítulo de origem toda vez que `POST /cenas/{id}/prompts` é chamado para aquela cena.
-- **`ECONOMIA`** (padrão): relê só a primeira vez por estado. O campo `EstadoElemento.confirmado_pela_leitura_profunda` marca se aquele estado já passou pela fase 2; enquanto marcado, chamadas seguintes reaproveitam a descrição já salva, sem gastar outra chamada de IA.
+#### Fase 3 — Fundamentação do frame (só para `tipo=CENA`)
 
-#### Comentário do usuário tem prioridade sobre tudo
+Um retrato (`tipo=PERSONAGEM`) não tem "quem, onde, o quê" para conferir — é sempre um elemento só. Uma cena (`tipo=CENA`) tem, e é aqui que o teste com IA real expôs um problema de origem: a entidade que hoje é `Frame` chamava-se `Cena` e servia para os dois casos, então a descrição livre de uma cena (que podia citar outros elementos por nome) sempre entrava no prompt de um retrato — mesmo quando a intenção era um retrato solo.
 
-`POST /cenas/{id}/prompts` aceita um campo opcional `comentario`: depois de ler o capítulo (ou ver a imagem gerada), o usuário pode escrever uma correção pontual ("a barba dele é mais rala", "esqueceram a cicatriz no braço"). Esse texto entra na chamada de `montar_prompt` com prioridade explícita sobre a leitura do capítulo (modo `QUALIDADE`) e sobre a descrição já salva (modo `ECONOMIA`) — é o único canal onde a palavra do usuário depois de ler o texto pesa mais que a leitura automática. Não existe rota separada de "refinar": gerar de novo com um comentário é a mesma rota, chamada de novo — o histórico de tentativas já fica em `GET /cenas/{id}/prompts`.
+Por isso, para `tipo=CENA` com pelo menos um elemento ligado, o servidor também chama `fundamentar_frame`: relê o capítulo do frame, e confere o que o usuário escreveu (título, descrição, horário, clima, humor) contra o texto, com a aparência de cada participante já estabelecida como contexto. O resultado (`contexto`):
+
+- **Não sobrescreve** `titulo`/`descricao` do frame — fica só em `Frame.contexto_do_livro`, como apoio.
+- Entra em `montar_prompt` com prioridade **menor** que a descrição que o usuário escreveu (ver "Ordem de prioridade" abaixo) — feedback direto do usuário: uma releitura automática não deveria poder sobrepor o que uma pessoa que já leu o capítulo escreveu, sob risco de uma alucinação ou ambiguidade da IA divergir do que está confirmado.
+
+Testado com IA real: a fundamentação de uma cena chegou a reler o trecho **errado** do capítulo (um momento bem posterior ao que a cena descrevia) — e o prompt final saiu correto mesmo assim, porque a prioridade protegeu a descrição do usuário. É a ordem de prioridade funcionando como rede de segurança contra a própria leitura automática errar.
+
+#### Releitura tem custo: `prioridade_ia` controla as duas fases
+
+Repetir a fase 2 e a fase 3 toda vez que um prompt é montado para o mesmo frame tem custo: cada chamada de `sugerir_estado`/`fundamentar_frame` é uma chamada de IA a mais, em cima da chamada que monta o prompt em si. Por isso existe `prioridade_ia` (item 4.3), valendo igualmente para as duas:
+
+- **`QUALIDADE`**: relê o capítulo de origem de cada estado, e fundamenta o frame de novo, toda vez que `POST /frames/{id}/prompts` é chamado.
+- **`ECONOMIA`** (padrão): relê só a primeira vez. `EstadoElemento.confirmado_pela_leitura_profunda` marca se aquele estado já passou pela fase 2; `Frame.confirmado_pela_leitura_profunda` marca o mesmo para a fase 3 do frame. Enquanto marcados, chamadas seguintes reaproveitam o que já foi lido, sem gastar outra chamada de IA.
+
+#### Ordem de prioridade na montagem final do prompt
+
+Quando há conflito entre as fontes que chegam a `montar_prompt`, a ordem é:
+
+1. **Comentário do usuário** (campo `comentario` do pedido) — prioridade máxima. É uma correção de quem já viu o resultado anterior ou releu o capítulo com atenção.
+2. **Descrição do frame escrita pelo usuário** (`titulo`/`descricao`/`horario`/`clima`/`humor`) — vazia para `tipo=PERSONAGEM` (não referencia nada além do elemento).
+3. **Contexto do livro** (`fundamentar_frame`, só para `tipo=CENA`) — a leitura automática, usada só para preencher o que a descrição do usuário não cobriu, nunca para contradizê-la.
+
+Não existe rota separada de "refinar": gerar de novo com um comentário é a mesma rota (`POST /frames/{id}/prompts`), chamada de novo — o histórico de tentativas já fica em `GET /frames/{id}/prompts`.
 
 ### 4.5 Engenharia das instruções de IA
 
@@ -766,7 +793,7 @@ Revisão feita a partir de material técnico externo (um documento de boas prát
 | OpenRouter como gateway único de IA | Evita multiplicar adapters por fornecedor; ainda permite ao usuário escolher modelo; tem opções gratuitas |
 | Elemento genérico com enum `tipo` | Reduz duplicação de schema entre personagens/ambientes/objetos/criaturas |
 | EstadoElemento separado do Elemento | Elementos mudam de aparência ao longo da narrativa; é essencial para consistência visual entre capítulos |
-| Cena sem entidade "Contexto" separada | Informação situacional já é natural da própria cena; evita tabela desnecessária |
+| Frame sem entidade "Contexto" separada | Informação situacional já é natural do próprio frame; evita tabela desnecessária |
 | PerfilRenderizacao em vez de campo único de estilo | Permite reaproveitar/trocar estilo visual sem alterar dados narrativos; adapta-se a diferentes ferramentas de geração |
 | Extração semi-automática (não totalmente automática) | Decisão de "novo estado ou não" fica sob controle do usuário, evitando erros de uma IA decidindo sozinha |
 | Relações/Grupos adiados para v2 | Complexidade real (modelo tipo grafo + telas extras) não essencial para o MVP |
@@ -783,7 +810,7 @@ Revisão feita a partir de material técnico externo (um documento de boas prát
 | Unicidade do Elemento por (`livro_id`, `tipo`, `nome`) | Barra o cadastro duplicado que a extração automática produziria ao reencontrar o mesmo personagem em outro capítulo; o `tipo` entra na chave porque um nome pode designar coisas distintas (a região e o castelo Winterfell) |
 | Ordem narrativa derivada de `Capitulo.ordem`, não de `data_criacao` nem do `id` do estado | O usuário pode processar capítulos fora de ordem ou revisitar um antigo — ordenar pela criação daria a resposta errada ao item 4.4 |
 | Fora do Docker, conectar no banco por `127.0.0.1` e não por `localhost` | No Windows, `localhost` resolve para IPv6 (`::1`) antes de IPv4 e o Docker publica a porta só em IPv4: a conexão espera o timeout expirar antes de tentar o endereço certo, o que parece um travamento |
-| Associação Cena ↔ **EstadoElemento**, não Cena ↔ Elemento | É o que faz a cena registrar *como* cada elemento estava naquele ponto. Ligada ao Elemento, a cena não saberia qual das versões do personagem usar no prompt |
+| Associação Frame ↔ **EstadoElemento**, não Frame ↔ Elemento | É o que faz o frame registrar *como* cada elemento estava naquele ponto. Ligado ao Elemento, o frame não saberia qual das versões do personagem usar no prompt |
 | `PerfilRenderizacao` sem `livro_id`; é o Livro que aponta para o perfil | Se o perfil pertencesse a um livro não daria para reaproveitá-lo em outro — que é o motivo de ele existir como entidade (item 3.3) |
 | `ON DELETE SET NULL` nas referências a perfil e a imagem-âncora | Apagar um perfil de estilo ou uma imagem do catálogo não pode apagar o dado narrativo. A referência se desfaz, o livro e o estado do personagem permanecem |
 | Um Prompt para **várias** Imagens, divergindo do item 3.2 | Na prática o mesmo prompt é gerado mais de uma vez, ou em duas ferramentas diferentes, e faz sentido guardar mais de um resultado. Remover uma restrição de unicidade depois é fácil; acrescentá-la sobre dados já duplicados é que dá trabalho |
@@ -809,7 +836,9 @@ Revisão feita a partir de material técnico externo (um documento de boas prát
 | Extração de elementos dividida em identificação (fase 1) e leitura profunda (fase 2), em vez de uma chamada só | Testado com IA real (`gpt-4o-mini` e `gemini-2.5-flash`) num capítulo de *A Vontade de Muitos*: pedir a descrição de aparência de vários elementos na mesma resposta produziu mistura de atributos entre personagens e, num dos modelos, um elemento inventado. Descrever um elemento por vez, relendo o capítulo de origem, é o que reduz isso — ver item 4.4 |
 | Leitura profunda sobrescreve `EstadoElemento.descricao`, em vez de só alimentar o prompt daquela vez | O livro é a fonte de verdade, e o usuário pode gerar uma cena antes de ter lido o capítulo pessoalmente — não dá para depender da revisão dele como garantia de qualidade. Sobrescrever também beneficia capítulos futuros, que usam "o último estado conhecido" como contexto da fase 1 |
 | `prioridade_ia` (`ECONOMIA`/`QUALIDADE`) como campo de configuração, não parâmetro por chamada | Decisão de custo-vs-qualidade que o usuário quer controlar uma vez, na tela de configuração, e que deve valer para outras decisões parecidas no futuro — não é específica da leitura profunda |
-| Comentário do usuário no corpo de `POST /cenas/{id}/prompts`, sem rota separada de "refinar" | Gerar de novo com uma correção é a mesma operação de gerar um prompt, só com mais um dado de entrada; o histórico de tentativas já existe via `GET /cenas/{id}/prompts`, então uma rota dedicada não acrescentaria nada que a existente não faça |
+| Comentário do usuário no corpo de `POST /frames/{id}/prompts`, sem rota separada de "refinar" | Gerar de novo com uma correção é a mesma operação de gerar um prompt, só com mais um dado de entrada; o histórico de tentativas já existe via `GET /frames/{id}/prompts`, então uma rota dedicada não acrescentaria nada que a existente não faça |
+| `Cena` renomeada para `Frame`, com campo `tipo` (`PERSONAGEM`/`CENA`) | Um teste real mostrou a mesma entidade servindo, sem distinção, tanto para um retrato solo quanto para uma cena de verdade — a descrição livre de uma cena vazava para o prompt de um retrato. `Frame` é termo em inglês, escolhido deliberadamente pelo usuário (como exceção à regra de idioma, citando "site" como precedente de termo estrangeiro naturalizado) por já cobrir os dois sentidos sem ambiguidade |
+| Fundamentação do frame (`fundamentar_frame`) não sobrescreve o que o usuário escreveu, ao contrário da leitura profunda do elemento | Pedido explícito do usuário: a escrita à mão de quem já leu o capítulo deve ter prioridade sobre a IA que monta o prompt, para uma alucinação ou ambiguidade da releitura automática não divergir do que foi confirmado. Validado com IA real: a fundamentação leu o trecho errado do capítulo, e o prompt final saiu correto porque a prioridade protegeu a descrição do usuário |
 | Engenharia de prompt incorporada como reescrita de instrução, não como esquema JSON rico por elemento | Revisão de um material externo (item 4.5) sugeria campos estruturados por elemento (material, iluminação, objetos). Pedir para a IA *escrever* com esse nível de concretude no texto livre já existente entrega boa parte do ganho sem reabrir a modelagem do item 3.4b nem migrar dados |
 | `referencias_visuais` em `PromptDetalhe`, lida a partir de `EstadoElemento.imagem_ancora_id` | O campo existia desde o item 3.1 mas nunca tinha sido lido por nenhuma rota — a consistência de personagem entre capítulos distantes dependia só da descrição em texto. Expor as imagens-âncora dos elementos da cena permite ao app avisar o usuário para anexá-las também, já que o fluxo de geração é manual (passo 9) |
 | "Chunking" de capítulo e fallback por gênero/tom do livro, ambos descartados (item 4.5) | O primeiro fragmentaria o contexto que a leitura profunda depende de ter inteiro (item 4.3 já mediu que nenhum capítulo do corpus de validação excede a janela dos modelos gratuitos); o segundo é a mesma classe de erro que produziu o elemento inventado ("carroça de suprimentos") num teste real — o livro é a fonte de verdade, não o gênero |
@@ -927,22 +956,24 @@ certa — "Homem de ciência, sóbrio" no capítulo 3, "Barba crescida, olhar
 obsessivo" no 7, "Recolhido na Casa Verde" no 12. A "Casa Verde", cadastrada sem
 estado, aparece nos três com `estado_vigente` nulo.
 
-### 6.4 Cenas
+### 6.4 Frames
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `GET /capitulos/{id}/cenas` | As cenas de um capítulo | **implementado** |
-| `POST /capitulos/{id}/cenas` | Cria uma cena | **implementado** |
-| `GET /cenas/{id}` | A cena com os elementos e estados que ela referencia | **implementado** |
-| `PATCH /cenas/{id}` | Ajusta título, descrição e atributos situacionais | **implementado** |
-| `DELETE /cenas/{id}` | Remove a cena, sem apagar os estados que ela citava | **implementado** |
-| `PUT /cenas/{id}/estados` | Define a lista completa de estados da cena | **implementado** |
+| `GET /capitulos/{id}/frames` | Os frames de um capítulo | **implementado** |
+| `POST /capitulos/{id}/frames` | Cria um frame | **implementado** |
+| `GET /frames/{id}` | O frame com os elementos e estados que ele referencia | **implementado** |
+| `PATCH /frames/{id}` | Ajusta título, descrição e atributos situacionais | **implementado** |
+| `DELETE /frames/{id}` | Remove o frame, sem apagar os estados que ele citava | **implementado** |
+| `PUT /frames/{id}/estados` | Define a lista completa de estados do frame | **implementado** |
 
-`PUT` e não `PATCH` em `/cenas/{id}/estados`: aqui o app manda a lista inteira de quem está na cena, que é como a tela funciona — o usuário marca e desmarca elementos e salva o conjunto. Ids repetidos na lista são aceitos e contados uma vez: a chave primária da tabela de associação já impediria o repetido, e devolver um erro por isso só criaria trabalho para o app.
+`PUT` e não `PATCH` em `/frames/{id}/estados`: aqui o app manda a lista inteira de quem está no frame, que é como a tela funciona — o usuário marca e desmarca elementos e salva o conjunto. Ids repetidos na lista são aceitos e contados uma vez: a chave primária da tabela de associação já impediria o repetido, e devolver um erro por isso só criaria trabalho para o app.
 
-**A cena devolve o estado *com* o elemento.** `GET /cenas/{id}` traz, para cada estado, o nome e o tipo do elemento a que ele pertence — porque a tela mostra "Ned Stark: capa de pele, barba grisalha", e não o id de um estado solto. É a diferença entre a API servir a tela e a tela ter que remontar tudo.
+**`tipo=PERSONAGEM` exige exatamente um estado.** Tanto na criação quanto em `PUT /frames/{id}/estados` — um retrato solo é de um elemento só; duas ou mais pessoas já seria uma cena (item 4.4). A rota responde 422 se a contagem não bater.
 
-**Os estados de uma cena precisam ser do mesmo livro.** Mesmo problema do item 6.3: nada no banco impede associar a uma cena o estado de um personagem de outro livro. A rota verifica e responde 422, listando os ids recusados.
+**O frame devolve o estado *com* o elemento.** `GET /frames/{id}` traz, para cada estado, o nome e o tipo do elemento a que ele pertence — porque a tela mostra "Ned Stark: capa de pele, barba grisalha", e não o id de um estado solto. É a diferença entre a API servir a tela e a tela ter que remontar tudo.
+
+**Os estados de um frame precisam ser do mesmo livro.** Mesmo problema do item 6.3: nada no banco impede associar a um frame o estado de um personagem de outro livro. A rota verifica e responde 422, listando os ids recusados.
 
 ### 6.5 Perfis de renderização
 
@@ -963,14 +994,14 @@ estado, aparece nos três com `estado_vigente` nulo.
 
 As onze rotas das Etapas 6.4 e 6.5, com 30 testes.
 
-Verificado contra o servidor rodando, com *O Alienista*: criei um perfil "Aquarela sombria", apontei o livro para ele, montei uma cena com dois elementos em estados específicos, e confirmei que apagar o perfil deixa o livro de pé com `perfil_renderizacao_padrao_id` nulo — o `ON DELETE SET NULL` do item 3.4c valendo pela API. Apagar a cena também não levou os estados: eles pertencem ao elemento e à narrativa, não à cena que os citou.
+Verificado contra o servidor rodando, com *O Alienista*: criei um perfil "Aquarela sombria", apontei o livro para ele, montei um frame com dois elementos em estados específicos, e confirmei que apagar o perfil deixa o livro de pé com `perfil_renderizacao_padrao_id` nulo — o `ON DELETE SET NULL` do item 3.4c valendo pela API. Apagar o frame também não levou os estados: eles pertencem ao elemento e à narrativa, não ao frame que os citou.
 
 ### 6.6 Prompts e catálogo de imagens
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `POST /cenas/{id}/prompts` | Monta o prompt com a IA (passo 8) | **implementado** |
-| `GET /cenas/{id}/prompts` | O histórico de prompts da cena | **implementado** |
+| `POST /frames/{id}/prompts` | Monta o prompt com a IA (passo 8) | **implementado** |
+| `GET /frames/{id}/prompts` | O histórico de prompts do frame | **implementado** |
 | `GET /prompts/{id}` | Um prompt com as imagens que saíram dele | **implementado** |
 | `PATCH /prompts/{id}` | Anota a avaliação do resultado | **implementado** |
 | `DELETE /prompts/{id}` | Remove o prompt e suas imagens | **implementado** |
@@ -978,23 +1009,28 @@ Verificado contra o servidor rodando, com *O Alienista*: criei um perfil "Aquare
 | `GET /imagens/{id}/arquivo` | Devolve o arquivo da imagem | **implementado** |
 | `DELETE /imagens/{id}` | Remove a imagem do catálogo, e o arquivo do disco | **implementado** |
 
-**`POST /cenas/{id}/prompts` faz a leitura profunda (item 4.4, fase 2) e depois chama `provedor.montar_prompt`:**
+**`POST /frames/{id}/prompts` faz as leituras profundas (item 4.4) e depois chama `provedor.montar_prompt`:**
 
-- **Antes de montar o prompt**, para cada estado ligado à cena (`Cena.estados_elemento`), a rota decide se relê o capítulo de origem daquele estado: sempre, se `prioridade_ia == QUALIDADE`; só se `EstadoElemento.confirmado_pela_leitura_profunda` ainda for falso, se `== ECONOMIA`. Quando relê, chama `sugerir_estado`, grava o texto de volta em `EstadoElemento.descricao` e marca o campo como confirmado.
-- A lista de elementos que vai para `montar_prompt` vem desses estados (já atualizados, se foi o caso), formatados como `"Nome: descrição do estado"`.
+- **Antes de montar o prompt**, para cada estado ligado ao frame (`Frame.estados_elemento`), a rota decide se relê o capítulo de origem daquele estado: sempre, se `prioridade_ia == QUALIDADE`; só se `EstadoElemento.confirmado_pela_leitura_profunda` ainda for falso, se `== ECONOMIA`. Quando relê, chama `sugerir_estado`, grava o texto de volta em `EstadoElemento.descricao` e marca o campo como confirmado. Isso vale para os dois tipos de frame.
+- **Só para `tipo=CENA`, e só se houver pelo menos um elemento ligado**, a rota também chama `fundamentar_frame`: relê o capítulo do frame para confirmar quem/onde/o quê contra o que o usuário escreveu, respeitando a mesma cache de `prioridade_ia` (`Frame.contexto_do_livro`/`confirmado_pela_leitura_profunda`). **Não sobrescreve** `titulo`/`descricao` do frame — o resultado é contexto de apoio, passado a `montar_prompt` com prioridade **menor** que o que o usuário escreveu.
+- Para `tipo=PERSONAGEM`, a descrição do frame que vai para `montar_prompt` é sempre vazia — o prompt usa só a descrição do elemento (já atualizada pela leitura profunda acima), sem citar título, descrição ou atributos situacionais do frame.
+- A lista de elementos que vai para `montar_prompt` vem dos estados do frame (já atualizados, se foi o caso), formatados como `"Nome: descrição do estado"`.
 - O perfil de renderização é o informado no pedido (`perfil_renderizacao_id`) ou, na ausência dele, o padrão do livro (`Livro.perfil_renderizacao_padrao_id`). Sem nenhum dos dois, a rota responde 422 — não há estilo para aplicar.
-- O modelo é o informado no pedido ou o `modelo_prompt` da configuração. Sem nenhum dos dois, 422 (mesmo padrão do item 6.7).
-- O pedido aceita um campo opcional `comentario`: uma correção do usuário, com prioridade sobre a leitura automática do capítulo e sobre a descrição já salva (item 4.4). Passa direto para `provedor.montar_prompt`.
+- O modelo é o informado no pedido ou o `modelo_prompt` da configuração para `montar_prompt`; `sugerir_estado` e `fundamentar_frame` usam `modelo_extracao` (é leitura/verificação, não escrita criativa). Sem o modelo necessário, 422.
+- O pedido aceita um campo opcional `comentario`: uma correção do usuário, com prioridade **máxima** — acima até da descrição do frame. Passa direto para `provedor.montar_prompt`.
+- Ordem de prioridade final dentro de `montar_prompt`, em caso de conflito: **comentário do usuário > descrição do frame escrita pelo usuário > contexto do livro (fundamentação automática)**. É a resposta direta ao feedback do usuário: a IA não deveria poder sobrepor, com uma releitura automática, o que uma pessoa que já leu o capítulo escreveu.
 - O prompt monta um texto único a partir dos campos do perfil (`estilo`, `artista_referencia`, `iluminacao`, `paleta`, `formato`) — os únicos preenchidos entram no texto, porque cada ferramenta de imagem usa um subconjunto diferente (item 3.4c).
-- Erros do provedor seguem o mesmo mapeamento do item 6.7: `ChaveDeApiAusente`/`ModeloNaoEscolhido` → 422, qualquer outro `ErroDoProvedorIA` → 502. Isso vale tanto para a chamada de `sugerir_estado` quanto para a de `montar_prompt` — qualquer uma pode falhar.
+- Erros do provedor seguem o mesmo mapeamento do item 6.7: `ChaveDeApiAusente`/`ModeloNaoEscolhido` → 422, qualquer outro `ErroDoProvedorIA` → 502. Vale para qualquer uma das três chamadas de IA envolvidas.
 
-**A resposta traz `referencias_visuais`** (item 4.5): as imagens-âncora (`EstadoElemento.imagem_ancora_id`, item 3.1) já aprovadas para os elementos da cena, deduplicadas. `GET /prompts/{id}` recalcula isso na hora — não é uma foto congelada de quando o prompt foi criado, porque uma âncora pode ser definida depois. Serve para o app avisar "anexe esta imagem também" ao colar o prompt numa ferramenta que aceite referência visual, já que o passo 9 é manual e a API não tem como anexar a imagem sozinha.
+**A resposta traz `referencias_visuais`** (item 4.5): as imagens-âncora (`EstadoElemento.imagem_ancora_id`, item 3.1) já aprovadas para os elementos do frame, deduplicadas. `GET /prompts/{id}` recalcula isso na hora — não é uma foto congelada de quando o prompt foi criado, porque uma âncora pode ser definida depois. Serve para o app avisar "anexe esta imagem também" ao colar o prompt numa ferramenta que aceite referência visual, já que o passo 9 é manual e a API não tem como anexar a imagem sozinha.
+
+**Validado com IA real, incluindo um caso em que a fundamentação errou.** Numa cena cujo primeiro momento do capítulo era "Vis lembra do pai, pendurado numa borda rochosa", `fundamentar_frame` releu o capítulo inteiro e voltou descrevendo um trecho bem posterior (a sala com o Sapador e o prisioneiro Nateo) — o capítulo tem vários momentos, e o modelo pegou o errado. Como o `contexto_do_livro` entra com prioridade **menor** que a descrição que o usuário escreveu, o prompt final ficou correto mesmo assim: continuou descrevendo a cena da borda rochosa, ignorando o contexto equivocado. É a ordem de prioridade funcionando exatamente como planejado — uma rede de segurança contra a própria leitura automática errar.
 
 **O upload de imagem é multipart**, no mesmo padrão de `POST /livros` com o EPUB (item 6.2): o app manda os bytes da imagem no corpo do pedido, e o servidor grava o arquivo em `DIRETORIO_IMAGENS/prompts/{prompt_id}/{nome-gerado}` — um nome gerado (não o nome original) evita colisão entre duas imagens de nomes iguais vindas de ferramentas diferentes. Só o caminho relativo entra no banco (item 3.4c). Extensões aceitas: `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif` — o que cobre as ferramentas de geração de imagem em uso; outra extensão responde 422. O limite de tamanho é 25 MB por imagem, lido em blocos como no EPUB, para não estourar a memória do Raspberry Pi com um arquivo grande demais.
 
 **Remover apaga o arquivo do disco, não só a linha do banco** — tanto em `DELETE /imagens/{id}` quanto em `DELETE /prompts/{id}` (que remove as imagens do prompt em cascata). Um arquivo ausente no disco não impede a remoção da linha: o objetivo é o catálogo ficar consistente, e um arquivo que já sumiu não deveria travar a limpeza do registro órfão.
 
-**Limitação conhecida:** apagar um livro, capítulo, cena ou elemento remove as linhas de `prompts` e `imagens` em cascata no banco (item 3.4), mas **não** apaga os arquivos de imagem do disco — só as rotas específicas desta seção fazem essa limpeza. Adicionar isso exigiria um gatilho no banco ou uma varredura periódica, e nenhuma das duas coisas está no escopo do MVP; por ora o arquivo órfão é um custo aceitável, revisitável se o volume de imagens crescer.
+**Limitação conhecida:** apagar um livro, capítulo, frame ou elemento remove as linhas de `prompts` e `imagens` em cascata no banco (item 3.4), mas **não** apaga os arquivos de imagem do disco — só as rotas específicas desta seção fazem essa limpeza. Adicionar isso exigiria um gatilho no banco ou uma varredura periódica, e nenhuma das duas coisas está no escopo do MVP; por ora o arquivo órfão é um custo aceitável, revisitável se o volume de imagens crescer.
 
 #### O que foi implementado
 
@@ -1004,7 +1040,9 @@ O texto do perfil que vai para a IA é montado só com os campos preenchidos (`e
 
 `DELETE /prompts/{id}` apaga os arquivos das imagens **depois** do commit que remove as linhas do banco, não antes: se a remoção de um arquivo falhasse no meio, o banco já estaria consistente (prompt e imagens removidos), e sobraria só um arquivo órfão no disco — o mesmo tipo de custo aceitável registrado na limitação conhecida acima, e não uma inconsistência de dados.
 
-**Divergência registrada, pós-validação com IA real.** A versão inicial de `criar_prompt` só lia os estados já salvos no banco, sem tocar na IA antes de montar o prompt. Um teste de ponta a ponta com `openai/gpt-4o-mini` e `google/gemini-2.5-flash` no mesmo capítulo real mostrou erros de atribuição e um elemento inventado quando a descrição de aparência de vários elementos era gerada numa única chamada (item 4.2). A rota passou a fazer a leitura profunda (fase 2 do item 4.4) elemento por elemento, imediatamente antes de montar o prompt, e a aceitar um `comentario` do usuário com prioridade sobre essa leitura. Na mesma rodada, ganhou `referencias_visuais` (item 4.5), conectando um campo que existia desde o item 3.1 mas nunca tinha sido lido por nenhuma rota.
+**Divergência registrada, pós-validação com IA real.** A versão inicial de `criar_prompt` só lia os estados já salvos no banco, sem tocar na IA antes de montar o prompt. Um teste de ponta a ponta com `openai/gpt-4o-mini` e `google/gemini-2.5-flash` no mesmo capítulo real mostrou erros de atribuição e um elemento inventado quando a descrição de aparência de vários elementos era gerada numa única chamada (item 4.2). A rota passou a fazer a leitura profunda elemento por elemento, imediatamente antes de montar o prompt, e a aceitar um `comentario` do usuário com prioridade sobre essa leitura. Na mesma rodada, ganhou `referencias_visuais` (item 4.5), conectando um campo que existia desde o item 3.1 mas nunca tinha sido lido por nenhuma rota.
+
+**Segunda divergência, testando um retrato solo.** Um prompt pedido só para o Vis Solum citou o pai dele, porque a descrição livre da "cena" (que na época servia tanto para retrato quanto para cena de verdade) mencionava o pai por nome. A entidade `Cena` virou `Frame` com um campo `tipo` (item 3.4c), e a rota passou a: (1) zerar a descrição do frame quando `tipo=PERSONAGEM`, e (2) só para `tipo=CENA`, fazer uma segunda leitura profunda — `fundamentar_frame` — que confere o texto do usuário contra o capítulo sem sobrescrevê-lo. Testado com IA real: a fundamentação chegou a ler o trecho errado do capítulo (uma cena bem posterior), e o prompt final saiu correto mesmo assim, porque a descrição do usuário tem prioridade sobre o contexto do livro.
 
 ### 6.7 Extração e configuração
 
@@ -1021,7 +1059,7 @@ O texto do perfil que vai para a IA é montado só com os campos preenchidos (`e
 
 1. Busca o texto do capítulo e o estado vigente de cada elemento do livro **até aquele capítulo** (mesma consulta do item 6.3, `estado_vigente_por_elemento`, limitada por `Capitulo.ordem`) — é o contexto que permite à IA responder "manter estado atual" em vez de inventar um estado novo.
 2. Confere se o texto cabe na janela do modelo escolhido (`modelo_extracao` da configuração) **antes** de chamar a IA — gastar a chamada para descobrir que não cabia seria o pior caso (item 4.3).
-3. Chama `provedor.extrair_elementos` — só identificação (fase 1 do item 4.4): tipo, nome, descrição de identidade e `manter_estado_atual`. **Não** devolve mais uma descrição de aparência; essa parte é a leitura profunda (fase 2), que só acontece mais tarde, dentro de `POST /cenas/{id}/prompts` (item 6.6).
+3. Chama `provedor.extrair_elementos` — só identificação (fase 1 do item 4.4): tipo, nome, descrição de identidade e `manter_estado_atual`. **Não** devolve mais uma descrição de aparência; essa parte é a leitura profunda (fase 2), que só acontece mais tarde, dentro de `POST /frames/{id}/prompts` (item 6.6).
 4. Tenta casar cada sugestão com um elemento já cadastrado do livro, comparando tipo e nome **sem diferenciar maiúsculas/minúsculas nem acentuação** — a IA foi instruída a repetir o nome exato de um elemento conhecido, mas variações de caixa e acento apareceram como algo razoável de tolerar sem risco de casar elementos diferentes por engano. Quando casa, preenche `elemento_id` na resposta.
 5. Faz o mesmo casamento para cada participante de cada `cena` sugerida (item 4.4) — mesma normalização, mesmo campo `elemento_id`.
 
@@ -1047,13 +1085,13 @@ Esboço do fluxo de UI, ainda sem código — o objetivo aqui é fechar **quais 
 
 ```
 Biblioteca ──(importar)──> [upload] ──> Livro
-Livro ──(abrir capítulo)──> Capítulo ──(nova cena)──> Cena ──(gerar prompt)──> Prompt ──(importar imagem)── volta para Prompt (catálogo)
+Livro ──(abrir capítulo)──> Capítulo ──(novo retrato | nova cena)──> Frame ──(gerar prompt)──> Prompt ──(importar imagem)── volta para Prompt (catálogo)
 Livro ──(ver elementos)──> Elementos do Livro
 Livro ──(perfil padrão)──> Perfis de Renderização
 Qualquer tela ──(engrenagem)──> Configuração
 ```
 
-Não há tela de "cena" ou "prompt" soltas fora de um capítulo/cena — a navegação é sempre hierárquica: **livro → capítulo → cena → prompt**, espelhando as rotas (`/livros/{id}/...`, `/capitulos/{id}/...`, `/cenas/{id}/...`, `/prompts/{id}/...`).
+Não há tela de "frame" ou "prompt" soltas fora de um capítulo/frame — a navegação é sempre hierárquica: **livro → capítulo → frame → prompt**, espelhando as rotas (`/livros/{id}/...`, `/capitulos/{id}/...`, `/frames/{id}/...`, `/prompts/{id}/...`).
 
 ### 7.2 Biblioteca
 
@@ -1079,7 +1117,7 @@ Passos 3 a 5: a estrutura de capítulos do livro, e o ponto de entrada para tudo
 
 - **Rota**: `GET /livros/{id}` (estrutura, sem texto — item 6.2).
 - **Mostra**: metadados (título, autor, idioma), perfil de renderização padrão (ou "nenhum definido"), lista de capítulos em ordem, com indicação visual dos que estão marcados como ignorados.
-- **Ações**: tocar num capítulo não-ignorado abre a tela de Capítulo (7.5); alternar o estado "ignorado" de um capítulo direto na lista (`PATCH /capitulos/{id}`, item 2.2); editar metadados e perfil padrão (`PATCH /livros/{id}`); atalho para "Elementos do livro" (7.6) e para "Perfis de renderização" (7.8); apagar o livro (`DELETE /livros/{id}`) com confirmação — é destrutivo e leva capítulos, elementos, cenas, prompts e imagens junto (item 3.4).
+- **Ações**: tocar num capítulo não-ignorado abre a tela de Capítulo (7.5); alternar o estado "ignorado" de um capítulo direto na lista (`PATCH /capitulos/{id}`, item 2.2); editar metadados e perfil padrão (`PATCH /livros/{id}`); atalho para "Elementos do livro" (7.6) e para "Perfis de renderização" (7.8); apagar o livro (`DELETE /livros/{id}`) com confirmação — é destrutivo e leva capítulos, elementos, frames, prompts e imagens junto (item 3.4).
 
 ### 7.5 Capítulo
 
@@ -1088,24 +1126,24 @@ O coração dos passos 5 a 7: ler o texto, pedir sugestões à IA, e confirmar o
 - **Rotas**: `GET /capitulos/{id}` (texto completo), `POST /capitulos/{id}/sugestoes` (passo 6, fase 1 do item 4.4), `GET /capitulos/{id}/estados-vigentes`, `POST /livros/{id}/elementos`, `POST /elementos/{id}/estados`.
 - **Mostra**: o texto do capítulo (rolável); um botão "Analisar com IA" que dispara `POST /capitulos/{id}/sugestoes` e traz a lista de elementos identificados (tipo, nome, identidade, `manter_estado_atual`) — **sem** descrição de aparência, porque essa parte só existe na leitura profunda da fase 2 (item 4.4), que acontece mais adiante, na tela de Prompt.
 - **Ações por sugestão**: confirmar (grava `Elemento` + `EstadoElemento` inicial), ajustar tipo/nome antes de confirmar, ou descartar (não faz nada — é só sugestão). Também dá para cadastrar um elemento à mão, sem passar pela IA. A lista de "estados vigentes" (item 3.4b) mostra o que já se sabe de cada elemento do livro até este ponto, útil para o usuário decidir se o que a IA sugeriu já é conhecido.
-- **Navega para**: "Nova cena" cria uma cena vinculada a este capítulo e abre a tela de Cena (7.6, vazia, pronta para escolher quem aparece); lista de cenas já criadas neste capítulo, cada uma abrindo a tela de Cena existente.
+- **Navega para**: "Novo retrato" cria um frame `tipo=PERSONAGEM` para um elemento específico e abre a tela de Frame (7.6) já com ele; "Nova cena" cria um frame `tipo=CENA` vazio (ou pré-preenchido a partir de um `frames` sugerido pela IA, item 4.4) e abre a mesma tela pronta para escolher quem mais aparece; lista de frames já criados neste capítulo (retratos e cenas, diferenciados visualmente pelo `tipo`), cada um abrindo a tela de Frame existente.
 
-### 7.6 Cena
+### 7.6 Frame
 
-O recorte narrativo que vai virar uma imagem — passo 6.4.
+O recorte de um capítulo que vai virar uma imagem — um retrato solo ou uma cena, passo 6.4.
 
-- **Rotas**: `POST /capitulos/{id}/cenas`, `GET /cenas/{id}`, `PATCH /cenas/{id}`, `PUT /cenas/{id}/estados`.
-- **Mostra**: título, descrição, atributos situacionais (horário, clima, humor) e a lista de elementos que aparecem na cena, cada um com o estado atual (item 6.4 — a API já devolve o estado com a identidade do elemento, para a tela não ter que remontar isso).
-- **Ações**: editar os campos da cena; marcar/desmarcar quais estados de elemento aparecem (a tela mostra os elementos do livro com um "toggle" — os já marcados vêm de `GET /cenas/{id}`, salvar manda a lista inteira via `PUT`, item 6.4); apagar a cena (não apaga os estados que ela citava).
-- **Navega para**: "Gerar prompt" abre a tela de Prompt (7.7) e já dispara `POST /cenas/{id}/prompts`; histórico de prompts já gerados para esta cena, cada um abrindo a tela de Prompt no modo "ver resultado existente".
+- **Rotas**: `POST /capitulos/{id}/frames`, `GET /frames/{id}`, `PATCH /frames/{id}`, `PUT /frames/{id}/estados`.
+- **Mostra**: `tipo` (retrato ou cena — não editável depois de criado, item 6.4); título; e, só para `tipo=CENA`, descrição e atributos situacionais (horário, clima, humor); a lista de elementos que aparecem no frame, cada um com o estado atual (item 6.4 — a API já devolve o estado com a identidade do elemento, para a tela não ter que remontar isso).
+- **Ações**: editar título e, se `CENA`, os demais campos; marcar/desmarcar quais estados de elemento aparecem — num retrato, a tela permite só **um** marcado por vez (a API responde 422 se vier mais de um, item 6.4); os já marcados vêm de `GET /frames/{id}`, salvar manda a lista inteira via `PUT`; apagar o frame (não apaga os estados que ele citava).
+- **Navega para**: "Gerar prompt" abre a tela de Prompt (7.7) e já dispara `POST /frames/{id}/prompts`; histórico de prompts já gerados para este frame, cada um abrindo a tela de Prompt no modo "ver resultado existente".
 
 ### 7.7 Prompt
 
 Passos 8 a 11 — onde o texto vira, de fato, o insumo para a imagem, e onde a imagem volta para o catálogo.
 
-- **Rotas**: `POST /cenas/{id}/prompts`, `GET /prompts/{id}`, `PATCH /prompts/{id}`, `POST /prompts/{id}/imagens`, `GET /imagens/{id}/arquivo`, `DELETE /imagens/{id}`.
-- **Ao gerar** (`POST /cenas/{id}/prompts`): mostra um indicador de carregamento — a leitura profunda (fase 2 do item 4.4) pode levar alguns segundos por elemento da cena, então isso não é instantâneo, e a tela precisa deixar isso claro (evita o usuário achar que travou).
-- **Mostra**: o texto do prompt pronto, com um botão "copiar" (passo 9 é manual — colar numa ferramenta de imagem externa); campo de comentário opcional, com um botão "gerar de novo com este comentário" que refaz a chamada passando `comentario` (item 4.4 — é a mesma rota, não existe "refinar" separado); histórico de tentativas anteriores da mesma cena, para comparar.
+- **Rotas**: `POST /frames/{id}/prompts`, `GET /prompts/{id}`, `PATCH /prompts/{id}`, `POST /prompts/{id}/imagens`, `GET /imagens/{id}/arquivo`, `DELETE /imagens/{id}`.
+- **Ao gerar** (`POST /frames/{id}/prompts`): mostra um indicador de carregamento — as leituras profundas (item 4.4: uma por elemento, e mais uma de fundamentação da cena se `tipo=CENA`) podem levar alguns segundos, então isso não é instantâneo, e a tela precisa deixar isso claro (evita o usuário achar que travou). Um frame `PERSONAGEM` é mais rápido — não tem a fundamentação de cena.
+- **Mostra**: o texto do prompt pronto, com um botão "copiar" (passo 9 é manual — colar numa ferramenta de imagem externa); campo de comentário opcional, com um botão "gerar de novo com este comentário" que refaz a chamada passando `comentario` (item 4.4 — é a mesma rota, não existe "refinar" separado, e o comentário tem prioridade sobre tudo o mais); histórico de tentativas anteriores do mesmo frame, para comparar.
 - **Importar imagem** (passos 10-11): depois de gerar a imagem numa ferramenta externa, o usuário volta ao app e usa o seletor de arquivo do sistema para escolher a imagem, que sobe via `POST /prompts/{id}/imagens`. As imagens já importadas aparecem em miniatura (buscando o arquivo por `GET /imagens/{id}/arquivo`); tocar numa abre em tamanho cheio, com a opção de apagar (`DELETE /imagens/{id}`).
 - **Avaliação**: campo de texto livre para anotar como a imagem ficou (`PATCH /prompts/{id}` — item 3.1/6.6), útil para comparar modelos depois.
 - **Referências visuais** (item 4.5): se `referencias_visuais` vier não-vazio, a tela mostra essas imagens-âncora com um aviso — "anexe também, para manter a aparência consistente" — antes do botão de copiar. É uma sugestão para a ferramenta externa que aceitar imagem de referência (o Gemini aceita); a API não anexa nada sozinha.
@@ -1147,7 +1185,7 @@ Acessível de qualquer tela.
 
 - [ ] Confirmar formalmente o stack mobile (assumido Kotlin + Jetpack Compose nativo Android).
 - [x] ~~Definir estrutura de pastas/módulos do projeto Python (FastAPI).~~ Concluído — ver item **1.5**.
-- [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**, todas as seções (6.2 a 6.7): livros, capítulos, elementos e estados, cenas, perfis de renderização, prompts e catálogo de imagens, configuração e sugestões de IA.
+- [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**, todas as seções (6.2 a 6.7): livros, capítulos, elementos e estados, frames, perfis de renderização, prompts e catálogo de imagens, configuração e sugestões de IA.
 - [x] ~~Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).~~ Concluído — **Etapa 7**: dez telas mapeadas às rotas da Etapa 6, mais o mapa de navegação. Ainda sem código — falta criar o projeto Android, próximo item desta lista.
 - [x] ~~Permitir marcar um capítulo como ignorado.~~ Concluído — campo `Capitulo.ignorado`, pré-sugerido pela importação e confirmado pelo usuário (itens 2.2 e 3.4a). Exposto na API (item 6.2) e na tela de Livro (item 7.4).
 - [ ] Criar o projeto Android (Kotlin + Jetpack Compose) e implementar as telas da Etapa 7.
