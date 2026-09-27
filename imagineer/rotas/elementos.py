@@ -288,6 +288,17 @@ def criar_estados_de_sugestoes(
     resolve o caso em que a IA sugeriu o mesmo personagem em capítulos
     diferentes sem casar pelo nome, sem o usuário copiar a descrição de cada
     sugestão à mão, uma chamada por capítulo.
+
+    **A descrição de cada Estado criado aqui é um rascunho, não a aparência
+    do capítulo.** Vem da sugestão de identidade (fase 1, item 4.4 — "quem é",
+    documentada como algo que não muda entre capítulos), não de uma leitura
+    do texto daquele capítulo especificamente. Por isso vários estados criados
+    por aqui podem sair com o mesmo texto, mesmo sendo capítulos diferentes —
+    isso não significa que não há nada novo no capítulo, só que a leitura
+    profunda ainda não rodou pra esse estado. Ela roda sozinha, e sobrescreve
+    esse rascunho, na primeira vez que um prompt é montado a partir dele
+    (`POST /frames/{id}/prompts`) — mesmo princípio de `estado_inicial` em
+    `POST /livros/{id}/elementos`.
     """
     elemento = _buscar_elemento(sessao, elemento_id)
     sugestoes = _sugestoes_de_elemento_do_livro(

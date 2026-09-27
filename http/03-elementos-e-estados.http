@@ -11,7 +11,7 @@ POST {{baseUrl}}/livros/1/elementos
 Content-Type: application/json
 
 {
-  "sugestoes_elemento_ids": [1]
+  "sugestoes_elemento_ids": [6]
 }
 
 > {%
@@ -105,6 +105,12 @@ Content-Type: application/json
 ### O mesmo, mas para um elemento já cadastrado — rota separada (item 3.4e)
 # Separada de POST /elementos/{id}/estados porque aquela cria um estado só e
 # devolve um objeto; esta cria um por sugestão e devolve uma lista.
+# A descrição de cada estado criado aqui é um RASCUNHO — vem da identidade da
+# sugestão (fase 1, que não muda entre capítulos), não da aparência real
+# daquele capítulo. Por isso pode sair igual em capítulos diferentes; não
+# significa que não houve nada novo. A leitura profunda substitui isso pela
+# aparência de verdade na primeira vez que POST /frames/{id}/prompts for
+# chamado a partir desse estado — não antes.
 # POST {{baseUrl}}/elementos/{{elementoId}}/estados-de-sugestoes
 # Content-Type: application/json
 #
