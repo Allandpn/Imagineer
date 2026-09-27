@@ -716,6 +716,7 @@ Os endpoints que o app mobile consome. O desenho cobre o fluxo inteiro da Etapa 
 | Recurso não encontrado | 404 |
 | Corpo da requisição malformado | 422, com o detalhe que o FastAPI já gera |
 | EPUB inválido ou sem texto | 422, com a mensagem de `ArquivoEpubInvalido` |
+| Conflito com uma restrição do banco, como cadastrar o mesmo elemento duas vezes | 409 |
 | Arquivo acima do limite | 413 |
 
 **Sem paginação.** Uma biblioteca pessoal tem dezenas de livros, e a listagem de capítulos mais longa dos dezoito de validação tem 105 itens. Paginar agora seria complexidade sem problema correspondente.
@@ -759,17 +760,45 @@ para ler `multipart/form-data`, e sem ela a rota nem é registrada.
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `GET /livros/{id}/elementos` | Os elementos do livro, com o estado mais recente de cada | a implementar |
-| `POST /livros/{id}/elementos` | Cadastra um elemento confirmado pelo usuário (passo 7) | a implementar |
-| `GET /elementos/{id}` | O elemento com todos os seus estados | a implementar |
-| `PATCH /elementos/{id}` | Ajusta nome, tipo e descrição | a implementar |
-| `DELETE /elementos/{id}` | Remove o elemento e seus estados | a implementar |
-| `POST /elementos/{id}/estados` | Registra um novo estado a partir de um capítulo | a implementar |
-| `PATCH /estados/{id}` | Ajusta a descrição ou define a imagem-âncora | a implementar |
-| `DELETE /estados/{id}` | Remove um estado | a implementar |
-| `GET /capitulos/{id}/estados-vigentes` | O estado vigente de cada elemento naquele ponto da narrativa | a implementar |
+| `GET /livros/{id}/elementos` | Os elementos do livro, com o estado mais recente de cada | **implementado** |
+| `POST /livros/{id}/elementos` | Cadastra um elemento confirmado pelo usuário (passo 7) | **implementado** |
+| `GET /elementos/{id}` | O elemento com todos os seus estados | **implementado** |
+| `PATCH /elementos/{id}` | Ajusta nome, tipo e descrição | **implementado** |
+| `DELETE /elementos/{id}` | Remove o elemento e seus estados | **implementado** |
+| `POST /elementos/{id}/estados` | Registra um novo estado a partir de um capítulo | **implementado** |
+| `PATCH /estados/{id}` | Ajusta a descrição ou define a imagem-âncora | **implementado** |
+| `DELETE /estados/{id}` | Remove um estado | **implementado** |
+| `GET /capitulos/{id}/estados-vigentes` | O estado vigente de cada elemento naquele ponto da narrativa | **implementado** |
 
-`GET /capitulos/{id}/estados-vigentes` é a consulta descrita no item 3.4b, exposta como rota porque é o que dá contexto à IA no passo 6 e ao usuário na tela de revisão.
+**`GET /livros/{id}/elementos` traz o estado mais recente de cada elemento**, e aceita `?tipo=PERSONAGEM` para a tela poder separar por tipo. "Mais recente" é pela ordem **narrativa**, não pela data de criação: o último estado em ordem de capítulo (item 3.4b).
+
+**`GET /capitulos/{id}/estados-vigentes`** é a consulta do item 3.4b exposta como rota, porque é o que dá contexto à IA no passo 6 e ao usuário na tela de revisão. Devolve **todos** os elementos do livro, cada um com o estado que vigorava naquele ponto — ou `null`, quando o elemento ainda não tinha aparecido. O `null` é informação útil: significa "primeira aparição", e é o caso em que não há estado anterior para mandar à IA.
+
+As duas rotas usam uma consulta só, com função de janela, em vez de uma consulta por elemento. A implementação fica em `imagineer/servicos/estados_de_elemento.py` — foi tirada dos testes do item 3.4b, onde vivia como protótipo.
+
+**Criar elemento e primeiro estado no mesmo pedido.** O `POST /livros/{id}/elementos` aceita um `estado_inicial` opcional, porque é assim que o passo 7 funciona: o usuário confirma que o personagem existe *e* como ele está naquele capítulo. Em dois pedidos separados, uma falha no meio deixaria um elemento sem estado nenhum.
+
+**Cadastrar o mesmo elemento duas vezes responde 409.** A restrição de unicidade (`livro_id`, `tipo`, `nome`) do item 3.4b existe justamente porque a extração automática reencontra o mesmo personagem em outro capítulo. A resposta traz o id do elemento que já existe, para o app poder oferecer "usar o existente" em vez de só reclamar.
+
+**O capítulo de um estado precisa ser do mesmo livro do elemento.** Nada no banco impede associar um estado a um capítulo de outro livro — as duas chaves estrangeiras são independentes. A rota verifica e responde 422, porque o dado resultante seria silenciosamente incoerente: o estado apareceria na narrativa errada.
+
+#### O que foi implementado
+
+As nove rotas, com 26 testes. A consulta de estado vigente saiu dos testes do item
+3.4b e virou `imagineer/servicos/estados_de_elemento.py`.
+
+Ela usa **função de janela** (`ROW_NUMBER() OVER (PARTITION BY ...)`) para pegar
+um estado por elemento numa ida só ao banco. A alternativa ingênua seria uma
+consulta por elemento: com 50 elementos cadastrados, 50 consultas para montar uma
+tela. Verificado antes de escrever que o SQLite dos testes também suporta função
+de janela, então o mesmo código roda nos dois bancos.
+
+Verificado contra o servidor rodando, com *O Alienista*: cadastrei "Simão
+Bacamarte" com um estado no capítulo de ordem 3 e dois estados posteriores
+(ordens 7 e 12), e a rota de estados vigentes devolveu, em cada ponto, a descrição
+certa — "Homem de ciência, sóbrio" no capítulo 3, "Barba crescida, olhar
+obsessivo" no 7, "Recolhido na Casa Verde" no 12. A "Casa Verde", cadastrada sem
+estado, aparece nos três com `estado_vigente` nulo.
 
 ### 6.4 Cenas
 

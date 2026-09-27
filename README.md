@@ -91,6 +91,7 @@ O modelo do MVP está completo.
 | Serviço | Item | O que faz |
 |---|---|---|
 | `servicos/importacao_epub.py` | 2.2 | Lê um EPUB e o estrutura em Livro + Capítulos, sugerindo o que não é narrativa. Validado contra dezoito livros publicados, sem esconder nenhum capítulo |
+| `servicos/estados_de_elemento.py` | 3.4b, 6.3 | Descobre o estado vigente de cada elemento num ponto da narrativa |
 
 ### Rotas disponíveis
 
@@ -103,6 +104,15 @@ O modelo do MVP está completo.
 | `DELETE /livros/{id}` | Remove o livro e tudo que depende dele |
 | `GET /capitulos/{id}` | O capítulo com o texto |
 | `PATCH /capitulos/{id}` | Ajusta `titulo` e `ignorado` |
+| `GET /livros/{id}/elementos` | Os elementos do livro, com o estado mais recente de cada |
+| `POST /livros/{id}/elementos` | Cadastra um elemento, opcionalmente com o primeiro estado |
+| `GET /elementos/{id}` | O elemento com todos os seus estados |
+| `PATCH /elementos/{id}` | Ajusta nome, tipo e descrição |
+| `DELETE /elementos/{id}` | Remove o elemento e seus estados |
+| `POST /elementos/{id}/estados` | Registra um novo estado a partir de um capítulo |
+| `PATCH /estados/{id}` | Ajusta a descrição ou define a imagem-âncora |
+| `DELETE /estados/{id}` | Remove um estado |
+| `GET /capitulos/{id}/estados-vigentes` | Como estava cada elemento neste ponto da narrativa |
 
 O desenho completo da API, incluindo as rotas ainda não implementadas, está na Etapa 6 da especificação.
 
