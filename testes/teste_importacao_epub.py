@@ -893,9 +893,13 @@ def teste_sugere_ignorar_anuncio_de_outro_livro_da_editora() -> None:
         "com-anuncio.epub",
     )
 
-    anuncios = [c for c in extraido.capitulos if c.titulo is None]
+    # Procurado pelo conteudo, e nao por titulo: desde que existe titulo de
+    # reserva tirado da primeira linha, a pagina de anuncio ganha como titulo o
+    # nome do livro anunciado.
+    anuncios = [c for c in extraido.capitulos if "Mensageira" in c.texto]
     assert len(anuncios) == 1
     assert anuncios[0].ignorado is True
+    assert anuncios[0].titulo == "Mensageira da sorte"
 
 
 def teste_numero_de_treze_digitos_que_nao_e_isbn_nao_conta() -> None:
@@ -1029,3 +1033,123 @@ def teste_titulo_numerado_e_protegido_mesmo_parecendo_apendice() -> None:
     assert por_titulo["1. Prefácio"] is False
     assert por_titulo["2. Primeiro capítulo"] is False
     assert por_titulo["Prefácio"] is True
+
+
+# --------------------------------------------------------------------------- #
+# Titulo de reserva e livro so de imagem
+# --------------------------------------------------------------------------- #
+
+
+def teste_titulo_vem_do_texto_quando_falta_no_indice() -> None:
+    """Muitos livros põem o nome do capítulo no corpo, não no índice.
+
+    Caso real: em *Tress, a garota do Mar Esmeralda*, 80 dos 84 capítulos não têm
+    entrada no índice — mas o primeiro parágrafo de cada um é o nome dele
+    ("A GAROTA", "O JARDINEIRO").
+    """
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>A GAROTA</p><p>{TEXTO_LONGO}</p>", None),
+                (f"<p>O JARDINEIRO</p><p>{TEXTO_LONGO}</p>", None),
+            ],
+            com_indice=False,
+        ),
+        "tress.epub",
+    )
+
+    assert [c.titulo for c in extraido.capitulos] == ["A GAROTA", "O JARDINEIRO"]
+
+
+def teste_titulo_do_indice_tem_precedencia_sobre_o_texto() -> None:
+    """O índice é a fonte preferida; o texto é só reserva."""
+    extraido = extrair_epub(
+        _montar_epub(capitulos=[(f"<p>OUTRA COISA</p><p>{TEXTO_LONGO}</p>", "Do índice")]),
+        "livro.epub",
+    )
+
+    assert extraido.capitulos[0].titulo == "Do índice"
+
+
+def teste_primeira_frase_da_narrativa_nao_vira_titulo() -> None:
+    """Uma frase não é título, e virar título seria pior que ficar sem.
+
+    Duas condições separam "A GAROTA" de uma frase: o tamanho e a pontuação
+    final. Sem elas, um capítulo que começa com diálogo ganharia como título
+    "— Levante-se." ou o primeiro parágrafo inteiro da história.
+    """
+    frase_longa = (
+        "A sensação de queimação desanuvia, tão devagar que nem sei ao certo "
+        "quando ela de fato termina."
+    )
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{frase_longa}</p><p>{TEXTO_LONGO}</p>", None),
+                (f"<p>— Levante-se.</p><p>{TEXTO_LONGO}</p>", None),
+            ],
+            com_indice=False,
+        ),
+        "livro.epub",
+    )
+
+    assert [c.titulo for c in extraido.capitulos] == [None, None]
+
+
+def teste_titulo_de_reserva_tambem_alimenta_a_sugestao() -> None:
+    """Se o texto começa com "Créditos", isso vale como se viesse do índice."""
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Capítulo 1"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Capítulo 2"),
+                (f"<p>Créditos</p><p>{TEXTO_LONGO * 10}</p>", None),
+            ]
+        ),
+        "livro.epub",
+    )
+
+    creditos = [c for c in extraido.capitulos if c.titulo == "Créditos"]
+    assert len(creditos) == 1
+    assert creditos[0].ignorado is True
+
+
+def teste_livro_so_de_imagem_recebe_mensagem_explicativa() -> None:
+    """Uma história em quadrinhos é um EPUB válido sem texto para extrair.
+
+    Caso real: *Persépolis 2* tem 192 páginas e 192 imagens, e zero caractere de
+    texto — o texto está desenhado dentro dos quadros. Dizer apenas "nenhum
+    capítulo encontrado" deixaria o usuário procurando um defeito que não existe.
+    """
+    livro = epub.EpubBook()
+    livro.set_identifier("urn:teste:hq")
+    livro.set_title("Uma HQ")
+    livro.set_language("pt-BR")
+
+    paginas = []
+    for numero in range(1, 5):
+        imagem = epub.EpubImage(
+            uid=f"img{numero}",
+            file_name=f"pagina{numero}.png",
+            media_type="image/png",
+            content=b"\x89PNG\r\n\x1a\n",
+        )
+        livro.add_item(imagem)
+        pagina = epub.EpubHtml(title="", file_name=f"p{numero}.xhtml", lang="pt-BR")
+        pagina.content = f'<div><img src="pagina{numero}.png"/></div>'
+        livro.add_item(pagina)
+        paginas.append(pagina)
+
+    livro.add_item(epub.EpubNcx())
+    livro.add_item(epub.EpubNav())
+    livro.spine = ["nav", *paginas]
+
+    buffer = io.BytesIO()
+    epub.write_epub(buffer, livro)
+
+    with pytest.raises(ArquivoEpubInvalido) as erro:
+        extrair_epub(buffer.getvalue(), "hq.epub")
+
+    mensagem = str(erro.value)
+    assert "livro de imagens" in mensagem
+    assert "quadrinhos" in mensagem

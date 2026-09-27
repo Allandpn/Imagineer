@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
 import lxml.html
-from ebooklib import ITEM_DOCUMENT, epub
+from ebooklib import ITEM_DOCUMENT, ITEM_IMAGE, epub
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -79,8 +79,9 @@ desmarcar. Daí 10%. Os seis livros acrescentados depois confirmaram o limite: c
 ele, nenhum dos quinze esconde narrativa.
 
 O critério é **relativo à mediana do próprio livro**, não absoluto: a mediana
-variou de 4 mil (*The Sherlock Holmes Handbook*) a 29 mil caracteres (*Mistborn*)
-entre os quinze. Um limite fixo serviria para um livro e falharia nos outros.
+variou de mil caracteres (*Robert Frost: Selected Early Poems*, poemas curtos) a
+89 mil (*Treasure Island*, que sai como um capítulo só) entre os dezoito. Um
+limite fixo serviria para um livro e falharia nos outros.
 """
 
 _PREFIXOS_DE_ISBN = ("978", "979")
@@ -94,6 +95,19 @@ dígitos começando em 978 ou 979 não aparece em prosa.
 
 Quando o critério foi criado, essas páginas eram 6 dos 12 apêndices que
 passavam nos nove primeiros livros de validação.
+"""
+
+MAXIMO_DO_TITULO_DE_RESERVA = 80
+"""Tamanho máximo da primeira linha para ela servir de título do capítulo.
+
+Muitos livros põem o título do capítulo no corpo do texto e não no índice. Em
+*Tress, a garota do Mar Esmeralda*, 80 dos 84 capítulos não têm entrada no
+índice — mas o primeiro parágrafo de cada um é o nome dele ("A GAROTA",
+"O JARDINEIRO"). O mesmo vale para a coletânea de poemas de Robert Frost, onde o
+índice aponta para a nota editorial e o poema em si fica sem rótulo.
+
+Medido nos dezoito livros de validação: dos 116 capítulos sem título no índice,
+103 (89%) ganham um título sensato assim.
 """
 
 _TAGS_DE_BLOCO = ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "tr", "pre")
@@ -116,7 +130,7 @@ _ROTULOS_NAO_NARRATIVOS = (
 
 Comparados **sem acento e em minúsculas**, e só no começo do título — "Notas ao
 Canto 1" casa com ``nota``, mas um capítulo chamado "A nota final" não casaria.
-A lista vem dos quinze livros reais usados na validação, e tem os equivalentes
+A lista vem dos dezoito livros reais usados na validação, e tem os equivalentes
 em inglês porque um deles é em inglês — os rótulos em português não pegariam
 "Acknowledgments" nem "About the Author". É uma heurística de sugestão, não uma
 regra: o usuário confirma.
@@ -231,10 +245,7 @@ def extrair_epub(conteudo: bytes, nome_arquivo: str) -> LivroExtraido:
 
     capitulos = _extrair_capitulos(epub_lido)
     if not capitulos:
-        raise ArquivoEpubInvalido(
-            f"O arquivo {nome_arquivo!r} é um EPUB válido, mas nenhum capítulo com "
-            "texto foi encontrado nele."
-        )
+        raise ArquivoEpubInvalido(_motivo_de_nao_achar_capitulo(epub_lido, nome_arquivo))
 
     return LivroExtraido(
         titulo=_primeiro_metadado(epub_lido, "title") or _titulo_do_nome(nome_arquivo),
@@ -243,6 +254,36 @@ def extrair_epub(conteudo: bytes, nome_arquivo: str) -> LivroExtraido:
         identificador_epub=_identificador_unico(epub_lido),
         nome_arquivo=nome_arquivo,
         capitulos=capitulos,
+    )
+
+
+def _motivo_de_nao_achar_capitulo(epub_lido: epub.EpubBook, nome_arquivo: str) -> str:
+    """Monta a mensagem de erro explicando por que o livro não rendeu capítulos.
+
+    Vale distinguir o livro **só de imagem** do arquivo simplesmente vazio: uma
+    história em quadrinhos é um EPUB perfeitamente válido em que cada página é uma
+    imagem, e o texto está desenhado dentro dela. *Persepólis 2* tem 192
+    documentos e 192 imagens, e zero caractere de texto. Dizer apenas "nenhum
+    capítulo encontrado" deixaria o usuário procurando um defeito que não existe.
+    """
+    documentos = [
+        item
+        for item in epub_lido.get_items_of_type(ITEM_DOCUMENT)
+        if not isinstance(item, (epub.EpubNav, epub.EpubNcx))
+    ]
+    imagens = list(epub_lido.get_items_of_type(ITEM_IMAGE))
+
+    if documentos and len(imagens) >= len(documentos) / 2:
+        return (
+            f"O arquivo {nome_arquivo!r} parece ser um livro de imagens — uma história "
+            f"em quadrinhos ou um livro digitalizado: são {len(documentos)} páginas e "
+            f"{len(imagens)} imagens, sem texto para extrair. O Imagineer trabalha a "
+            "partir do texto do livro, então não há o que importar daqui."
+        )
+
+    return (
+        f"O arquivo {nome_arquivo!r} é um EPUB válido, mas nenhum capítulo com texto "
+        "foi encontrado nele."
     )
 
 
@@ -342,22 +383,26 @@ def _extrair_capitulos(epub_lido: epub.EpubBook) -> list[CapituloExtraido]:
 
     mediana = statistics.median([len(p.texto) for p in pedacos])
 
-    return [
-        CapituloExtraido(
-            # A ordem é atribuída depois dos descartes: começa em 1 e não tem
-            # lacunas. O que importa é a sequência de leitura do conteúdo, não a
-            # posição original no arquivo.
-            ordem=posicao,
-            titulo=pedaco.titulo,
-            texto=pedaco.texto,
-            ignorado=_sugerir_ignorar(
-                titulo=pedaco.titulo,
+    capitulos = []
+    for posicao, pedaco in enumerate(pedacos, start=1):
+        # O título de reserva é resolvido antes da sugestão, de propósito: se o
+        # texto começa com "Créditos" ou "Prefácio", essa informação vale tanto
+        # quanto se viesse do índice.
+        titulo = pedaco.titulo or _titulo_do_texto(pedaco.texto)
+        capitulos.append(
+            CapituloExtraido(
+                # A ordem é atribuída depois dos descartes: começa em 1 e não tem
+                # lacunas. O que importa é a sequência de leitura do conteúdo, não
+                # a posição original no arquivo.
+                ordem=posicao,
+                titulo=titulo,
                 texto=pedaco.texto,
-                mediana=mediana,
-            ),
+                ignorado=_sugerir_ignorar(
+                    titulo=titulo, texto=pedaco.texto, mediana=mediana
+                ),
+            )
         )
-        for posicao, pedaco in enumerate(pedacos, start=1)
-    ]
+    return capitulos
 
 
 def _juntar_continuacoes(pedacos: list[_Pedaco]) -> list[_Pedaco]:
@@ -555,7 +600,7 @@ def _sugerir_ignorar(
     """Diz se este capítulo **parece** não ser narrativa.
 
     É só uma sugestão: nada é descartado, e o usuário confirma ou desmarca. A
-    validação em quinze livros reais mostrou que nenhum critério automático separa
+    validação em dezoito livros reais mostrou que nenhum critério automático separa
     narrativa de apêndice com segurança, então a decisão fica com quem lê.
 
     Três sinais sugerem, e um protege — nesta ordem de precedência:
@@ -573,7 +618,8 @@ def _sugerir_ignorar(
     seções e o material pré/pós-textual na raiz — o que vale em três dos nove
     livros. Mas em *O Processo* a única seção aninhada é "Fragmentos", o apêndice,
     e os doze capítulos reais estão na raiz: o sinal se inverte e esconde o
-    romance inteiro. Ele contribuía com exatamente um item nos quinze livros, e o
+    romance inteiro. Ele contribuía com exatamente um item nos nove primeiros
+    livros de validação, e o
     risco era esse. Ver item 2.2 da especificação.
     """
     normalizado = _normalizar(titulo)
@@ -782,6 +828,24 @@ def _primeiro_metadado(epub_lido: epub.EpubBook, campo: str) -> str | None:
 
     valor = (valores[0][0] or "").strip()
     return valor or None
+
+
+def _titulo_do_texto(texto: str) -> str | None:
+    """Tira um título da primeira linha do capítulo, quando ela parece um título.
+
+    Muitos livros põem o nome do capítulo no corpo do texto e não no índice. Ver
+    ``MAXIMO_DO_TITULO_DE_RESERVA`` para os números medidos.
+
+    Duas condições evitam transformar a primeira frase da narrativa em título:
+    a linha precisa ser curta, e não pode terminar em pontuação de frase. É o que
+    separa "A GAROTA" de "— Levante-se." ou de um parágrafo que começa a história.
+    """
+    primeira = texto.split("\n", 1)[0].strip()
+    if not primeira or len(primeira) > MAXIMO_DO_TITULO_DE_RESERVA:
+        return None
+    if primeira[-1] in ".,;:!?":
+        return None
+    return primeira
 
 
 def _titulo_do_nome(nome_arquivo: str) -> str:

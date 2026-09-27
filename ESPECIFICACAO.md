@@ -176,18 +176,20 @@ rosto, créditos, índice aninhado em partes e uma entrada apontando para âncor
 meio de um capítulo. É onde um parsing ingênuo produz capítulo duplicado, título
 trocado ou capa virada capítulo.
 
-**3. Quinze livros publicados de verdade.** Alguns são EPUB 3, outros EPUB 2,
+**3. Dezoito livros publicados de verdade.** Alguns são EPUB 3, outros EPUB 2,
 vários passaram por conversão no Calibre. Esta etapa foi a que mais valeu, e a
 variedade de formato é que fez o trabalho:
 
 | Tipo | Livros |
 |---|---|
-| Romance | *A Vontade de Muitos*, *Mistborn: O Império Final*, *O Poço da Ascensão*, *Tress, a garota do Mar Esmeralda*, *Devoradores de Estrelas*, *Perdido em Marte*, *O apanhador no campo de centeio*, *O estrangeiro*, *O Processo* |
+| Romance | *A Vontade de Muitos*, *Mistborn: O Império Final*, *O Poço da Ascensão*, *Tress, a garota do Mar Esmeralda*, *Devoradores de Estrelas*, *Perdido em Marte*, *O apanhador no campo de centeio*, *O estrangeiro*, *O Processo*, *Treasure Island* |
 | Romance epistolar | *Flores para Algernon* |
 | Novela com aparato crítico | *O Alienista* |
 | Poema épico com notas do tradutor | *Odisseia* |
+| Coletânea de poemas | *Robert Frost: Selected Early Poems* |
 | Coletânea de contos | *Os 100 Melhores Contos de Humor*, *Os 100 Melhores Contos de Crime e Mistério* |
 | Livro técnico, em inglês | *The Sherlock Holmes Handbook* |
+| História em quadrinhos | *Persépolis 2* |
 
 #### Os defeitos que só os livros reais mostraram
 
@@ -235,6 +237,18 @@ regressão, reproduzidos com EPUBs sintéticos equivalentes.
    A lista de rótulos ganhou os equivalentes em inglês, e a proteção por título
    narrativo ganhou `chapter`, `prologue`, `part` e companhia.
 
+9. **Capítulos sem nome.** Em *Tress, a garota do Mar Esmeralda*, 80 dos 84
+   capítulos não têm entrada no índice — o livro tem 106 documentos e 15 entradas.
+   Eram importados sem título, e a lista no app ficaria com 80 linhas em branco.
+   Na coletânea de Robert Frost acontecia algo parecido: o índice aponta para a
+   nota editorial que precede cada poema, e o poema em si ficava sem rótulo.
+
+10. **Mensagem inútil para livro de imagem.** *Persépolis 2* é uma história em
+    quadrinhos: 192 páginas, 192 imagens, zero caractere de texto — o texto está
+    desenhado dentro dos quadros. A importação recusava o arquivo, o que é
+    correto, mas dizia apenas "nenhum capítulo com texto foi encontrado", o que
+    deixaria o usuário procurando um defeito que não existe.
+
 #### Os quatro sinais testados para separar narrativa de apêndice
 
 | Sinal | Situação |
@@ -274,13 +288,23 @@ Duas situações de borda, resolvidas no sentido de nunca perder texto:
 - **Texto antes da primeira âncora.** O Calibre parte arquivos grandes em pedaços numerados, e o corte cai no meio de um capítulo — o arquivo seguinte começa com o resto do capítulo anterior. Em *Flores para Algernon* eram 42 mil caracteres. Esse trecho é marcado como continuação e **colado de volta** no capítulo anterior, em vez de virar um capítulo sem título.
 - **Duas âncoras no mesmo filho do corpo.** Não há onde cortar, então as duas entradas viram um pedaço só, com o título da primeira. Juntar é preferível a arriscar perder texto.
 
+#### Título de reserva, tirado do texto
+
+Quando um capítulo não tem entrada no índice, o título é tirado da **primeira linha do próprio texto** — porque muitos livros põem o nome do capítulo no corpo e não no índice.
+
+Duas condições evitam transformar a primeira frase da narrativa em título: a linha precisa ter no máximo 80 caracteres e não pode terminar em pontuação de frase. É o que separa "A GAROTA" de "— Levante-se." ou do parágrafo que abre a história.
+
+Medido nos dezoito livros: dos 116 capítulos sem título no índice, **103 (89%) ganham um título sensato**. Em *Tress* são 73 de 80, recuperando os nomes reais dos capítulos; na coletânea de Frost, todos os 79 poemas ficam nomeados.
+
+O título de reserva é resolvido **antes** da sugestão de ignorar, de propósito: se o texto começa com "Créditos", essa informação vale tanto quanto se viesse do índice. Verificado que isso não mudou nenhuma sugestão nos dezoito livros já validados.
+
 #### Sugestão de capítulo ignorado
 
 Um capítulo é **sugerido** como ignorado quando qualquer um destes vale:
 
 1. O título começa com um rótulo conhecido de material não-narrativo (`Créditos`, `Glossário`, `Notas`, `Sobre o autor`, `Apêndice`, `Índice`, `Cronologia`…), comparado sem acento e em minúsculas.
 2. O texto contém um **ISBN** — um número de 13 dígitos começando em 978 ou 979. É o que reconhece as páginas de "compre agora e leia" que os e-books comerciais trazem no fim: elas não têm título nenhum, então nenhum outro critério as pega, e um ISBN não aparece em prosa narrativa.
-3. O texto tem menos de **10%** da mediana do próprio livro. O critério é relativo porque a mediana variou de 4 mil a 29 mil caracteres entre os quinze livros — um limite fixo serviria para um e falharia nos outros.
+3. O texto tem menos de **10%** da mediana do próprio livro. O critério é relativo porque a mediana variou de **mil** caracteres (*Robert Frost*, poemas curtos) a **89 mil** (*Treasure Island*, um capítulo só) entre os dezoito livros — um limite fixo serviria para um e falharia nos outros.
 
 E um critério **protege**, vencendo o de tamanho: um título claramente narrativo. Vale para:
 
@@ -292,7 +316,7 @@ E um critério **protege**, vencendo o de tamanho: um título claramente narrati
 
 A ordem dos critérios é rótulo, ISBN, proteção, tamanho — do mais confiável ao mais frouxo. Na prática rótulo e proteção não colidem, porque a comparação de rótulo é por prefixo: um título que começa com número não casa com nenhum rótulo, então um hipotético "1. Prefácio" acaba mantido. É o erro seguro.
 
-#### Resultado nos quinze livros
+#### Resultado nos dezoito livros
 
 | Livro | Capítulos | Sugeridos como ignorados |
 |---|---|---|
@@ -309,21 +333,33 @@ A ordem dos critérios é rótulo, ISBN, proteção, tamanho — do mais confiá
 | O Processo | 23 | 2 |
 | O Alienista | 19 | 5 |
 | The Sherlock Holmes Handbook | 52 | 5 |
+| Robert Frost: Selected Early Poems | 79 | 0 |
 | Os 100 Melhores Contos de Humor | 105 | 4 |
 | Os 100 Melhores Contos de Crime e Mistério | 104 | 4 |
-| **Total** | **785** | **118** |
+| Treasure Island | 1 | 0 |
+| Persépolis 2 | — | recusado, por ser livro de imagem |
 
-**Nenhum capítulo narrativo é escondido em nenhum dos quinze livros.** Alguns acertos que valem registro:
+**Nenhum capítulo narrativo é escondido em nenhum dos dezoito livros.** Alguns acertos que valem registro:
 
 - *Flores para Algernon*: os 17 relatórios de progresso, remontados a partir de 13 arquivos em que as fronteiras eram âncoras.
 - *Odisseia*: os 24 cantos limpos, com os 24 documentos de "Notas ao Canto" sugeridos.
 - *O Processo*: os 12 capítulos do romance e os 11 fragmentos.
 - *O apanhador no campo de centeio*: os 26 capítulos, inclusive o de número 26, com 1.523 caracteres — 11% da mediana — salvo pela proteção de título.
-- *As duas coletâneas*: os 100 contos de cada uma, inclusive fábulas de Esopo de 600 caracteres.
-- *The Sherlock Holmes Handbook*: os 47 verbetes, com `Introduction`, `Acknowledgments`, `About the Author` e a página de copyright sugeridos.
-- *Tress*: os 75 capítulos, que **não têm título** no índice, com as notas de tradução e os cinco anúncios da editora sugeridos.
+- *As duas coletâneas de contos*: os 100 contos de cada uma, inclusive fábulas de Esopo de 600 caracteres.
+- *Robert Frost*: os 79 poemas, todos nomeados, nenhum sugerido — o mais curto tem 215 caracteres.
+- *Tress*: os 75 capítulos, que não têm título no índice, agora nomeados a partir do texto.
 
-Sobra menos de um item não-narrativo mantido por livro — cada um a um toque de ser desmarcado.
+#### Limitações conhecidas
+
+**Livro num único documento.** *Treasure Island* empacota o romance inteiro num só arquivo de 88 mil caracteres, sem âncoras no índice e sem uma única tag de cabeçalho: sai como **um capítulo**, o que é pouco útil para o fluxo do sistema.
+
+Dividir pelos marcadores de capítulo que existem no texto foi testado e **descartado com medição**. A heurística seria destrutiva nos outros livros: em *A Vontade de Muitos* e *Perdido em Marte* ela encontra 74 e 26 marcadores na página de sumário; nas duas coletâneas de contos, os marcadores `I`, `II`, `III` são divisões internas de um mesmo conto, e dividir ali quebraria contos em pedaços de 300 caracteres. E no próprio *Treasure Island* ela não dispara, porque os parágrafos estão aninhados em `div` em vez de soltos no corpo. Um capítulo grande de menos é melhor que contos estraçalhados; o caminho, se a necessidade voltar, é deixar o usuário dividir um capítulo à mão no app.
+
+Esse mesmo arquivo também traz metadados de **outro livro** — declara-se *Death and the Afterlife in Ancient Egypt*, de John H. Taylor. Não há o que fazer: a importação é fiel ao que o arquivo declara.
+
+**Livro de imagem.** Uma história em quadrinhos ou um livro digitalizado não tem texto para extrair, e é recusado com mensagem explicando isso. O Imagineer trabalha a partir do texto.
+
+**Material não-narrativo que sobra.** Menos de um item por livro, em média — cada um a um toque de ser desmarcado.
 
 ---
 
@@ -409,7 +445,7 @@ Restrição de unicidade em (`livro_id`, `ordem`): dois capítulos não podem oc
 
 Apagar um Livro apaga seus Capítulos (`ON DELETE CASCADE`), em dois níveis: no banco e no ORM. Um capítulo não existe sozinho, sem o livro a que pertence.
 
-`ignorado` existe porque todo EPUB traz, misturado aos capítulos, material que não é narrativa: créditos, glossário, agradecimentos, notas do tradutor, anúncios da editora. A importação **sugere** marcando este campo (ver item 2.2) e o usuário confirma — nada é descartado no parsing. Acrescentado depois da validação contra quinze livros reais, que mostrou que nenhum critério automático separa os dois com segurança.
+`ignorado` existe porque todo EPUB traz, misturado aos capítulos, material que não é narrativa: créditos, glossário, agradecimentos, notas do tradutor, anúncios da editora. A importação **sugere** marcando este campo (ver item 2.2) e o usuário confirma — nada é descartado no parsing. Acrescentado depois da validação contra dezoito livros reais, que mostrou que nenhum critério automático separa os dois com segurança.
 
 #### (b) Elemento
 
@@ -648,11 +684,11 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 | Página de navegação detectada pela proporção de texto dentro de links | Um "Sumário" em XHTML comum não é marcado como navegação pelo formato. Medido num livro real: 99,3% em 86 links na página de sumário, contra 20,5% no segundo colocado e nenhum link em 81 dos 85 documentos |
 | Capítulos divididos pelas âncoras do índice quando ele é mais fino que os arquivos | Em *Flores para Algernon*, um arquivo continha 11 relatórios de progresso e a importação produzia um capítulo de 131 mil caracteres. As fronteiras que valem são as que o livro declara |
 | Corte feito no ancestral comum das âncoras, não nos filhos do `<body>` | Em *O Processo* o documento estava inteiro dentro de um único `<div>`, e cortar entre os filhos do corpo dava uma fatia só |
-| Posição no índice **descartada** como sinal | Em *O Processo* a única seção aninhada é o apêndice e os doze capítulos estão na raiz: o sinal se inverte e esconde o romance inteiro. Contribuía com exatamente um item nos quinze livros |
+| Posição no índice **descartada** como sinal | Em *O Processo* a única seção aninhada é o apêndice e os doze capítulos estão na raiz: o sinal se inverte e esconde o romance inteiro. Contribuía com exatamente um item nos dezoito livros |
 | Anúncios de outros livros reconhecidos pelo ISBN no texto | Essas páginas não têm título nenhum, então nenhum critério de título as pega. Um número de 13 dígitos começando em 978 ou 979 não aparece em prosa narrativa |
 | Texto antes da primeira âncora colado no capítulo anterior | O Calibre parte arquivos grandes no meio de um capítulo; sem isso, 42 mil caracteres do relatório anterior virariam um capítulo sem título e o relatório apareceria partido em dois |
-| Material não-narrativo **sugerido** como ignorado, não descartado | Medição em quinze livros: nenhum dos quatro sinais testados separa narrativa de apêndice com segurança. Esconder narrativa é muito pior que listar um glossário, então nada é descartado — a importação sugere e o usuário confirma |
-| Limite de tamanho **relativo à mediana do livro**, não absoluto, e fixado em 10% | A mediana variou de 7 mil a 44 mil caracteres entre os quinze livros, então um limite fixo serviria para um e falharia nos outros. Os 10% saíram de uma varredura: acima disso começa a esconder narrativa |
+| Material não-narrativo **sugerido** como ignorado, não descartado | Medição em dezoito livros: nenhum dos quatro sinais testados separa narrativa de apêndice com segurança. Esconder narrativa é muito pior que listar um glossário, então nada é descartado — a importação sugere e o usuário confirma |
+| Limite de tamanho **relativo à mediana do livro**, não absoluto, e fixado em 10% | A mediana variou de **mil** caracteres numa coletânea de poemas a **89 mil** num livro que é um capítulo só, então um limite fixo serviria para um e falharia nos outros. Os 10% saíram de uma varredura: acima disso começa a esconder narrativa |
 
 ---
 
