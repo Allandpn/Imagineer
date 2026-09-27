@@ -38,6 +38,19 @@ class PromptDetalhe(PromptResumo):
     """O prompt com as imagens que saíram dele."""
 
     imagens: list[ImagemResumo]
+    referencias_visuais: list[ImagemResumo] = Field(
+        default_factory=list,
+        description=(
+            "As imagens-âncora (item 3.1) dos elementos desta cena que já têm "
+            "uma aprovada. O fluxo de geração é manual (o usuário copia o "
+            "prompt e cola numa ferramenta externa — item 2.1, passo 9), então "
+            "a API não anexa a imagem sozinha: isto avisa o app de quais "
+            "referências visuais existem, para o usuário anexá-las também, "
+            "mantendo a aparência do personagem consistente entre capítulos "
+            "distantes em vez de a ferramenta de imagem inventar um rosto novo "
+            "a cada geração."
+        ),
+    )
 
 
 class PromptNovo(BaseModel):

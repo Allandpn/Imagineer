@@ -85,39 +85,90 @@ _INSTRUCAO_DE_ESTADO = """\
 Você lê um capítulo de livro inteiro, mas quer descrever a aparência de UM SÓ \
 elemento — ignore todos os outros, mesmo que apareçam no texto.
 
+O texto que você escrever vira, mais tarde, a matéria-prima de um prompt de \
+imagem. Modelos de imagem não entendem metáfora literária ("olhar frio como o \
+gelo", "silêncio ensurdecedor") — eles precisam de dado físico e sensorial \
+concreto. Por isso, ao traduzir o que o texto sugere, prefira sempre o que se vê:
+
+- Materialidade e textura: do que é feita a roupa, o objeto, a superfície \
+(linho puído, couro rachado, seda ao luar) — não só "roupas simples" ou \
+"roupas ricas".
+- Estado físico e expressão como algo visível: idade aparente, porte, \
+ferimentos, e a expressão como músculo e postura (sobrancelhas franzidas, \
+ombros caídos), não como sentimento abstrato ("ele estava triste" vira "olhar \
+baixo, ombros curvados").
+- Um instante congelado, não uma ação contínua: descreva UMA pose ou gesto \
+específico do capítulo, como se fosse um fotograma parado — não "ele entra, \
+pega o livro e sai", mas o momento em que a mão toca a página.
+- Luz e atmosfera **só quando o texto do capítulo realmente sustenta isso** \
+para este elemento (uma vela, o sol poente, poeira no ar) — não invente uma \
+fonte de luz que o texto não menciona; isso é papel da cena, não do elemento.
+
+Regras de fidelidade ao texto (mais importantes que o estilo de escrita acima):
+- Descreva só o que o texto diz ou implica com segurança. Não invente detalhes \
+que o texto não sustenta, mesmo que pareçam plausíveis para o gênero da obra.
+- Não confunda com outro elemento — releia com cuidado a quem cada detalhe \
+pertence antes de escrever. Um detalhe de outro personagem nunca deve aparecer \
+na descrição deste.
+- Separe o que é identidade (rosto, cor e tipo de cabelo, altura, compleição — \
+tende a não mudar de capítulo para capítulo) do que é situacional (roupas, \
+ferimentos, sujeira, humor — muda com a cena). Preserve a identidade já \
+registrada a menos que o texto diga explicitamente que ela mudou (idade que \
+avança, um ferimento permanente); atualize a parte situacional com o que este \
+capítulo mostra.
+- Se o elemento pedido não aparecer de forma clara neste capítulo, ou se o \
+texto não descrever sua aparência, devolva a descrição de estado já \
+registrada, sem inventar nada novo e sem deduzir a partir do gênero ou tom do \
+livro.
+
 Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 
 {
-  "descricao": "como o elemento aparenta estar neste capítulo: roupas, ferimentos, condição, feições — só o que o texto realmente diz ou implica com segurança"
+  "descricao": "a aparência do elemento neste capítulo, seguindo as regras acima"
 }
 
-Regras:
-- Descreva só o que está no texto. Não invente detalhes que o texto não sustenta.
-- Não confunda com outro elemento — releia com cuidado a quem cada detalhe \
-pertence antes de escrever.
-- Se o elemento pedido não aparecer de forma clara neste capítulo, ou se o texto \
-não descrever sua aparência, devolva a descrição de estado já registrada, sem \
-inventar nada novo.
-- Escreva em português.
+Escreva em português.
 """
 
 _INSTRUCAO_DE_PROMPT = """\
-Você monta prompts para ferramentas de geração de imagem.
+Você monta prompts para ferramentas de geração de imagem (Midjourney, DALL-E, \
+Imagen e afins), a partir de uma cena de livro já traduzida para descrições \
+concretas de aparência. Produza UM prompt em inglês, numa linha só, pronto \
+para colar na ferramenta.
 
-Receba a descrição de uma cena, a lista de elementos que aparecem nela com a \
-aparência de cada um, e o estilo visual desejado. Produza UM prompt em inglês, \
-numa linha só, pronto para colar na ferramenta.
+Monte o prompt seguindo esta ordem de blocos, separados por vírgula (pule um \
+bloco se não houver informação para ele — nunca invente para preencher):
 
-Responda APENAS com o texto do prompt, sem aspas, sem explicação, sem título.
+1. Enquadramento e câmera: um tipo de plano (medium shot, close-up, wide shot, \
+low-angle, over-the-shoulder) coerente com a cena.
+2. Sujeito principal, num instante congelado: quem/o que é o foco, numa pose \
+ou gesto específico e parado — nunca uma ação contínua ("ele caminha e olha \
+para trás" vira "mid-stride, glancing back").
+3. Vestuário, texturas e expressão física de cada elemento presente.
+4. Cenário imediato e objetos ao redor.
+5. Ambiente de fundo, arquitetura e época.
+6. Iluminação e atmosfera: fonte de luz (candlelight, golden hour, cool \
+moonlight, harsh neon) e o que há no ar (dust motes, mist, smoke) — derive isso \
+do horário/clima da cena e do estilo pedido, não invente uma fonte que \
+contradiga a cena.
+7. Estética final: estilo, granulado de filme, qualidade — vindo do perfil de \
+renderização indicado.
 
 Regras:
-- Descreva o que se vê, não o que se sente ou se conclui.
-- Mantenha fielmente a aparência de cada elemento como foi descrita.
-- Incorpore o estilo, a iluminação e a paleta indicados.
-- Não invente elementos que não estão na lista.
-- Se houver um comentário do usuário, ele tem PRIORIDADE sobre as descrições \
-acima em caso de conflito — é uma correção de quem já viu o resultado anterior \
-ou leu o capítulo com atenção.
+- PROIBIDO usar adjetivos subjetivos de qualidade ou literários ("lindo", \
+"incrível", "poderoso", "misterioso", "super detalhado", "épico"). Troque por \
+material, textura, luz e enquadramento.
+- PROIBIDO descrever emoção como palavra abstrata — traduza em expressão física \
+e postura visíveis.
+- Mantenha fielmente a aparência de cada elemento como foi descrita; não invente \
+elementos que não estão na lista.
+- Incorpore o estilo, a iluminação e a paleta do perfil indicado.
+- Se houver um comentário do usuário, ele tem PRIORIDADE sobre as regras e \
+descrições acima em caso de conflito — é uma correção de quem já viu o \
+resultado anterior ou leu o capítulo com atenção.
+
+Responda APENAS com o texto do prompt, sem aspas, sem explicação, sem título, \
+sem numerar os blocos.
 """
 
 

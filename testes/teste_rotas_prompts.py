@@ -249,6 +249,46 @@ def teste_criar_prompt_com_perfil_e_modelo_explicitos_no_pedido(
     assert resposta.json()["perfil_renderizacao_id"] == perfil["id"]
 
 
+def teste_prompt_traz_a_imagem_ancora_dos_elementos_da_cena(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Consistência de personagem (item 3.1): a API avisa qual referência existe.
+
+    O fluxo de geração é manual, então a API não anexa a imagem sozinha — só
+    avisa o app de que ela existe, para o usuário anexá-la também.
+    """
+    provedor = ProvedorFalso(prompt="pintura")
+    livro, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+
+    # Gera um primeiro prompt e importa uma imagem para ele, depois marca essa
+    # imagem como a âncora do estado do Ned Stark.
+    primeiro = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    imagem = _importar_imagem(cliente, primeiro["id"])
+    estado_id = cena["elementos"][0]["estado_id"]
+    ajuste = cliente.patch(f"/estados/{estado_id}", json={"imagem_ancora_id": imagem["id"]})
+    assert ajuste.status_code == 200, ajuste.text
+
+    assert primeiro["referencias_visuais"] == []  # ainda não havia âncora nessa hora
+
+    segundo = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+    assert [r["id"] for r in segundo["referencias_visuais"]] == [imagem["id"]]
+
+    # GET /prompts/{id} também traz a referência atual, não uma foto congelada
+    # de quando o prompt foi criado.
+    reaberto = cliente.get(f"/prompts/{primeiro['id']}").json()
+    assert [r["id"] for r in reaberto["referencias_visuais"]] == [imagem["id"]]
+
+
+def teste_criar_prompt_sem_imagem_ancora_nao_traz_referencias(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    _, cena = _montar_cena_completa(cliente, usar_provedor_falso)
+
+    resposta = cliente.post(f"/cenas/{cena['id']}/prompts", json={}).json()
+
+    assert resposta["referencias_visuais"] == []
+
+
 def teste_criar_prompt_com_chave_ausente_responde_422(
     cliente: TestClient, usar_provedor_falso
 ) -> None:

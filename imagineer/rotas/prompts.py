@@ -133,7 +133,7 @@ def criar_prompt(
     sessao.add(prompt)
     sessao.commit()
     sessao.refresh(prompt)
-    return _detalhe(prompt, [])
+    return _detalhe(prompt, [], _referencias_visuais(cena))
 
 
 # --------------------------------------------------------------------------- #
@@ -150,7 +150,7 @@ def abrir_prompt(prompt_id: int, sessao: Session = Depends(obter_sessao)) -> Pro
             select(Imagem).where(Imagem.prompt_id == prompt_id).order_by(Imagem.id)
         )
     )
-    return _detalhe(prompt, imagens)
+    return _detalhe(prompt, imagens, _referencias_visuais(prompt.cena))
 
 
 @rotas.patch("/{prompt_id}", response_model=PromptDetalhe, summary="Anota a avaliação do resultado")
@@ -369,6 +369,23 @@ def _elementos_da_cena(cena: Cena) -> list[str]:
     ]
 
 
+def _referencias_visuais(cena: Cena) -> list[Imagem]:
+    """As imagens-âncora (item 3.1) já aprovadas para os elementos da cena.
+
+    O fluxo de geração é manual (o usuário copia o prompt e cola numa
+    ferramenta externa — passo 9), então a API não consegue anexar a imagem
+    sozinha nessa chamada; o que dá para fazer é avisar quais referências
+    existem, para o app oferecer "anexe também" — é o que mantém a aparência
+    de um personagem consistente entre capítulos distantes, em vez da
+    ferramenta de imagem inventar um rosto novo a cada geração.
+    """
+    vistas: dict[int, Imagem] = {}
+    for estado in cena.estados_elemento:
+        if estado.imagem_ancora is not None:
+            vistas[estado.imagem_ancora.id] = estado.imagem_ancora
+    return [vistas[identificador] for identificador in sorted(vistas)]
+
+
 def _descricao_do_perfil(perfil: PerfilRenderizacao | None) -> str:
     """O texto de estilo que vai para a IA, só com os campos preenchidos.
 
@@ -418,10 +435,15 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
     )
 
 
-def _detalhe(prompt: Prompt, imagens: list[Imagem]) -> PromptDetalhe:
+def _detalhe(
+    prompt: Prompt, imagens: list[Imagem], referencias: list[Imagem] | None = None
+) -> PromptDetalhe:
     return PromptDetalhe(
         **_resumo(prompt, len(imagens)).model_dump(),
         imagens=[ImagemResumo.model_validate(imagem) for imagem in imagens],
+        referencias_visuais=[
+            ImagemResumo.model_validate(imagem) for imagem in (referencias or [])
+        ],
     )
 
 
