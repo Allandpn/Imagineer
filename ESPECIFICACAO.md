@@ -532,7 +532,7 @@ O recorte de um capítulo que vai virar uma imagem — um retrato solo ou uma ce
 | `id` | inteiro | não | chave primária |
 | `capitulo_id` | inteiro | não | referência ao Capítulo; indexado |
 | `tipo` | enum (`PERSONAGEM`, `CENA`) | não | `PERSONAGEM` só aceita um estado ligado (item 4.4); padrão `CENA` |
-| `titulo` | texto (300) | não | como identificar o frame na lista |
+| `titulo` | texto (300) | não | como identificar o frame na lista; opcional no pedido de criação para `tipo=PERSONAGEM` — a rota gera a partir do nome do elemento (item 6.4) |
 | `descricao` | texto longo | sim | o trecho ou o resumo do que acontece; vazio para `PERSONAGEM` |
 | `horario` | texto (100) | sim | atributo situacional |
 | `clima` | texto (100) | sim | atributo situacional |
@@ -974,6 +974,10 @@ estado, aparece nos três com `estado_vigente` nulo.
 **O frame devolve o estado *com* o elemento.** `GET /frames/{id}` traz, para cada estado, o nome e o tipo do elemento a que ele pertence — porque a tela mostra "Ned Stark: capa de pele, barba grisalha", e não o id de um estado solto. É a diferença entre a API servir a tela e a tela ter que remontar tudo.
 
 **Os estados de um frame precisam ser do mesmo livro.** Mesmo problema do item 6.3: nada no banco impede associar a um frame o estado de um personagem de outro livro. A rota verifica e responde 422, listando os ids recusados.
+
+**`titulo` é opcional no pedido de criação quando `tipo=PERSONAGEM`.** A coluna continua obrigatória no banco (item 3.4c), mas exigir que o app digite um título para um retrato solo era pedir de novo uma informação que o próprio pedido já contém: o nome do elemento já está implícito em `estados_ids`. Se `titulo` não vier, a rota gera `"Retrato de <nome do elemento>"` sozinha. Para `tipo=CENA` continua obrigatório — ali o título é a conta do usuário sobre quem, onde e o quê (item 4.4), e o sistema não tem como inventar isso.
+
+> **Divergência registrada, pós-uso real.** O campo nasceu obrigatório para os dois tipos, herdado do antigo `Cena` (item 3.4c). Um teste manual expôs que, para `PERSONAGEM`, `titulo` não é usado em lugar nenhum — `_descricao_do_frame` o descarta — e digitá-lo manualmente é retrabalho sem função, já que o único uso real (identificar o frame na listagem, que não traz nomes de elemento) o sistema já sabe preencher sozinho a partir do estado ligado.
 
 ### 6.5 Perfis de renderização
 

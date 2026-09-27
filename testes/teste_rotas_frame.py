@@ -288,7 +288,8 @@ def teste_rotas_de_frame_inexistente_respondem_404(cliente: TestClient) -> None:
 
 
 def teste_frame_sem_titulo_responde_422(cliente: TestClient) -> None:
-    """O título é obrigatório: é como o frame aparece na lista."""
+    """Para tipo=CENA (o padrão) o título é obrigatório: é a conta do usuário
+    sobre quem, onde e o quê, e o sistema não tem como inventar isso."""
     livro = _livro(cliente)
 
     resposta = cliente.post(
@@ -319,6 +320,24 @@ def teste_criar_frame_de_personagem_com_um_estado(cliente: TestClient) -> None:
 
     assert resposta.status_code == 201, resposta.text
     assert resposta.json()["tipo"] == "PERSONAGEM"
+
+
+def teste_criar_frame_de_personagem_sem_titulo_gera_a_partir_do_elemento(
+    cliente: TestClient,
+) -> None:
+    """`titulo` não entra no prompt de um retrato — pedir para digitar seria
+    repetir o nome do elemento, que o pedido já traz em `estados_ids`."""
+    livro = _livro(cliente)
+    capitulo = livro["capitulos"][0]
+    ned = _elemento_com_estado(cliente, livro["id"], capitulo["id"], "Ned Stark")
+
+    resposta = cliente.post(
+        f"/capitulos/{capitulo['id']}/frames",
+        json={"tipo": "PERSONAGEM", "estados_ids": [ned["estados"][0]["id"]]},
+    )
+
+    assert resposta.status_code == 201, resposta.text
+    assert resposta.json()["titulo"] == "Retrato de Ned Stark"
 
 
 def teste_criar_frame_de_personagem_sem_estado_responde_422(cliente: TestClient) -> None:

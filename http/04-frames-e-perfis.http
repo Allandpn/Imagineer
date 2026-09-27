@@ -72,12 +72,15 @@ Content-Type: application/json
 ### Cria um frame do tipo PERSONAGEM — retrato solo, sem título/descrição de cena
 # Aceita exatamente um estado (422 se vier mais de um): é a distinção do
 # item 4.4 entre "descrever o personagem sozinho" e "descrever uma cena".
+# "titulo" é opcional aqui: sem ele, a rota gera "Retrato de <nome do
+# elemento>" sozinha — digitar seria repetir uma informação que o próprio
+# pedido já contém em estados_ids (item 6.4). Para tipo=CENA, "titulo"
+# continua obrigatório (422 sem ele).
 POST {{baseUrl}}/capitulos/3/frames
 Content-Type: application/json
 
 {
   "tipo": "PERSONAGEM",
-  "titulo": "Retrato de teste",
   "estados_ids": [
     1
   ]

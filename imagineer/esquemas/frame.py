@@ -68,7 +68,17 @@ class FrameNovo(BaseModel):
             "CENA aceita um ou mais."
         ),
     )
-    titulo: str = Field(min_length=1, max_length=300)
+    titulo: str | None = Field(
+        default=None,
+        max_length=300,
+        description=(
+            "Obrigatório para CENA — é o que identifica a cena na lista e "
+            "entra no prompt. Para PERSONAGEM é opcional: se não vier, o "
+            "backend gera 'Retrato de <nome do elemento>' sozinho, porque o "
+            "nome já está em `estados_ids` e pedir para digitar de novo "
+            "seria repetir uma informação que o pedido já contém."
+        ),
+    )
     descricao: str | None = None
     horario: str | None = Field(default=None, max_length=100)
     clima: str | None = Field(default=None, max_length=100)

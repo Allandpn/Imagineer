@@ -72,17 +72,18 @@ def criar_frame(
     """Cria o frame e, se vier, já liga os estados dos elementos que aparecem nele."""
     capitulo = _buscar_capitulo(sessao, capitulo_id)
     _exigir_contagem_valida(novo.tipo, novo.estados_ids)
+    estados = _estados_do_livro(sessao, novo.estados_ids, capitulo.livro_id)
 
     frame = Frame(
         capitulo_id=capitulo.id,
         tipo=novo.tipo,
-        titulo=novo.titulo,
+        titulo=_resolver_titulo(novo.tipo, novo.titulo, estados),
         descricao=novo.descricao,
         horario=novo.horario,
         clima=novo.clima,
         humor=novo.humor,
     )
-    frame.estados_elemento = _estados_do_livro(sessao, novo.estados_ids, capitulo.livro_id)
+    frame.estados_elemento = estados
 
     sessao.add(frame)
     sessao.commit()
@@ -169,6 +170,27 @@ def _exigir_contagem_valida(tipo: TipoDeFrame, estados_ids: list[int]) -> None:
                 "elementos interagindo."
             ),
         )
+
+
+def _resolver_titulo(
+    tipo: TipoDeFrame, titulo: str | None, estados: list[EstadoElemento]
+) -> str:
+    """Decide o título quando o pedido não trouxe um.
+
+    Para CENA não há como adivinhar — título e descrição são a própria conta do
+    usuário sobre quem, onde e o quê, e o livro não pode inventar isso por ele
+    (item 4.4). Para PERSONAGEM o nome do elemento já veio em `estados_ids`, e
+    esse é exatamente o único elemento do retrato — gerar "Retrato de X" evita
+    pedir de novo uma informação que o pedido já contém.
+    """
+    if titulo:
+        return titulo
+    if tipo == TipoDeFrame.PERSONAGEM and estados:
+        return f"Retrato de {estados[0].elemento.nome}"
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail="O campo 'titulo' é obrigatório para frames do tipo CENA.",
+    )
 
 
 def _estados_do_livro(
