@@ -26,7 +26,7 @@ GET {{baseUrl}}/livros
 GET {{baseUrl}}/livros/{{livroId}}
 
 ### Corrige metadados e/ou define o perfil de renderização padrão
-# perfil_renderizacao_padrao_id vem de 04-cenas-e-perfis.http, se já tiver criado um
+# perfil_renderizacao_padrao_id vem de 04-frames-e-perfis.http, se já tiver criado um
 PATCH {{baseUrl}}/livros/{{livroId}}
 Content-Type: application/json
 
@@ -35,5 +35,5 @@ Content-Type: application/json
   "titulo":  "A Vontade de Muitos"
 }
 
-### Remove o livro — apaga capítulos, elementos, cenas, prompts e imagens em cascata
+### Remove o livro — apaga capítulos, elementos, frames, prompts e imagens em cascata
 # DELETE {{baseUrl}}/livros/{{livroId}}

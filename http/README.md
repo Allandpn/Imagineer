@@ -19,6 +19,18 @@ importar nada no Postman.
    fechar a IDE ou quiser recomeçar do zero, rode de novo a requisição de
    importação do livro (`01-livros.http`) para gerar ids novos.
 
+## Manutenção: confira as rotas a cada mudança
+
+Toda vez que uma rota, schema ou nome de entidade mudar no código (renomeio,
+campo novo obrigatório, path novo), esses arquivos ficam desatualizados
+silenciosamente — não há teste automatizado que rode `.http`. Depois de
+qualquer mudança desse tipo, releia os arquivos afetados e confira, contra o
+código em `imagineer/rotas/` e `imagineer/esquemas/`, se o método, o path e os
+campos do corpo ainda batem. Foi assim que o `POST /capitulos/{id}/frames`
+com `tipo: PERSONAGEM` ficou sem `titulo` por um tempo depois do renomeio de
+`Cena` para `Frame` — o campo continuou obrigatório no schema, mas o exemplo
+não foi atualizado.
+
 ## Numeração dos arquivos
 
 Segue a ordem do fluxo (Etapa 2 da especificação) e da Etapa 6:

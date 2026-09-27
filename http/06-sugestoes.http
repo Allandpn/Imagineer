@@ -1,7 +1,8 @@
 ### Pede à IA os elementos e estados sugeridos do capítulo (passo 6)
 # Não grava nada no banco — é sugestão. Precisa de chave e de modelo_extracao
 # configurados em 05-configuracao-ia.http, e de primeiroCapituloId (01-livros.http).
-POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
+# POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
+POST {{baseUrl}}/capitulos/3/sugestoes
 
 > {%
     client.test("Devolveu sugestões", function () {

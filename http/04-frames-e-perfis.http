@@ -72,13 +72,14 @@ Content-Type: application/json
 ### Cria um frame do tipo PERSONAGEM — retrato solo, sem título/descrição de cena
 # Aceita exatamente um estado (422 se vier mais de um): é a distinção do
 # item 4.4 entre "descrever o personagem sozinho" e "descrever uma cena".
-POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/frames
+POST {{baseUrl}}/capitulos/3/frames
 Content-Type: application/json
 
 {
   "tipo": "PERSONAGEM",
+  "titulo": "Retrato de teste",
   "estados_ids": [
-    {{estadoId}}
+    1
   ]
 }
 

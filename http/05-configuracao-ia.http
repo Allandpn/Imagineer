@@ -3,7 +3,7 @@ GET {{baseUrl}}/configuracao
 
 ### Lista os modelos gratuitos do OpenRouter com contexto suficiente para um capítulo
 # Funciona sem chave cadastrada — o endpoint de modelos do OpenRouter é público.
-GET {{baseUrl}}/configuracao/modelos?somente_gratuitos=true&contexto_minimo=32000
+GET {{baseUrl}}/configuracao/modelos?somente_gratuitos=false&contexto_minimo=32000
 
 ### Escolhe o modelo de extração e o de montagem de prompt
 # Troque o id abaixo por um da lista da requisição anterior. Modelos gratuitos
@@ -13,13 +13,14 @@ PUT {{baseUrl}}/configuracao
 Content-Type: application/json
 
 {
-  "modelo_extracao": "nvidia/nemotron-3-super-120b-a12b:free",
-  "modelo_prompt": "nvidia/nemotron-3-super-120b-a12b:free"
+  "modelo_extracao": "openai/gpt-4o-mini",
+  "modelo_prompt": "openai/gpt-4o-mini"
 }
 
-### Prioridade de custo vs. qualidade na leitura profunda (item 4.4, fase 2)
-# ECONOMIA (padrão): relê o capítulo de origem só na primeira vez por estado.
-# QUALIDADE: relê toda vez que um prompt novo é montado para a cena.
+### Prioridade de custo vs. qualidade na releitura do livro (item 4.4, fases 2 e 3)
+# Vale tanto para a leitura profunda do elemento quanto para a fundamentação
+# do frame do tipo CENA. ECONOMIA (padrão): relê só na primeira vez por
+# estado/frame. QUALIDADE: relê toda vez que um prompt novo é montado.
 PUT {{baseUrl}}/configuracao
 Content-Type: application/json
 

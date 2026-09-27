@@ -36,6 +36,7 @@ Allan está aprendendo a programar através deste projeto e quer entender o sist
 
 - Todo item novo precisa de teste (unitário, no mínimo) antes de ser considerado fechado.
 - Não avançar para o próximo item com testes quebrados.
+- A cada mudança que afete rotas, schemas ou nomes de entidade (renomeio, novo campo obrigatório, mudança de path), conferir se a coleção `.http` em `http/` ainda bate com o código — método, path, campos do corpo — e corrigir o que estiver desatualizado antes de considerar a mudança concluída.
 
 ## Git e versionamento
 
@@ -45,7 +46,7 @@ Allan está aprendendo a programar através deste projeto e quer entender o sist
 
 ## Escopo
 
-- MVP primeiro: Elemento + EstadoElemento + Cena + Prompt + Imagem, conforme Etapa 3 da especificação.
+- MVP primeiro: Elemento + EstadoElemento + Frame + Prompt + Imagem, conforme Etapa 3 da especificação.
 - Relações entre elementos e Grupos com membros explícitos ficam para uma v2 — não implementar mesmo que pareça simples, sem antes atualizar a especificação para incluir esse escopo.
 
 ## Registro de decisões técnicas

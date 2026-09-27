@@ -1,17 +1,18 @@
 ### Cadastra um elemento já com o estado inicial (passo 7)
 # Rode 01-livros.http antes, para ter livroId e primeiroCapituloId.
-POST {{baseUrl}}/livros/{{livroId}}/elementos
+#POST {{baseUrl}}/livros/{{livroId}}/elementos
+POST {{baseUrl}}/livros/1/elementos
 Content-Type: application/json
 
-{
-  "tipo": "PERSONAGEM",
-  "nome": "Personagem de teste",
-  "descricao": "Criado pelo arquivo .http para testes manuais",
-  "estado_inicial": {
-    "capitulo_id": {{primeiroCapituloId}},
-    "descricao": "Como está no primeiro capítulo"
-  }
-}
+ {
+    "tipo": "PERSONAGEM",
+    "nome": "Vis",
+    "descricao": "protagonista, assistente de um Septimus, está sob tensão emocional e se preocupa com seu pai e com a situação em que se encontra",
+    "estado_inicial": {
+      "capitulo_id": 3,
+      "descricao": "rascunho qualquer — a leitura profunda vai reescrever isso no passo 4"
+    }
+ }
 
 > {%
     client.global.set("elementoId", response.body.id);
@@ -60,7 +61,7 @@ Content-Type: application/json
 # É o que dá contexto à IA no passo 6 — ver 06-sugestoes.http.
 GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}/estados-vigentes
 
-### Remove um estado — o elemento e as cenas que o citavam permanecem
+### Remove um estado — o elemento e os frames que o citavam permanecem
 # DELETE {{baseUrl}}/estados/{{estadoId}}
 
 ### Remove o elemento e todos os seus estados
