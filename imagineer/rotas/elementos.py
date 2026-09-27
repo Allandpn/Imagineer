@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.elemento import (
+    CenaSugerida as CenaSugeridaResposta,
     ElementoAjuste,
     ElementoDetalhe,
     ElementoNovo,
@@ -22,6 +23,7 @@ from imagineer.esquemas.elemento import (
     EstadoAjuste,
     EstadoNovo,
     EstadoResumo,
+    ParticipanteSugerido as ParticipanteSugeridoResposta,
     SugestoesDeCapitulo,
 )
 from imagineer.ia.openrouter import conferir_se_cabe
@@ -299,6 +301,9 @@ def sugerir_elementos(
 
     elementos_existentes = _elementos_por_chave_normalizada(sessao, capitulo.livro_id)
 
+    def _elemento_id_de(tipo: TipoElemento, nome: str) -> int | None:
+        return elementos_existentes.get(_chave_normalizada(tipo, nome))
+
     return SugestoesDeCapitulo(
         modelo=extracao.modelo,
         elementos=[
@@ -307,11 +312,27 @@ def sugerir_elementos(
                 nome=sugestao.nome,
                 descricao=sugestao.descricao,
                 manter_estado_atual=sugestao.manter_estado_atual,
-                elemento_id=elementos_existentes.get(
-                    _chave_normalizada(sugestao.tipo, sugestao.nome)
-                ),
+                elemento_id=_elemento_id_de(sugestao.tipo, sugestao.nome),
             )
             for sugestao in extracao.elementos
+        ],
+        cenas=[
+            CenaSugeridaResposta(
+                titulo=cena.titulo,
+                descricao=cena.descricao,
+                horario=cena.horario,
+                clima=cena.clima,
+                humor=cena.humor,
+                participantes=[
+                    ParticipanteSugeridoResposta(
+                        tipo=participante.tipo,
+                        nome=participante.nome,
+                        elemento_id=_elemento_id_de(participante.tipo, participante.nome),
+                    )
+                    for participante in cena.participantes
+                ],
+            )
+            for cena in extracao.cenas
         ],
     )
 

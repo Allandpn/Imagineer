@@ -82,10 +82,45 @@ class ElementoSugerido:
 
 
 @dataclass
+class ParticipanteSugerido:
+    """Um elemento que participa de uma cena sugerida — referenciado por nome.
+
+    Não por ``elemento_id``: nesta fase o elemento pode ainda não estar
+    cadastrado (é só sugestão, ver ``ElementoSugerido``). A rota casa o nome
+    contra os elementos já existentes do livro, do mesmo jeito que já faz para
+    a lista de elementos (item 6.7).
+    """
+
+    tipo: TipoElemento
+    nome: str
+
+
+@dataclass
+class CenaSugerida:
+    """Um recorte narrativo que a IA identificou como digno de virar imagem.
+
+    Ao contrário de ``ElementoSugerido`` (um elemento isolado), isto é uma
+    combinação de elementos interagindo num momento específico do capítulo —
+    o que faltava quando a extração só listava elementos soltos, sem sugerir
+    quais combinações formam uma cena (item 4.4).
+    """
+
+    titulo: str
+    descricao: str | None = None
+    horario: str | None = None
+    clima: str | None = None
+    humor: str | None = None
+    participantes: list[ParticipanteSugerido] = field(default_factory=list)
+
+
+@dataclass
 class ExtracaoDeElementos:
     """O resultado de uma extração, com o rastro do que foi usado."""
 
     elementos: list[ElementoSugerido] = field(default_factory=list)
+    cenas: list[CenaSugerida] = field(default_factory=list)
+    """Recortes narrativos sugeridos, combinando elementos identificados acima."""
+
     modelo: str = ""
     """O modelo que produziu isto. Guardado para o usuário saber a quem creditar
     um resultado bom ou ruim."""
@@ -131,6 +166,10 @@ class ProvedorIA(ABC):
         modelo: str,
     ) -> ExtracaoDeElementos:
         """Identifica os elementos do capítulo — fase 1 do item 4.4 (passo 6).
+
+        Também sugere cenas: combinações de elementos interagindo num momento
+        específico do capítulo, para o usuário não ter que pensar em cada
+        recorte narrativo sozinho.
 
         Args:
             texto_capitulo: o texto a ler.

@@ -10,7 +10,13 @@ from ebooklib import epub
 from fastapi.testclient import TestClient
 
 from imagineer.ia.falso import MODELO_FALSO, ProvedorFalso
-from imagineer.ia.provedor import ChaveDeApiAusente, ElementoSugerido, ErroDoProvedorIA
+from imagineer.ia.provedor import (
+    CenaSugerida,
+    ChaveDeApiAusente,
+    ElementoSugerido,
+    ErroDoProvedorIA,
+    ParticipanteSugerido,
+)
 from imagineer.modelos import TipoElemento
 
 TEXTO_LONGO = "Este é um parágrafo com texto suficiente para não ser descartado. " * 3
@@ -83,6 +89,56 @@ def teste_sugestoes_devolve_o_que_o_provedor_deu(
             "elemento_id": None,
         }
     ]
+
+
+def teste_sugestoes_devolve_cenas_com_participantes_casados(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Cada participante casa com o elemento já cadastrado, igual à lista de elementos."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
+            cenas=[
+                CenaSugerida(
+                    titulo="A vigília no Muro",
+                    descricao="Jon observa a neve cair.",
+                    horario="noite",
+                    clima="neve",
+                    humor="solidão",
+                    participantes=[
+                        ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")
+                    ],
+                )
+            ],
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    jon = cliente.post(
+        f"/livros/{livro['id']}/elementos", json={"tipo": "PERSONAGEM", "nome": "Jon"}
+    ).json()
+
+    resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
+
+    assert resposta.status_code == 200
+    (cena,) = resposta.json()["cenas"]
+    assert cena["titulo"] == "A vigília no Muro"
+    assert cena["horario"] == "noite"
+    assert cena["participantes"] == [
+        {"tipo": "PERSONAGEM", "nome": "Jon", "elemento_id": jon["id"]}
+    ]
+
+
+def teste_sugestoes_sem_cenas_devolve_lista_vazia(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(ProvedorFalso())
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+
+    resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
+
+    assert resposta.json()["cenas"] == []
 
 
 def teste_sugestoes_manda_o_texto_e_os_estados_conhecidos_ao_provedor(

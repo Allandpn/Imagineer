@@ -219,6 +219,61 @@ def teste_extrair_elementos_descarta_entradas_malformadas() -> None:
     assert [e.nome for e in elementos] == ["Válido"]
 
 
+def teste_extrair_elementos_interpreta_cenas_sugeridas() -> None:
+    """As cenas combinam elementos já identificados num momento específico."""
+    resposta = json.dumps(
+        {
+            "elementos": [
+                {"tipo": "PERSONAGEM", "nome": "Ned Stark"},
+                {"tipo": "OBJETO", "nome": "Gelo"},
+            ],
+            "cenas": [
+                {
+                    "titulo": "A execução",
+                    "descricao": "Ned empunha Gelo antes da sentença.",
+                    "horario": "manhã",
+                    "clima": "frio",
+                    "humor": "solene",
+                    "participantes": [
+                        {"tipo": "PERSONAGEM", "nome": "Ned Stark"},
+                        {"tipo": "OBJETO", "nome": "Gelo"},
+                    ],
+                }
+            ],
+        }
+    )
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    extracao = provedor.extrair_elementos("t", [], "m")
+
+    assert len(extracao.cenas) == 1
+    cena = extracao.cenas[0]
+    assert cena.titulo == "A execução"
+    assert cena.horario == "manhã"
+    assert [p.nome for p in cena.participantes] == ["Ned Stark", "Gelo"]
+    assert cena.participantes[1].tipo is TipoElemento.OBJETO
+
+
+def teste_extrair_elementos_descarta_cena_sem_titulo_ou_sem_participantes() -> None:
+    """Uma cena malformada não deveria derrubar as outras (mesma regra dos elementos)."""
+    resposta = json.dumps(
+        {
+            "elementos": [{"tipo": "PERSONAGEM", "nome": "Ned Stark"}],
+            "cenas": [
+                {"titulo": "", "participantes": [{"tipo": "PERSONAGEM", "nome": "Ned Stark"}]},
+                {"titulo": "Cena vazia", "participantes": []},
+                {"titulo": "Cena boa", "participantes": [{"tipo": "PERSONAGEM", "nome": "Ned Stark"}]},
+                "isto nem é um objeto",
+            ],
+        }
+    )
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    cenas = provedor.extrair_elementos("t", [], "m").cenas
+
+    assert [c.titulo for c in cenas] == ["Cena boa"]
+
+
 def teste_resposta_sem_json_da_erro_com_orientacao() -> None:
     """A mensagem precisa dizer o que fazer, não só que falhou."""
     provedor = _provedor({"/chat/completions": _resposta_de_conversa("Desculpe, não posso.")})

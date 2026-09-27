@@ -712,6 +712,13 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 
 O usuário revisa a lista (passo 7): confirma, ajusta ou descarta cada elemento, e cadastra o `Elemento` com um primeiro `EstadoElemento` — a descrição desse primeiro estado pode ser digitada à mão, ou ficar vaga/curta por enquanto, porque a fase 2 é quem vai efetivamente derivá-la do livro antes de qualquer prompt ser montado.
 
+**A mesma chamada também sugere cenas.** Revisão feita a partir de um teste real seu: a extração original só listava elementos soltos ("quem existe no capítulo"), sem indicar quais combinações formam um momento que vale a pena ilustrar — e um jogo de tabuleiro saiu classificado como `AMBIENTE`, uma porta como `VEICULO`. Dois ajustes:
+
+- `extrair_elementos` devolve, além de `elementos`, uma lista `cenas`: recortes narrativos específicos (título, descrição, horário/clima/humor quando o texto sustenta, e os participantes — por nome, casados contra os elementos já cadastrados do mesmo jeito que a lista de elementos já fazia). É rascunho, não grava nada — o usuário usa isso para pré-preencher `POST /capitulos/{id}/cenas` em vez de montar cada cena do zero. Uma cena sem nenhum participante é descartada (mesma tolerância a entrada malformada do item 4.2).
+- A instrução ganhou definições explícitas de cada `tipo` (o que distingue `OBJETO` de `VEICULO`, `AMBIENTE` de `EDIFICACAO`) e um filtro de relevância para objetos — só inclui um objeto com peso visual memorável na cena, não papelada ou móvel genérico de fundo.
+
+Testado com `gpt-4o-mini` no capítulo I de *A Vontade de Muitos*: da segunda vez, o tabuleiro saiu corretamente como `OBJETO`, e a extração sugeriu cinco cenas cobrindo os momentos certos do capítulo (o resgate na rocha, a partida de tabuleiro, a chegada de Hospius, o interrogatório de Nateo, o contato acidental com o Sapador) — nenhuma delas precisou ser inventada pelo usuário.
+
 #### Fase 2 — Leitura profunda (passo 8, dentro de `POST /cenas/{id}/prompts`)
 
 Antes de montar o prompt, para **cada** estado ligado à cena, o servidor relê o texto do **capítulo onde aquele estado foi originalmente registrado** (não necessariamente o capítulo da cena) e chama `sugerir_estado`, focando num elemento por vez — é essa concentração, um elemento por chamada, que evita a mistura de atributos da fase 1 antiga. O texto que volta:
@@ -807,6 +814,8 @@ Revisão feita a partir de material técnico externo (um documento de boas prát
 | `referencias_visuais` em `PromptDetalhe`, lida a partir de `EstadoElemento.imagem_ancora_id` | O campo existia desde o item 3.1 mas nunca tinha sido lido por nenhuma rota — a consistência de personagem entre capítulos distantes dependia só da descrição em texto. Expor as imagens-âncora dos elementos da cena permite ao app avisar o usuário para anexá-las também, já que o fluxo de geração é manual (passo 9) |
 | "Chunking" de capítulo e fallback por gênero/tom do livro, ambos descartados (item 4.5) | O primeiro fragmentaria o contexto que a leitura profunda depende de ter inteiro (item 4.3 já mediu que nenhum capítulo do corpus de validação excede a janela dos modelos gratuitos); o segundo é a mesma classe de erro que produziu o elemento inventado ("carroça de suprimentos") num teste real — o livro é a fonte de verdade, não o gênero |
 | Geração de imagem automatizada (FLUX.1/SDXL via OpenRouter) não adotada nesta rodada | É mudança de arquitetura real, não afinação de prompt: custo por imagem, escolha de provedor e uma UI diferente da que a Etapa 7 já esboçou (fluxo manual de copiar/colar, passo 9). Registrada como ideia para decisão futura, não decidida sem o usuário |
+| `extrair_elementos` também sugere `cenas` (recortes narrativos), na mesma chamada da fase 1 | Feedback do usuário revisando uma extração real: uma lista de elementos soltos não bastava, faltava sugerir quais combinações formam um momento que vale ilustrar. Juntar na mesma chamada evita reler o capítulo inteiro de novo só para esse fim |
+| Filtro de relevância para objetos, e definições explícitas de cada `tipo` na instrução de extração | O mesmo teste real mostrou objetos irrelevantes (papelada genérica) e classificação errada (tabuleiro como `AMBIENTE`, porta como `VEICULO`). A instrução ganhou exemplos e um critério — "teria peso visual memorável?" — para reduzir os dois problemas |
 
 ---
 
@@ -1014,6 +1023,7 @@ O texto do perfil que vai para a IA é montado só com os campos preenchidos (`e
 2. Confere se o texto cabe na janela do modelo escolhido (`modelo_extracao` da configuração) **antes** de chamar a IA — gastar a chamada para descobrir que não cabia seria o pior caso (item 4.3).
 3. Chama `provedor.extrair_elementos` — só identificação (fase 1 do item 4.4): tipo, nome, descrição de identidade e `manter_estado_atual`. **Não** devolve mais uma descrição de aparência; essa parte é a leitura profunda (fase 2), que só acontece mais tarde, dentro de `POST /cenas/{id}/prompts` (item 6.6).
 4. Tenta casar cada sugestão com um elemento já cadastrado do livro, comparando tipo e nome **sem diferenciar maiúsculas/minúsculas nem acentuação** — a IA foi instruída a repetir o nome exato de um elemento conhecido, mas variações de caixa e acento apareceram como algo razoável de tolerar sem risco de casar elementos diferentes por engano. Quando casa, preenche `elemento_id` na resposta.
+5. Faz o mesmo casamento para cada participante de cada `cena` sugerida (item 4.4) — mesma normalização, mesmo campo `elemento_id`.
 
 Erros do provedor viram HTTP assim: `ChaveDeApiAusente` e `ModeloNaoEscolhido` e `TextoLongoDemais` → 422 (o problema é a configuração, o usuário resolve pela tela de configuração); qualquer outro `ErroDoProvedorIA` (rede, resposta fora do formato) → 502.
 
@@ -1021,7 +1031,7 @@ Erros do provedor viram HTTP assim: `ChaveDeApiAusente` e `ModeloNaoEscolhido` e
 
 As três rotas de `/configuracao` foram implementadas junto com a camada de IA (Etapa 4.3), antes desta tabela ser atualizada — o código já existia, só faltava marcar. `POST /capitulos/{id}/sugestoes` é o item novo desta rodada, com 9 testes.
 
-**Divergência registrada, pós-validação com IA real:** o campo `estado_sugerido` foi removido da resposta depois de um teste de ponta a ponta expor mistura de atributos entre elementos (ver a divergência do item 4.2 e a nova fase 2 do item 4.4).
+**Divergência registrada, pós-validação com IA real:** o campo `estado_sugerido` foi removido da resposta depois de um teste de ponta a ponta expor mistura de atributos entre elementos (ver a divergência do item 4.2 e a nova fase 2 do item 4.4). Numa rodada seguinte, a resposta ganhou `cenas` — feedback do usuário depois de revisar uma extração real: a lista de elementos sozinha não bastava, faltava sugerir quais combinações formam um momento que vale ilustrar, e alguns elementos identificados eram irrelevantes (papelada genérica) ou classificados no tipo errado (um tabuleiro de jogo como `AMBIENTE`, uma porta como `VEICULO`).
 
 A checagem de "cabe no modelo" (`conferir_se_cabe`) saiu de método de `ProvedorOpenRouter` para função livre em `ia/openrouter.py`: a rota precisa da mesma checagem antes de chamar **qualquer** provedor, inclusive o `ProvedorFalso` dos testes, e a estimativa de tokens não depende de nenhum detalhe de um fornecedor específico. O método antigo continua existindo, agora só delegando para a função — o que evitou reescrever os testes que já cobriam esse comportamento.
 

@@ -124,8 +124,48 @@ class ElementoSugerido(BaseModel):
     )
 
 
+class ParticipanteSugerido(BaseModel):
+    """Um elemento que participa de uma cena sugerida.
+
+    Referenciado por nome, não por `elemento_id` diretamente — o app resolve
+    isso batendo `nome_participante` contra a lista de `elementos` da mesma
+    resposta (por `elemento_id`, se o nome bateu com um já cadastrado).
+    """
+
+    tipo: TipoElemento
+    nome: str
+    elemento_id: int | None = Field(
+        default=None,
+        description="O elemento já cadastrado correspondente, se algum bateu.",
+    )
+
+
+class CenaSugerida(BaseModel):
+    """Uma cena sugerida pela IA (item 4.4): elementos interagindo num momento.
+
+    Não é gravada no banco por esta rota — é um rascunho para o usuário usar ao
+    criar a cena de verdade (`POST /capitulos/{id}/cenas`), pré-preenchendo
+    título, atributos situacionais e quais estados marcar.
+    """
+
+    titulo: str
+    descricao: str | None
+    horario: str | None
+    clima: str | None
+    humor: str | None
+    participantes: list[ParticipanteSugerido]
+
+
 class SugestoesDeCapitulo(BaseModel):
     """O que `POST /capitulos/{id}/sugestoes` devolve."""
 
     modelo: str
     elementos: list[ElementoSugerido]
+    cenas: list[CenaSugerida] = Field(
+        default_factory=list,
+        description=(
+            "Recortes narrativos sugeridos, combinando elementos identificados "
+            "acima — o que de fato vale a pena ilustrar, não só uma lista solta "
+            "de quem existe no capítulo."
+        ),
+    )

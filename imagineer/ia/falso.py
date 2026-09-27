@@ -13,6 +13,7 @@ erros.
 """
 
 from imagineer.ia.provedor import (
+    CenaSugerida,
     ElementoSugerido,
     EstadoSugerido,
     ExtracaoDeElementos,
@@ -48,11 +49,13 @@ class ProvedorFalso(ProvedorIA):
     def __init__(
         self,
         elementos: list[ElementoSugerido] | None = None,
+        cenas: list[CenaSugerida] | None = None,
         estado: str = "watercolor-ready appearance description",
         prompt: str = "watercolor painting of a snowy courtyard at dusk",
         erro: Exception | None = None,
     ):
         self._elementos = elementos if elementos is not None else []
+        self._cenas = cenas if cenas is not None else []
         self._estado = estado
         self._prompt = prompt
         self._erro = erro
@@ -77,7 +80,9 @@ class ProvedorFalso(ProvedorIA):
         )
         if self._erro is not None:
             raise self._erro
-        return ExtracaoDeElementos(elementos=list(self._elementos), modelo=modelo)
+        return ExtracaoDeElementos(
+            elementos=list(self._elementos), cenas=list(self._cenas), modelo=modelo
+        )
 
     def sugerir_estado(
         self,

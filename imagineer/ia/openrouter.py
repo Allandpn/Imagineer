@@ -11,6 +11,7 @@ import re
 import httpx
 
 from imagineer.ia.provedor import (
+    CenaSugerida,
     ChaveDeApiAusente,
     ElementoSugerido,
     ErroDoProvedorIA,
@@ -18,6 +19,7 @@ from imagineer.ia.provedor import (
     ExtracaoDeElementos,
     ModeloDisponivel,
     ModeloNaoEscolhido,
+    ParticipanteSugerido,
     PromptMontado,
     ProvedorIA,
     TextoLongoDemais,
@@ -51,7 +53,10 @@ tokens leva tempo. Um limite curto transformaria lentidão em erro.
 _INSTRUCAO_DE_EXTRACAO = """\
 Você analisa um capítulo de livro e identifica os elementos visuais que aparecem \
 nele, para que alguém possa depois gerar imagens das cenas. Nesta etapa você só \
-IDENTIFICA — não descreva a aparência de ninguém ainda.
+IDENTIFICA — não descreva a aparência de ninguém ainda. Além dos elementos, você \
+também sugere CENAS: recortes narrativos específicos, combinando elementos que \
+interagem num mesmo momento — é isso que alguém efetivamente ilustraria, não uma \
+lista solta de "quem existe no capítulo".
 
 Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 
@@ -63,13 +68,45 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
       "descricao": "quem ou o que é: papel na história, natureza, função",
       "manter_estado_atual": false
     }
+  ],
+  "cenas": [
+    {
+      "titulo": "título curto do momento, como 'A chegada de Hospius'",
+      "descricao": "o que acontece nesse momento específico, em 1-2 frases",
+      "horario": "período do dia, se o texto sugerir, senão nulo",
+      "clima": "condição do ambiente, se o texto sugerir, senão nulo",
+      "humor": "tom emocional da cena, se ficar claro, senão nulo",
+      "participantes": [
+        {"tipo": "PERSONAGEM", "nome": "nome exatamente como em elementos"}
+      ]
+    }
   ]
 }
 
-Os tipos possíveis são: PERSONAGEM, AMBIENTE, OBJETO, CRIATURA, GRUPO, VEICULO, \
-EDIFICACAO.
+## Os tipos de elemento, e como não confundi-los
 
-Regras:
+- **PERSONAGEM**: um ser humano ou humanoide com identidade própria (nome, \
+papel na história) — inclui pessoas comuns, nobres, funcionários, qualquer \
+gente do enredo.
+- **CRIATURA**: um ser vivo não-humanoide com presença própria na cena (animal, \
+monstro, criatura fantástica). Para os fins de sugerir cenas, PERSONAGEM e \
+CRIATURA contam igualmente como "alguém" que pode protagonizar um momento.
+- **AMBIENTE**: um espaço ou lugar amplo (uma floresta, uma rua, um cômodo) — \
+o "onde" da cena, não um item dentro dele.
+- **EDIFICACAO**: uma construção específica e nomeável, quando o foco é a \
+estrutura em si (um castelo, uma torre, uma prisão inteira) — diferente de \
+AMBIENTE, que é o espaço genérico onde a ação acontece.
+- **OBJETO**: um item físico específico, portátil ou fixo — arma, livro, \
+móvel, tabuleiro de jogo, porta, moeda, dispositivo. Portas, tabuleiros e \
+lanternas são OBJETO, nunca AMBIENTE nem VEICULO.
+- **VEICULO**: algo cuja função é **transportar** pessoas ou carga de um lugar \
+a outro (carruagem, navio, montaria usada para viajar). Nunca uma porta, um \
+móvel ou qualquer objeto fixo no lugar — isso é OBJETO.
+- **GRUPO**: um coletivo mencionado sem que seus integrantes sejam \
+individualizados ("os guardas", "a multidão").
+
+## Regras
+
 - Inclua apenas o que tem presença visual no capítulo. Ignore conceitos abstratos.
 - "descricao" é a identidade do elemento (quem ou o que é), não a aparência dele \
 neste capítulo — a aparência é analisada depois, um elemento por vez.
@@ -78,6 +115,20 @@ de mudança visível, marque "manter_estado_atual": true. Se parece ter mudado, 
 marque false. Elementos novos (fora da lista) sempre são false.
 - Use exatamente o nome que já está na lista de estados conhecidos, quando o \
 elemento já for conhecido.
+- **Objetos: seja seletivo.** Só inclua um objeto se ele tem peso visual \
+memorável na cena — algo que o leitor lembraria de ver, um símbolo, algo \
+central para uma ação marcante (a moeda entregue como pagamento, o tabuleiro \
+em que a partida acontece). NÃO inclua cenário genérico de fundo (papelada, \
+móveis comuns, ferramentas do dia a dia) a menos que a cena realmente gire em \
+torno do objeto.
+- **Cenas: pense em composição, não em lista.** Cada cena deve ter pelo menos \
+um PERSONAGEM ou CRIATURA envolvido interagindo com outro elemento (outro \
+personagem, um objeto, ou estar situado num ambiente/edificação) — não sugira \
+uma "cena" que é só um ambiente vazio ou um objeto sozinho. Prefira poucas \
+cenas bem compostas (os momentos que um leitor lembraria) a listar cada \
+parágrafo do capítulo como uma cena.
+- Todo nome em "participantes" deve corresponder exatamente a um nome que \
+também está em "elementos".
 - Escreva em português.
 """
 
@@ -233,8 +284,16 @@ class ProvedorOpenRouter(ProvedorIA):
         )
 
         resposta = self._conversar(modelo, _INSTRUCAO_DE_EXTRACAO, pedido)
+        bruto = _extrair_json(resposta)
+        if bruto is None:
+            raise ErroDoProvedorIA(
+                "O modelo não devolveu JSON. Tente outro modelo: alguns modelos "
+                "pequenos não seguem bem instruções de formato."
+            )
         return ExtracaoDeElementos(
-            elementos=_interpretar_elementos(resposta), modelo=modelo
+            elementos=_interpretar_elementos(bruto),
+            cenas=_interpretar_cenas(bruto),
+            modelo=modelo,
         )
 
     def sugerir_estado(
@@ -442,23 +501,12 @@ def _e_gratuito(bruto: dict) -> bool:
         return False
 
 
-def _interpretar_elementos(resposta: str) -> list[ElementoSugerido]:
-    """Lê o JSON de elementos que o modelo devolveu.
-
-    Modelos costumam embrulhar o JSON em cerca de markdown, ou escrever uma frase
-    antes dele, mesmo quando a instrução pede o contrário. Por isso a leitura é
-    tolerante: tira a cerca e procura o primeiro objeto JSON do texto.
+def _interpretar_elementos(bruto: dict) -> list[ElementoSugerido]:
+    """Lê a lista de elementos de dentro do JSON já interpretado.
 
     Elementos com tipo desconhecido ou sem nome são descartados em silêncio — é
     sugestão, e uma entrada malformada não deveria derrubar as outras vinte.
     """
-    bruto = _extrair_json(resposta)
-    if bruto is None:
-        raise ErroDoProvedorIA(
-            "O modelo não devolveu JSON. Tente outro modelo: alguns modelos "
-            "pequenos não seguem bem instruções de formato."
-        )
-
     sugeridos = []
     for entrada in bruto.get("elementos") or []:
         if not isinstance(entrada, dict):
@@ -481,6 +529,50 @@ def _interpretar_elementos(resposta: str) -> list[ElementoSugerido]:
         )
 
     return sugeridos
+
+
+def _interpretar_cenas(bruto: dict) -> list[CenaSugerida]:
+    """Lê a lista de cenas sugeridas de dentro do JSON já interpretado.
+
+    Mesma tolerância de ``_interpretar_elementos``: uma cena malformada, ou sem
+    nenhum participante, é descartada em silêncio em vez de derrubar as outras.
+    """
+    sugeridas = []
+    for entrada in bruto.get("cenas") or []:
+        if not isinstance(entrada, dict):
+            continue
+        titulo = (entrada.get("titulo") or "").strip()
+        if not titulo:
+            continue
+
+        participantes = []
+        for participante in entrada.get("participantes") or []:
+            if not isinstance(participante, dict):
+                continue
+            nome = (participante.get("nome") or "").strip()
+            if not nome:
+                continue
+            try:
+                tipo = TipoElemento[(participante.get("tipo") or "").strip().upper()]
+            except KeyError:
+                continue
+            participantes.append(ParticipanteSugerido(tipo=tipo, nome=nome))
+
+        if not participantes:
+            continue
+
+        sugeridas.append(
+            CenaSugerida(
+                titulo=titulo,
+                descricao=_texto_ou_nulo(entrada.get("descricao")),
+                horario=_texto_ou_nulo(entrada.get("horario")),
+                clima=_texto_ou_nulo(entrada.get("clima")),
+                humor=_texto_ou_nulo(entrada.get("humor")),
+                participantes=participantes,
+            )
+        )
+
+    return sugeridas
 
 
 def _interpretar_estado(resposta: str) -> str:
