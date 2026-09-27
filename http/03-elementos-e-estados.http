@@ -1,27 +1,46 @@
-### Cadastra um elemento já com o estado inicial (passo 7)
-# Rode 01-livros.http antes, para ter livroId e primeiroCapituloId.
-#POST {{baseUrl}}/livros/{{livroId}}/elementos
+### Cadastra um elemento a partir de uma sugestão da IA (passo 7 do fluxo)
+# Este é o caminho normal: o passo 7 é revisar e confirmar sugestões, não
+# inventar um elemento do zero. Rode 06-sugestoes.http antes para ter o id de
+# uma sugestão real (a numeração dos arquivos é pela ordem de setup técnico,
+# não pela ordem do fluxo — sugestões vêm antes de confirmar elemento na
+# prática). tipo/nome/descricao só são necessários se você quiser algo
+# diferente do que a própria sugestão já diz — sem eles, a rota usa os dela.
+# Troque o id abaixo pelo de uma sugestão real (elementos[].id na resposta de
+# POST /capitulos/{id}/sugestoes).
 POST {{baseUrl}}/livros/1/elementos
 Content-Type: application/json
 
- {
-    "tipo": "PERSONAGEM",
-    "nome": "Vis",
-    "descricao": "protagonista, assistente de um Septimus, está sob tensão emocional e se preocupa com seu pai e com a situação em que se encontra",
-    "estado_inicial": {
-      "capitulo_id": 3,
-      "descricao": "rascunho qualquer — a leitura profunda vai reescrever isso no passo 4"
-    }
- }
+{
+  "sugestoes_elemento_ids": [1]
+}
 
 > {%
     client.global.set("elementoId", response.body.id);
     client.global.set("estadoId", response.body.estados[0].id);
-    client.test("Criou com o estado junto", function () {
+    client.test("Criou a partir da sugestão", function () {
         client.assert(response.status === 201, "esperava 201, veio " + response.status);
         client.assert(response.body.estados.length === 1, "esperava 1 estado");
     });
 %}
+
+### Cadastra um elemento manualmente — exceção, não a regra
+# Útil só quando a IA não identificou o elemento (esqueceu, ou o capítulo
+# ainda não teve sugestão gerada), ou quando você prefere descrever à mão em
+# vez de usar o que a IA propôs. Sem nenhuma sugestão pra herdar um padrão,
+# tipo/nome são obrigatórios.
+# Rode 01-livros.http antes, para ter livroId e primeiroCapituloId.
+# POST {{baseUrl}}/livros/{{livroId}}/elementos
+# Content-Type: application/json
+#
+# {
+#    "tipo": "PERSONAGEM",
+#    "nome": "Vis",
+#    "descricao": "protagonista, assistente de um Septimus, está sob tensão emocional e se preocupa com seu pai e com a situação em que se encontra",
+#    "estado_inicial": {
+#      "capitulo_id": 3,
+#      "descricao": "rascunho qualquer — a leitura profunda vai reescrever isso no passo 4"
+#    }
+# }
 
 ### Lista os elementos do livro, cada um com o estado mais recente
 GET {{baseUrl}}/livros/{{livroId}}/elementos
@@ -57,12 +76,12 @@ Content-Type: application/json
   "descricao": "Novo estado, mesmo capítulo — mudança dentro do capítulo é permitida"
 }
 
-### Cadastra um elemento a partir de sugestões de capítulos diferentes (item 3.4e)
-# Resolve o caso em que a IA sugeriu o mesmo personagem em capítulos
-# diferentes sem casar pelo nome ("Sextus Hospius" num, "Hospius" noutro) —
-# ache os ids em 06-sugestoes.http (GET /livros/{id}/sugestoes-elemento).
-# Sem ambiguidade nenhuma pra resolver, tipo/nome nem precisam vir: usa os da
-# primeira sugestão da lista sozinho. Cada id vira um Estado, um por capítulo.
+### Cadastra um elemento juntando sugestões de capítulos diferentes (item 3.4e)
+# A lista aceita mais de um id: resolve o caso em que a IA sugeriu o mesmo
+# personagem em capítulos diferentes sem casar pelo nome ("Sextus Hospius"
+# num, "Hospius" noutro) — ache os ids em 06-sugestoes.http (GET
+# /livros/{id}/sugestoes-elemento). Cria um Estado por sugestão, um por
+# capítulo. Sem tipo/nome, usa os da primeira sugestão da lista.
 # POST {{baseUrl}}/livros/{{livroId}}/elementos
 # Content-Type: application/json
 #
