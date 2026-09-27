@@ -921,3 +921,111 @@ def teste_isbn_nao_confunde_numero_mais_longo() -> None:
     from imagineer.servicos.importacao_epub import _parece_anuncio_de_editora
 
     assert _parece_anuncio_de_editora("codigo 97885927838391234567") is False
+
+
+# --------------------------------------------------------------------------- #
+# Coletaneas de contos e livros em ingles
+# --------------------------------------------------------------------------- #
+
+
+def teste_titulo_numerado_protege_conto_muito_curto() -> None:
+    """Numa coletânea, os contos têm tamanhos absurdamente diferentes.
+
+    Caso real: em *Os 100 Melhores Contos de Humor*, as fábulas de Esopo têm
+    600 caracteres e a mediana da antologia é 9 mil — 7%, bem abaixo do limite.
+    Três fábulas eram sugeridas como ignoradas.
+
+    O que as salva é a forma do título: as coletâneas numeram as histórias
+    ("3 - AS MÃOS, OS PÉS E O VENTRE", "36. O NÚMERO TRÊS"), e um título que
+    começa com número e separador é um item de uma sequência — capítulo ou conto.
+    """
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO * 20}</p>", "1 - UM CONTO LONGO"),
+                (f"<p>{TEXTO_LONGO * 20}</p>", "2. OUTRO CONTO LONGO"),
+                (f"<p>{TEXTO_LONGO * 20}</p>", "3 — MAIS UM LONGO"),
+                # Uma fábula curta, do tamanho de uma de Esopo: acima do mínimo
+                # para não ser descartada, mas muito abaixo da mediana do livro.
+                (
+                    "<p>Um leão, uma raposa e um asno foram caçar juntos e "
+                    "combinaram dividir em partes iguais o que conseguissem. "
+                    "O asno fez três partes e chamou o leão para escolher.</p>",
+                    "4 - O LEÃO",
+                ),
+            ]
+        ),
+        "coletanea.epub",
+    )
+
+    por_titulo = {c.titulo: c.ignorado for c in extraido.capitulos}
+    assert por_titulo["4 - O LEÃO"] is False
+
+
+def teste_protege_titulo_numerado_com_varios_separadores() -> None:
+    """Coletâneas numeram de formas diferentes; todas contam."""
+    from imagineer.servicos.importacao_epub import _PADROES_NARRATIVOS, _normalizar
+
+    for titulo in ("3 - AS MÃOS", "36. O NÚMERO TRÊS", "12) O RELÓGIO", "7 – O GOLEM"):
+        assert _PADROES_NARRATIVOS.match(_normalizar(titulo)), titulo
+
+    # Um número solto no meio do título não protege: só o começo conta.
+    assert not _PADROES_NARRATIVOS.match(_normalizar("Notas ao capítulo 3"))
+
+
+def teste_rotulos_em_ingles_tambem_valem() -> None:
+    """Um livro em inglês precisa dos rótulos dele.
+
+    Caso real: no *Sherlock Holmes Handbook*, "Introduction", "About the Author" e
+    "Acknowledgments" passavam porque a lista de rótulos era só em português.
+    """
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Introduction"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Chapter 1"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Chapter 2"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Acknowledgments"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "About the Author"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Index"),
+            ]
+        ),
+        "handbook.epub",
+    )
+
+    por_titulo = {c.titulo: c.ignorado for c in extraido.capitulos}
+    assert por_titulo["Introduction"] is True
+    assert por_titulo["Acknowledgments"] is True
+    assert por_titulo["About the Author"] is True
+    assert por_titulo["Index"] is True
+    assert por_titulo["Chapter 1"] is False
+    assert por_titulo["Chapter 2"] is False
+
+
+def teste_titulo_numerado_e_protegido_mesmo_parecendo_apendice() -> None:
+    """Um "1. Prefácio" é mantido, e isso é deliberado.
+
+    A comparação de rótulo é por prefixo, então um título que começa com número
+    nunca casa com "prefacio" — e a proteção por título numerado o mantém. Deixar
+    passar um prefácio numerado é o erro seguro; esconder o conto "4 - O LEÃO"
+    numa coletânea não é.
+
+    Nos quinze livros de validação nenhum apêndice vinha numerado, então o caso é
+    teórico. O que **não** é teórico é o contrário: as fábulas de Esopo.
+    """
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO * 10}</p>", "1. Prefácio"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "2. Primeiro capítulo"),
+                # Sem número, o rótulo pega normalmente.
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Prefácio"),
+            ]
+        ),
+        "numerado.epub",
+    )
+
+    por_titulo = {c.titulo: c.ignorado for c in extraido.capitulos}
+    assert por_titulo["1. Prefácio"] is False
+    assert por_titulo["2. Primeiro capítulo"] is False
+    assert por_titulo["Prefácio"] is True

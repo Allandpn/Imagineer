@@ -90,6 +90,6 @@ O modelo do MVP está completo.
 
 | Serviço | Item | O que faz |
 |---|---|---|
-| `servicos/importacao_epub.py` | 2.2 | Lê um EPUB e o estrutura em Livro + Capítulos, sugerindo o que não é narrativa. Validado contra nove livros publicados, sem esconder nenhum capítulo |
+| `servicos/importacao_epub.py` | 2.2 | Lê um EPUB e o estrutura em Livro + Capítulos, sugerindo o que não é narrativa. Validado contra quinze livros publicados, sem esconder nenhum capítulo |
 
 Nenhuma rota de domínio existe ainda — só `/saude`. A importação já funciona, mas ainda só é alcançável de dentro do Python.

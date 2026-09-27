@@ -60,9 +60,10 @@ capítulo curto que por acaso contenha uma nota de rodapé.
 PROPORCAO_MINIMA_DA_MEDIANA = 0.10
 """Abaixo desta fração da mediana, o capítulo é **sugerido** como ignorado.
 
-O valor saiu de uma varredura sobre os nove livros de validação, contando quantos
-capítulos narrativos cada limite escondia (erro grave) e quantos apêndices
-deixava passar (incômodo):
+O valor saiu de uma varredura sobre os nove primeiros livros de validação --
+aqueles cuja classificação entre narrativa e apêndice foi feita à mão -- contando
+quantos capítulos narrativos cada limite escondia e quantos apêndices deixava
+passar:
 
 | Limite | Narrativa escondida | Apêndice mantido |
 |--------|---------------------|------------------|
@@ -74,11 +75,12 @@ deixava passar (incômodo):
 
 Subir de 10% para 25% troca nove incômodos por dois fragmentos de *O Processo*
 escondidos — e esconder narrativa é muito pior que deixar um item para o usuário
-desmarcar. Daí 10%.
+desmarcar. Daí 10%. Os seis livros acrescentados depois confirmaram o limite: com
+ele, nenhum dos quinze esconde narrativa.
 
 O critério é **relativo à mediana do próprio livro**, não absoluto: a mediana
-variou de 7 mil a 44 mil caracteres entre os nove. Um limite fixo serviria para
-um livro e falharia nos outros.
+variou de 4 mil (*The Sherlock Holmes Handbook*) a 29 mil caracteres (*Mistborn*)
+entre os quinze. Um limite fixo serviria para um livro e falharia nos outros.
 """
 
 _PREFIXOS_DE_ISBN = ("978", "979")
@@ -90,29 +92,45 @@ Elas não têm entrada no índice e são curtas, mas nada no título as denuncia
 porque não têm título. O ISBN é o que as distingue de narrativa: um número de 13
 dígitos começando em 978 ou 979 não aparece em prosa.
 
-Nos nove livros de validação essas páginas eram 6 dos 12 apêndices que passavam.
+Quando o critério foi criado, essas páginas eram 6 dos 12 apêndices que
+passavam nos nove primeiros livros de validação.
 """
 
 _TAGS_DE_BLOCO = ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "tr", "pre")
 
 _ROTULOS_NAO_NARRATIVOS = (
+    # Portugues
     "abreviatura", "agradecimento", "anexo", "apendice", "apresentacao",
     "bibliografia", "citacao", "colofao", "copyright", "credito", "cronologia",
-    "dedicatoria", "epigrafe", "errata", "ficha tecnica", "glossario", "indice",
-    "introducao", "lugares", "mapa", "nota", "obras do autor", "obras da autora",
-    "outras leituras", "personagens", "posfacio", "prefacio", "publicidade",
+    "dedicatoria", "epigrafe", "errata", "ficha tecnica", "folha de rosto",
+    "glossario", "indice", "informacoes sobre", "introducao", "lugares", "mapa",
+    "nota", "obras da autora", "obras do autor", "outras leituras",
+    "personagens", "posfacio", "pos-escrito", "prefacio", "publicidade",
     "sobre a autora", "sobre o autor", "sumario",
+    # Ingles
+    "about the author", "acknowledgment", "afterword", "appendix",
+    "bibliography", "colophon", "contents", "dedication", "epigraph",
+    "foreword", "glossary", "index", "introduction", "note", "preface",
 )
 """Títulos que costumam nomear material não-narrativo.
 
 Comparados **sem acento e em minúsculas**, e só no começo do título — "Notas ao
 Canto 1" casa com ``nota``, mas um capítulo chamado "A nota final" não casaria.
-A lista vem dos nove livros reais usados na validação; é uma heurística de
-sugestão, não uma regra: o usuário confirma.
+A lista vem dos quinze livros reais usados na validação, e tem os equivalentes
+em inglês porque um deles é em inglês — os rótulos em português não pegariam
+"Acknowledgments" nem "About the Author". É uma heurística de sugestão, não uma
+regra: o usuário confirma.
 """
 
 _PADROES_NARRATIVOS = re.compile(
     r"^(capitulo|canto|prologo|epilogo|interludio|parte|livro)\b"
+    # Os mesmos em ingles, para livros como o manual de Sherlock Holmes.
+    r"|^(chapter|prologue|epilogue|interlude|part|book)\b"
+    # Titulo que COMECA com numero e separador: "3 - AS MAOS, OS PES E O VENTRE",
+    # "36. O NUMERO TRES". E como as coletaneas de contos numeram as historias, e
+    # sem isto as fabulas de Esopo -- de 600 caracteres numa antologia cuja
+    # mediana e 9 mil -- eram sugeridas como ignoradas.
+    r"|^[0-9]+ *[-.):\u2013\u2014]"
     # Sem \b no fim: o índice de "Flores para Algernon" escreve "Relatorio de
     # Progreso", com um "s" só, e o prefixo truncado precisa casar com as duas
     # grafias. Um \b aqui nunca casaria, porque entre "s" e "o" de "progreso"
@@ -122,9 +140,14 @@ _PADROES_NARRATIVOS = re.compile(
 )
 """Títulos que são narrativa com certeza suficiente para **proteger** o capítulo.
 
-Vence qualquer sugestão de ignorar. É o que impede de esconder o ``PRÓLOGO`` do
-Mistborn, que fica no primeiro nível do índice junto dos créditos, ou um
-capítulo curto que ficou abaixo do limite de tamanho.
+Vence a sugestão por tamanho. É o que impede de esconder o capítulo 26 de *O
+apanhador no campo de centeio*, que tem 11% da mediana do livro e é o desfecho da
+obra, ou as fábulas de Esopo numa coletânea de contos.
+
+Na prática não há conflito com os rótulos: a comparação de rótulo é por prefixo,
+então um título que começa com número — "1. Prefácio" — não casa com nenhum
+rótulo e acaba protegido. É o erro seguro: deixar passar um prefácio numerado
+incomoda, esconder o conto "4 - O LEÃO" de uma coletânea não.
 """
 
 
@@ -532,10 +555,10 @@ def _sugerir_ignorar(
     """Diz se este capítulo **parece** não ser narrativa.
 
     É só uma sugestão: nada é descartado, e o usuário confirma ou desmarca. A
-    validação em nove livros reais mostrou que nenhum critério automático separa
+    validação em quinze livros reais mostrou que nenhum critério automático separa
     narrativa de apêndice com segurança, então a decisão fica com quem lê.
 
-    Três sinais sugerem, e um protege:
+    Três sinais sugerem, e um protege — nesta ordem de precedência:
 
     - **Título conhecido** de material não-narrativo ("Créditos", "Glossário",
       "Notas ao Canto 1").
@@ -550,19 +573,22 @@ def _sugerir_ignorar(
     seções e o material pré/pós-textual na raiz — o que vale em três dos nove
     livros. Mas em *O Processo* a única seção aninhada é "Fragmentos", o apêndice,
     e os doze capítulos reais estão na raiz: o sinal se inverte e esconde o
-    romance inteiro. Ele contribuía com exatamente um item nos nove livros, e o
+    romance inteiro. Ele contribuía com exatamente um item nos quinze livros, e o
     risco era esse. Ver item 2.2 da especificação.
     """
     normalizado = _normalizar(titulo)
 
-    if normalizado and _PADROES_NARRATIVOS.match(normalizado):
-        return False
-
+    # A ordem importa. O rótulo e o ISBN são os sinais mais confiáveis, então vêm
+    # primeiro; a proteção por título narrativo existe para vencer o critério de
+    # tamanho, que é o mais frouxo dos três.
     if normalizado.startswith(_ROTULOS_NAO_NARRATIVOS):
         return True
 
     if _parece_anuncio_de_editora(texto):
         return True
+
+    if normalizado and _PADROES_NARRATIVOS.match(normalizado):
+        return False
 
     return mediana > 0 and len(texto) < mediana * PROPORCAO_MINIMA_DA_MEDIANA
 
