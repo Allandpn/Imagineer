@@ -5,6 +5,8 @@ histórico de como ele estava em cada ponto da narrativa (item 3.4b). É o que o
 passo 7 do fluxo alimenta e o passo 8 consome.
 """
 
+import unicodedata
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -16,11 +18,23 @@ from imagineer.esquemas.elemento import (
     ElementoDetalhe,
     ElementoNovo,
     ElementoResumo,
+    ElementoSugerido as ElementoSugeridoResposta,
     EstadoAjuste,
     EstadoNovo,
     EstadoResumo,
+    SugestoesDeCapitulo,
+)
+from imagineer.ia.openrouter import conferir_se_cabe
+from imagineer.ia.provedor import (
+    ChaveDeApiAusente,
+    ErroDoProvedorIA,
+    ModeloNaoEscolhido,
+    ProvedorIA,
+    TextoLongoDemais,
 )
 from imagineer.modelos import Capitulo, Elemento, EstadoElemento, Imagem, Livro, TipoElemento
+from imagineer.rotas.configuracao import obter_provedor
+from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Elementos"])
@@ -241,6 +255,68 @@ def listar_estados_vigentes(
     )
 
 
+@rotas_de_capitulo.post(
+    "/{capitulo_id}/sugestoes",
+    response_model=SugestoesDeCapitulo,
+    summary="Pede à IA os elementos e estados sugeridos do capítulo",
+)
+def sugerir_elementos(
+    capitulo_id: int,
+    sessao: Session = Depends(obter_sessao),
+    provedor: ProvedorIA = Depends(obter_provedor),
+) -> SugestoesDeCapitulo:
+    """Sugere elementos e estados a partir do texto do capítulo (passo 6).
+
+    **Não grava nada no banco.** É a IA sugerindo; o usuário confirma pelas rotas
+    de cadastro da Etapa 6.3 (item 4.4) — esta rota só devolve a sugestão.
+    """
+    capitulo = _buscar_capitulo(sessao, capitulo_id)
+    configuracao = obter_ou_criar(sessao)
+    modelo = configuracao.modelo_extracao
+
+    if not modelo:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Nenhum modelo de extração foi escolhido. Configure um em /configuracao.",
+        )
+
+    estados_conhecidos = _formatar_estados_conhecidos(sessao, capitulo)
+
+    try:
+        contexto_do_modelo = next(
+            (m.contexto for m in provedor.listar_modelos() if m.id == modelo), 0
+        )
+        conferir_se_cabe(capitulo.texto, contexto_do_modelo)
+        extracao = provedor.extrair_elementos(capitulo.texto, estados_conhecidos, modelo)
+    except (ChaveDeApiAusente, ModeloNaoEscolhido, TextoLongoDemais) as erro:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
+        ) from erro
+    except ErroDoProvedorIA as erro:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
+        ) from erro
+
+    elementos_existentes = _elementos_por_chave_normalizada(sessao, capitulo.livro_id)
+
+    return SugestoesDeCapitulo(
+        modelo=extracao.modelo,
+        elementos=[
+            ElementoSugeridoResposta(
+                tipo=sugestao.tipo,
+                nome=sugestao.nome,
+                descricao=sugestao.descricao,
+                estado_sugerido=sugestao.estado_sugerido,
+                manter_estado_atual=sugestao.manter_estado_atual,
+                elemento_id=elementos_existentes.get(
+                    _chave_normalizada(sugestao.tipo, sugestao.nome)
+                ),
+            )
+            for sugestao in extracao.elementos
+        ],
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Funções internas
 # --------------------------------------------------------------------------- #
@@ -444,3 +520,48 @@ def _exigir_imagem(sessao: Session, imagem_id: int) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Não existe imagem com id {imagem_id}.",
         )
+
+
+def _formatar_estados_conhecidos(sessao: Session, capitulo: Capitulo) -> list[str]:
+    """Monta a lista "Nome (TIPO): descrição" que vai como contexto para a IA.
+
+    Só entram elementos que já têm um estado até este ponto da narrativa — um
+    elemento sem estado ainda não apareceu, e listá-lo sem descrição não ajudaria
+    a IA a decidir "manter estado atual" (item 4.4).
+    """
+    elementos = {
+        elemento.id: elemento
+        for elemento in sessao.scalars(
+            select(Elemento).where(Elemento.livro_id == capitulo.livro_id)
+        )
+    }
+    vigentes = estado_vigente_por_elemento(sessao, capitulo.livro_id, capitulo.ordem)
+
+    return [
+        f"{elementos[elemento_id].nome} ({elementos[elemento_id].tipo.name}): "
+        f"{estado.descricao}"
+        for elemento_id, estado in vigentes.items()
+    ]
+
+
+def _chave_normalizada(tipo: TipoElemento, nome: str) -> tuple[TipoElemento, str]:
+    """Normaliza tipo e nome para casar a sugestão da IA com um elemento existente.
+
+    Ignora maiúsculas/minúsculas e acentuação: a IA foi instruída a repetir o nome
+    exato de um elemento conhecido, mas variações de caixa e acento são comuns o
+    suficiente para valer a pena tolerar, sem risco de casar elementos diferentes
+    por engano — a comparação continua exigindo o mesmo tipo e (quase) o mesmo nome.
+    """
+    sem_acento = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode()
+    return (tipo, sem_acento.strip().lower())
+
+
+def _elementos_por_chave_normalizada(
+    sessao: Session, livro_id: int
+) -> dict[tuple[TipoElemento, str], int]:
+    """Mapeia (tipo, nome normalizado) -> id, para casar sugestões da IA."""
+    elementos = sessao.scalars(select(Elemento).where(Elemento.livro_id == livro_id))
+    return {
+        _chave_normalizada(elemento.tipo, elemento.nome): elemento.id
+        for elemento in elementos
+    }

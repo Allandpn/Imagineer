@@ -190,17 +190,7 @@ class ProvedorOpenRouter(ProvedorIA):
         Feito **antes** da chamada: descobrir isso pela recusa da API significaria
         ter gastado a chamada para nada.
         """
-        if contexto_do_modelo <= 0:
-            return
-
-        estimados = estimar_tokens(texto)
-        if estimados + FOLGA_DE_TOKENS > contexto_do_modelo:
-            raise TextoLongoDemais(
-                f"O texto tem cerca de {estimados} tokens e o modelo aceita "
-                f"{contexto_do_modelo}. Escolha um modelo com janela de contexto "
-                f"maior — dos modelos gratuitos, todos os testados aceitam pelo "
-                f"menos 32 mil."
-            )
+        conferir_se_cabe(texto, contexto_do_modelo)
 
     def _conversar(self, modelo: str, instrucao: str, pedido: str) -> str:
         """Faz uma chamada de conversa e devolve o texto da resposta."""
@@ -292,6 +282,27 @@ def estimar_tokens(texto: str) -> int:
     suficiente para não depender dessa precisão.
     """
     return len(texto) // CARACTERES_POR_TOKEN
+
+
+def conferir_se_cabe(texto: str, contexto_do_modelo: int) -> None:
+    """Levanta ``TextoLongoDemais`` se o texto não couber no modelo.
+
+    Função livre, e não só método de ``ProvedorOpenRouter``, porque a rota que
+    processa um capítulo (item 6.7) precisa da mesma checagem antes de chamar
+    **qualquer** provedor, inclusive o falso dos testes — a estimativa não depende
+    de nenhum detalhe de um fornecedor específico.
+    """
+    if contexto_do_modelo <= 0:
+        return
+
+    estimados = estimar_tokens(texto)
+    if estimados + FOLGA_DE_TOKENS > contexto_do_modelo:
+        raise TextoLongoDemais(
+            f"O texto tem cerca de {estimados} tokens e o modelo aceita "
+            f"{contexto_do_modelo}. Escolha um modelo com janela de contexto "
+            f"maior — dos modelos gratuitos, todos os testados aceitam pelo "
+            f"menos 32 mil."
+        )
 
 
 def _e_modelo_de_texto(bruto: dict) -> bool:

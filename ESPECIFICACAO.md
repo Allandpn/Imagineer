@@ -922,12 +922,29 @@ Verificado contra o servidor rodando, com *O Alienista*: criei um perfil "Aquare
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `POST /capitulos/{id}/sugestoes` | Chama a IA para sugerir elementos e estados (passo 6) | depende da Etapa 4 |
-| `GET /configuracao/modelos` | Lista os modelos disponíveis no OpenRouter (item 4.3) | depende da Etapa 4 |
-| `GET /configuracao` | A configuração atual: modelos escolhidos, se há chave cadastrada | depende da Etapa 4 |
-| `PUT /configuracao` | Grava a configuração | depende da Etapa 4 |
+| `POST /capitulos/{id}/sugestoes` | Chama a IA para sugerir elementos e estados (passo 6) | **implementado** |
+| `GET /configuracao/modelos` | Lista os modelos disponíveis no OpenRouter (item 4.3) | **implementado** |
+| `GET /configuracao` | A configuração atual: modelos escolhidos, se há chave cadastrada | **implementado** |
+| `PUT /configuracao` | Grava a configuração | **implementado** |
 
 `GET /configuracao` **nunca devolve a chave de API**, só se ela está cadastrada. Uma chave que sai do servidor é uma chave que vaza em log, em cache de app ou em captura de tela.
+
+**`POST /capitulos/{id}/sugestoes` não grava nada no banco.** É consulta pura, fiel ao item 4.4: a IA sugere, o usuário confirma depois pelas rotas já existentes da Etapa 6.3 (`POST /elementos`, `POST /elementos/{id}/estados`). A rota:
+
+1. Busca o texto do capítulo e o estado vigente de cada elemento do livro **até aquele capítulo** (mesma consulta do item 6.3, `estado_vigente_por_elemento`, limitada por `Capitulo.ordem`) — é o contexto que permite à IA responder "manter estado atual" em vez de inventar um estado novo.
+2. Confere se o texto cabe na janela do modelo escolhido (`modelo_extracao` da configuração) **antes** de chamar a IA — gastar a chamada para descobrir que não cabia seria o pior caso (item 4.3).
+3. Chama `provedor.extrair_elementos`.
+4. Tenta casar cada sugestão com um elemento já cadastrado do livro, comparando tipo e nome **sem diferenciar maiúsculas/minúsculas nem acentuação** — a IA foi instruída a repetir o nome exato de um elemento conhecido, mas variações de caixa e acento apareceram como algo razoável de tolerar sem risco de casar elementos diferentes por engano. Quando casa, preenche `elemento_id` na resposta.
+
+Erros do provedor viram HTTP assim: `ChaveDeApiAusente` e `ModeloNaoEscolhido` e `TextoLongoDemais` → 422 (o problema é a configuração, o usuário resolve pela tela de configuração); qualquer outro `ErroDoProvedorIA` (rede, resposta fora do formato) → 502.
+
+#### O que foi implementado
+
+As três rotas de `/configuracao` foram implementadas junto com a camada de IA (Etapa 4.3), antes desta tabela ser atualizada — o código já existia, só faltava marcar. `POST /capitulos/{id}/sugestoes` é o item novo desta rodada, com 9 testes.
+
+A checagem de "cabe no modelo" (`conferir_se_cabe`) saiu de método de `ProvedorOpenRouter` para função livre em `ia/openrouter.py`: a rota precisa da mesma checagem antes de chamar **qualquer** provedor, inclusive o `ProvedorFalso` dos testes, e a estimativa de tokens não depende de nenhum detalhe de um fornecedor específico. O método antigo continua existindo, agora só delegando para a função — o que evitou reescrever os testes que já cobriam esse comportamento.
+
+O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado com um elemento cadastrado como "João" e uma sugestão da IA vindo como "joão" — casa; com o mesmo nome mas tipo diferente — não casa, porque dois elementos diferentes podem legitimamente ter o mesmo nome (um personagem chamado "Winterfell" e um lugar chamado "Winterfell" não seriam a mesma coisa, hipoteticamente).
 
 ---
 
@@ -935,7 +952,8 @@ Verificado contra o servidor rodando, com *O Alienista*: criei um perfil "Aquare
 
 - [ ] Confirmar formalmente o stack mobile (assumido Kotlin + Jetpack Compose nativo Android).
 - [x] ~~Definir estrutura de pastas/módulos do projeto Python (FastAPI).~~ Concluído — ver item **1.5**.
-- [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**. Implementadas até agora as de livros e capítulos.
+- [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**. Implementadas: livros, capítulos, elementos e estados, cenas, perfis de renderização, configuração e sugestões de IA (6.2 a 6.5 e 6.7). Falta só a Etapa 6.6.
+- [ ] Rotas de prompts e catálogo de imagens (Etapa 6.6) — depende de gerar/importar imagens, que ainda não tem lugar de armazenamento definido no servidor.
 - [ ] Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).
 - [x] ~~Permitir marcar um capítulo como ignorado.~~ Concluído — campo `Capitulo.ignorado`, pré-sugerido pela importação e confirmado pelo usuário (itens 2.2 e 3.4a). Falta expor o ajuste na API e no app.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).

@@ -92,3 +92,36 @@ class ElementoAjuste(BaseModel):
     tipo: TipoElemento | None = None
     nome: str | None = Field(default=None, min_length=1, max_length=200)
     descricao: str | None = None
+
+
+class ElementoSugerido(BaseModel):
+    """Um elemento sugerido pela IA (passo 6, item 4.4).
+
+    Não é gravado no banco por esta rota — o app mostra a sugestão e o usuário
+    confirma pelas rotas de cadastro já existentes (`POST /elementos`,
+    `POST /elementos/{id}/estados`).
+    """
+
+    tipo: TipoElemento
+    nome: str
+    descricao: str | None
+    estado_sugerido: str | None = Field(
+        description="Como o elemento parece estar neste capítulo, segundo a IA."
+    )
+    manter_estado_atual: bool = Field(
+        description="A IA acha que o estado conhecido continua valendo (item 4.4)."
+    )
+    elemento_id: int | None = Field(
+        default=None,
+        description=(
+            "O elemento já cadastrado a que esta sugestão corresponde, se algum "
+            "bateu por tipo e nome. Nulo significa elemento novo."
+        ),
+    )
+
+
+class SugestoesDeCapitulo(BaseModel):
+    """O que `POST /capitulos/{id}/sugestoes` devolve."""
+
+    modelo: str
+    elementos: list[ElementoSugerido]
