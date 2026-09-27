@@ -1279,3 +1279,15 @@ Acessível de qualquer tela.
 - [ ] Refinar a engenharia do prompt de geração de imagens (instrução do item 4.2/`montar_prompt`) — próxima rodada, a pedido de Allan.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).
 - [x] ~~Implementar sugestões persistidas (`SugestaoDeElemento`/`SugestaoDeFrame`/`SugestaoDeParticipante`), busca por nome cross-capítulo e confirmação em lote.~~ Concluído — item 3.4e, validado com o caso real do "Sextus Hospius"/"Hospius".
+
+### Pendências técnicas (achadas revisando a API, ainda sem decisão de implementar)
+
+- [ ] **Não existe `GET /estados/{id}`** — só `PATCH` e `DELETE` (item 6.3). Hoje só dá para ver um estado abrindo o elemento inteiro (`GET /elementos/{id}`, que traz todos os estados) ou pelo estado vigente (`GET /capitulos/{id}/estados-vigentes`). Achado revisando a coleção `.http`: não tinha como testar um estado isolado por id, porque a rota não existe. Avaliar se vale a pena antes do app mobile precisar disso.
+- [ ] **Sugerir o perfil de renderização por IA.** Hoje o usuário cria o perfil (estilo, iluminação, paleta) à mão, mas ele normalmente ainda não leu o livro — não tem como saber que estilo combina com a obra. Ideia: a IA sugere um perfil a partir do texto (gênero, tom, época), o usuário confirma ou ajusta, mesmo padrão de sugestão-e-confirmação já usado em elementos e frames. Diferente do "fallback por gênero" já descartado (item 4.5, tabela de decisões): aquele inventava uma **aparência factual** ausente do texto (risco de alucinação sobre a narrativa); isto sugere uma **escolha estética** para a qual não existe "resposta certa" no livro — o risco é outro, e provavelmente aceitável. Precisa de especificação própria antes de implementar.
+
+**Revisado e confirmado correto** (perguntas do Allan sobre a API, 27/09/2026 — registrado para não reabrir a discussão sem motivo novo):
+
+- `PATCH /livros/{id}` devolver `LivroDetalhe`, e não `LivroResumo`: é o padrão do projeto — toda rota de ajuste devolve a versão completa (`PATCH /capitulos`, `/elementos`, `/frames` fazem o mesmo). Mudar só a de livros quebraria a consistência sem ganho claro.
+- `descricao` em `POST /livros/{id}/elementos` já é opcional (`str | None = None`) — confirmado com uma chamada real, sem o campo, sem erro.
+- Livro duplicado já tem tratamento deliberado (item 3.4a): `identificador_epub` indexado mas não único, de propósito — muitos EPUBs convertidos/piratas repetem identificador genérico, e bloquear impediria importações legítimas. A rota avisa (`livros_semelhantes`), não impede.
+- `estados_ids` "bastar" para criar uma cena, sem repetir título/descrição: já resolvido para cena **sugerida** (`sugestao_frame_id`, item 3.4e, preenche tudo sozinho). Para cena **inventada pelo usuário**, título/descrição continuam obrigatórios de propósito — é a conta do próprio usuário sobre quem/onde/o quê (Etapa 5), o sistema não pode inventar isso sem risco de divergir do livro.
