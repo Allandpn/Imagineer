@@ -2,7 +2,7 @@
 
 A rota não grava Elemento nem Frame — a IA sugere, o usuário confirma depois
 pelas rotas de cadastro (Etapa 6.3/6.4). A sugestão em si, porém, é
-persistida como linhas (`SugestaoDeElemento`/`SugestaoDeFrame`), não mais
+persistida como linhas (`SugestaoDeElemento`/`SugestaoDeCena`), não mais
 como um blob por capítulo.
 """
 
@@ -16,7 +16,7 @@ from imagineer.ia.provedor import (
     ChaveDeApiAusente,
     ElementoSugerido,
     ErroDoProvedorIA,
-    FrameSugerido,
+    CenaSugerida,
     ParticipanteSugerido,
 )
 from imagineer.modelos import TipoElemento
@@ -132,15 +132,15 @@ def teste_sugestoes_devolve_o_que_o_provedor_deu(
     }
 
 
-def teste_sugestoes_devolve_frames_com_participantes_casados(
+def teste_sugestoes_devolve_cenas_com_participantes_casados(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     """Cada participante casa com o elemento já cadastrado, igual à lista de elementos."""
     usar_provedor_falso(
         ProvedorFalso(
             elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
-            frames_sugeridos=[
-                FrameSugerido(
+            cenas_sugeridas=[
+                CenaSugerida(
                     titulo="A vigília no Muro",
                     descricao="Jon observa a neve cair.",
                     horario="noite",
@@ -162,18 +162,18 @@ def teste_sugestoes_devolve_frames_com_participantes_casados(
     resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
 
     assert resposta.status_code == 200
-    (frame,) = resposta.json()["frames"]
-    assert frame["titulo"] == "A vigília no Muro"
-    assert frame["horario"] == "noite"
-    assert frame["modelo"] == MODELO_FALSO
-    (participante,) = frame["participantes"]
+    (cena,) = resposta.json()["cenas"]
+    assert cena["titulo"] == "A vigília no Muro"
+    assert cena["horario"] == "noite"
+    assert cena["modelo"] == MODELO_FALSO
+    (participante,) = cena["participantes"]
     assert participante["tipo"] == "PERSONAGEM"
     assert participante["nome"] == "Jon"
     assert participante["elemento_id"] == jon["id"]
     assert isinstance(participante["sugestao_elemento_id"], int)
 
 
-def teste_sugestoes_sem_frames_devolve_lista_vazia(
+def teste_sugestoes_sem_cenas_devolve_lista_vazia(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     usar_provedor_falso(ProvedorFalso())
@@ -182,7 +182,7 @@ def teste_sugestoes_sem_frames_devolve_lista_vazia(
 
     resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
 
-    assert resposta.json()["frames"] == []
+    assert resposta.json()["cenas"] == []
 
 
 def teste_sugestoes_repetida_devolve_o_que_foi_salvo_sem_chamar_a_ia_de_novo(
@@ -644,7 +644,7 @@ def _confirmar_elemento_da_sugestao(
     return resposta.json()
 
 
-def teste_criar_frame_a_partir_de_sugestao_de_frame(
+def teste_criar_frame_a_partir_de_sugestao_de_cena(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     """Confirmado o elemento, o frame nasce direto da sugestão de cena — sem
@@ -652,8 +652,8 @@ def teste_criar_frame_a_partir_de_sugestao_de_frame(
     usar_provedor_falso(
         ProvedorFalso(
             elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
-            frames_sugeridos=[
-                FrameSugerido(
+            cenas_sugeridas=[
+                CenaSugerida(
                     titulo="A vigília no Muro",
                     descricao="Jon observa a neve cair.",
                     horario="noite",
@@ -672,12 +672,12 @@ def teste_criar_frame_a_partir_de_sugestao_de_frame(
 
     sugestoes = cliente.post(f"/capitulos/{capitulo_id}/sugestoes").json()
     sugestao_elemento = sugestoes["elementos"][0]
-    sugestao_frame = sugestoes["frames"][0]
+    sugestao_cena = sugestoes["cenas"][0]
 
     _confirmar_elemento_da_sugestao(cliente, livro["id"], sugestao_elemento["id"])
 
     resposta = cliente.post(
-        f"/capitulos/{capitulo_id}/frames", json={"sugestao_frame_id": sugestao_frame["id"]}
+        f"/capitulos/{capitulo_id}/frames", json={"sugestao_cena_id": sugestao_cena["id"]}
     )
 
     assert resposta.status_code == 201, resposta.text
@@ -695,8 +695,8 @@ def teste_criar_frame_de_sugestao_com_campo_explicito_vence(
     usar_provedor_falso(
         ProvedorFalso(
             elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
-            frames_sugeridos=[
-                FrameSugerido(
+            cenas_sugeridas=[
+                CenaSugerida(
                     titulo="A vigília no Muro",
                     descricao="Jon observa a neve cair.",
                     horario="noite",
@@ -719,7 +719,7 @@ def teste_criar_frame_de_sugestao_com_campo_explicito_vence(
     resposta = cliente.post(
         f"/capitulos/{capitulo_id}/frames",
         json={
-            "sugestao_frame_id": sugestoes["frames"][0]["id"],
+            "sugestao_cena_id": sugestoes["cenas"][0]["id"],
             "titulo": "Título escolhido à mão",
         },
     )
@@ -734,8 +734,8 @@ def teste_criar_frame_de_sugestao_com_participante_nao_confirmado_responde_422(
     usar_provedor_falso(
         ProvedorFalso(
             elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
-            frames_sugeridos=[
-                FrameSugerido(
+            cenas_sugeridas=[
+                CenaSugerida(
                     titulo="A vigília no Muro",
                     participantes=[
                         ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")
@@ -752,7 +752,7 @@ def teste_criar_frame_de_sugestao_com_participante_nao_confirmado_responde_422(
 
     resposta = cliente.post(
         f"/capitulos/{capitulo_id}/frames",
-        json={"sugestao_frame_id": sugestoes["frames"][0]["id"]},
+        json={"sugestao_cena_id": sugestoes["cenas"][0]["id"]},
     )
 
     assert resposta.status_code == 422
@@ -764,8 +764,8 @@ def teste_criar_frame_de_sugestao_de_outro_capitulo_responde_422(
     usar_provedor_falso(
         ProvedorFalso(
             elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
-            frames_sugeridos=[
-                FrameSugerido(
+            cenas_sugeridas=[
+                CenaSugerida(
                     titulo="A vigília no Muro",
                     participantes=[
                         ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")
@@ -782,7 +782,7 @@ def teste_criar_frame_de_sugestao_de_outro_capitulo_responde_422(
 
     resposta = cliente.post(
         f"/capitulos/{segundo}/frames",
-        json={"sugestao_frame_id": sugestoes["frames"][0]["id"]},
+        json={"sugestao_cena_id": sugestoes["cenas"][0]["id"]},
     )
 
     assert resposta.status_code == 422
@@ -796,7 +796,7 @@ def teste_criar_frame_de_sugestao_inexistente_responde_404(
 
     resposta = cliente.post(
         f"/capitulos/{livro['capitulos'][0]['id']}/frames",
-        json={"sugestao_frame_id": 999},
+        json={"sugestao_cena_id": 999},
     )
 
     assert resposta.status_code == 404

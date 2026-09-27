@@ -102,16 +102,16 @@ Content-Type: application/json
 %}
 
 ### Cria um frame direto de uma cena sugerida (item 3.4e)
-# titulo/descricao/horario/clima/humor vêm da SugestaoDeFrame referenciada
-# (ache o id em 06-sugestoes.http); um campo explícito no corpo sempre
-# vence sobre o da sugestão. estados_ids é resolvido sozinho a partir dos
-# participantes — exige que cada um já tenha elemento_id confirmado
-# (03-elementos-e-estados.http), senão 422 listando quem falta.
+# titulo/descricao/horario/clima/humor vêm da SugestaoDeCena referenciada
+# (ache o id em 06-sugestoes.http, campo "cenas"); um campo explícito no
+# corpo sempre vence sobre o da sugestão. estados_ids é resolvido sozinho a
+# partir dos participantes — exige que cada um já tenha elemento_id
+# confirmado (03-elementos-e-estados.http), senão 422 listando quem falta.
 # POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/frames
 # Content-Type: application/json
 #
 # {
-#   "sugestao_frame_id": 3
+#   "sugestao_cena_id": 3
 # }
 
 ### Lista os frames do capítulo

@@ -1,7 +1,7 @@
 ### Abre um capítulo com o texto completo (passo 5)
 # Rode 01-livros.http primeiro para ter livroId e primeiroCapituloId.
 #GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}
-GET {{baseUrl}}/capitulos/2536
+GET {{baseUrl}}/capitulos/3
 
 > {%
     client.test("Traz o texto", function () {

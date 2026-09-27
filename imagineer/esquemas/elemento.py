@@ -91,13 +91,19 @@ class ElementoNovo(BaseModel):
     capítulo. Em dois pedidos separados, uma falha no meio deixaria um elemento
     sem estado nenhum.
 
-    ``tipo``/``nome`` são sempre o que o usuário escreveu aqui — nunca inferidos
-    de ``sugestoes_elemento_ids`` (item 3.4e), mesmo que as sugestões escolhidas
-    tragam um nome ligeiramente diferente entre si.
+    ``tipo``/``nome`` são opcionais (item 3.4e) quando vêm de
+    ``sugestoes_elemento_ids``: sem ambiguidade (uma sugestão só, ou várias
+    com o mesmo nome), confirmar não deveria exigir redigitar o que a IA já
+    identificou. Faltando os dois, a rota usa ``tipo``/``nome`` da **primeira**
+    sugestão da lista. Havendo mais de uma sugestão com nomes diferentes entre
+    si (o caso "Sextus Hospius" vs. "Hospius"), digitar continua a única forma
+    de escolher o nome canônico — não há como a rota adivinhar qual está certo.
+    Sem nenhuma sugestão referenciada, ambos continuam obrigatórios: não existe
+    de onde tirar um padrão.
     """
 
-    tipo: TipoElemento
-    nome: str = Field(min_length=1, max_length=200)
+    tipo: TipoElemento | None = None
+    nome: str | None = Field(default=None, min_length=1, max_length=200)
     descricao: str | None = None
     estado_inicial: EstadoNovo | None = None
     sugestoes_elemento_ids: list[int] = Field(
@@ -178,14 +184,16 @@ class ParticipanteSugerido(BaseModel):
     )
 
 
-class FrameSugerido(BaseModel):
-    """Um frame do tipo CENA sugerido pela IA (item 4.4): elementos interagindo
-    num momento.
+class CenaSugerida(BaseModel):
+    """Uma cena sugerida pela IA (item 4.4): elementos interagindo num momento.
 
-    Não é gravado como Frame por esta rota — é um rascunho persistido (item
-    3.4e) para o usuário usar ao criar o frame de verdade (`POST
-    /capitulos/{id}/frames`, com `sugestao_frame_id`), pré-preenchendo título,
-    atributos situacionais e quais estados marcar.
+    Não é gravada como Frame por esta rota — é uma sugestão persistida (item
+    3.4e), com `id` próprio, para o usuário usar ao criar o Frame de verdade
+    (`POST /capitulos/{id}/frames`, com `sugestao_cena_id`), pré-preenchendo
+    título, atributos situacionais e quais estados marcar. Uma cena sugerida
+    só vira `Frame` (`tipo=CENA`) quando o usuário confirma — até lá, chamar
+    isso de "frame" seria a mesma confusão Cena/Personagem que a Etapa 5 já
+    resolveu na camada de geração.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -213,12 +221,12 @@ class SugestoesDeCapitulo(BaseModel):
         description="Quando a última rodada de sugestão deste capítulo rodou a IA."
     )
     elementos: list[ElementoSugerido]
-    frames: list[FrameSugerido] = Field(
+    cenas: list[CenaSugerida] = Field(
         default_factory=list,
         description=(
-            "Frames do tipo CENA sugeridos, combinando elementos identificados "
-            "acima — o que de fato vale a pena ilustrar, não só uma lista solta "
-            "de quem existe no capítulo."
+            "Cenas sugeridas, combinando elementos identificados acima — o "
+            "que de fato vale a pena ilustrar, não só uma lista solta de quem "
+            "existe no capítulo."
         ),
     )
 

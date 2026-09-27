@@ -246,12 +246,12 @@ def teste_extrair_elementos_interpreta_cenas_sugeridas() -> None:
 
     extracao = provedor.extrair_elementos("t", [], "m")
 
-    assert len(extracao.frames) == 1
-    frame = extracao.frames[0]
-    assert frame.titulo == "A execução"
-    assert frame.horario == "manhã"
-    assert [p.nome for p in frame.participantes] == ["Ned Stark", "Gelo"]
-    assert frame.participantes[1].tipo is TipoElemento.OBJETO
+    assert len(extracao.cenas) == 1
+    cena = extracao.cenas[0]
+    assert cena.titulo == "A execução"
+    assert cena.horario == "manhã"
+    assert [p.nome for p in cena.participantes] == ["Ned Stark", "Gelo"]
+    assert cena.participantes[1].tipo is TipoElemento.OBJETO
 
 
 def teste_extrair_elementos_descarta_cena_sem_titulo_ou_sem_participantes() -> None:
@@ -269,9 +269,9 @@ def teste_extrair_elementos_descarta_cena_sem_titulo_ou_sem_participantes() -> N
     )
     provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
 
-    frames = provedor.extrair_elementos("t", [], "m").frames
+    cenas = provedor.extrair_elementos("t", [], "m").cenas
 
-    assert [f.titulo for f in frames] == ["Cena boa"]
+    assert [c.titulo for c in cenas] == ["Cena boa"]
 
 
 def teste_resposta_sem_json_da_erro_com_orientacao() -> None:

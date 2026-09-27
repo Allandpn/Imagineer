@@ -6,7 +6,7 @@ erDiagram
     CAPITULO ||--o{ ESTADO_ELEMENTO : "origina"
     CAPITULO ||--o{ FRAME : "recorta"
     CAPITULO ||--o{ SUGESTAO_ELEMENTO : "sugere"
-    CAPITULO ||--o{ SUGESTAO_FRAME : "sugere"
+    CAPITULO ||--o{ SUGESTAO_CENA : "sugere"
 
     ELEMENTO ||--o{ ESTADO_ELEMENTO : "tem"
 
@@ -19,8 +19,8 @@ erDiagram
     PROMPT ||--o{ IMAGEM : "resulta em"
 
     SUGESTAO_ELEMENTO }o--o| ELEMENTO : "elemento_id (SET NULL, confirmada)"
-    SUGESTAO_FRAME }o--o| FRAME : "frame_id (SET NULL, confirmada)"
-    SUGESTAO_FRAME ||--o{ SUGESTAO_PARTICIPANTE : "tem"
+    SUGESTAO_CENA }o--o| FRAME : "frame_id (SET NULL, confirmada)"
+    SUGESTAO_CENA ||--o{ SUGESTAO_PARTICIPANTE : "tem"
     SUGESTAO_PARTICIPANTE }o--|| SUGESTAO_ELEMENTO : "referencia"
 
     LIVRO {
@@ -86,7 +86,7 @@ erDiagram
         int elemento_id FK "nulo ate confirmar"
     }
 
-    SUGESTAO_FRAME {
+    SUGESTAO_CENA {
         int id PK
         int capitulo_id FK
         string titulo
@@ -99,7 +99,7 @@ erDiagram
     }
 
     SUGESTAO_PARTICIPANTE {
-        int sugestao_frame_id FK
+        int sugestao_cena_id FK
         int sugestao_elemento_id FK
     }
 

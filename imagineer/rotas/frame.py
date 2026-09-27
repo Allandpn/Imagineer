@@ -26,7 +26,7 @@ from imagineer.modelos import (
     Elemento,
     EstadoElemento,
     Frame,
-    SugestaoDeFrame,
+    SugestaoDeCena,
     TipoDeFrame,
     frames_estados_elemento,
 )
@@ -73,16 +73,16 @@ def criar_frame(
 ) -> FrameDetalhe:
     """Cria o frame e, se vier, já liga os estados dos elementos que aparecem nele.
 
-    Com ``sugestao_frame_id`` (item 3.4e), título/descrição/atributos e
+    Com ``sugestao_cena_id`` (item 3.4e), título/descrição/atributos e
     ``estados_ids`` ausentes do pedido são pré-preenchidos a partir da
-    ``SugestaoDeFrame`` referenciada — um valor explícito no pedido sempre
+    ``SugestaoDeCena`` referenciada — um valor explícito no pedido sempre
     vence sobre o da sugestão.
     """
     capitulo = _buscar_capitulo(sessao, capitulo_id)
 
     sugestao = None
-    if novo.sugestao_frame_id is not None:
-        sugestao = _buscar_sugestao_de_frame(sessao, novo.sugestao_frame_id, capitulo_id)
+    if novo.sugestao_cena_id is not None:
+        sugestao = _buscar_sugestao_de_cena(sessao, novo.sugestao_cena_id, capitulo_id)
 
     titulo = novo.titulo if novo.titulo is not None else (sugestao.titulo if sugestao else None)
     descricao = (
@@ -223,20 +223,20 @@ def _resolver_titulo(
     )
 
 
-def _buscar_sugestao_de_frame(
-    sessao: Session, sugestao_frame_id: int, capitulo_id: int
-) -> SugestaoDeFrame:
-    sugestao = sessao.get(SugestaoDeFrame, sugestao_frame_id)
+def _buscar_sugestao_de_cena(
+    sessao: Session, sugestao_cena_id: int, capitulo_id: int
+) -> SugestaoDeCena:
+    sugestao = sessao.get(SugestaoDeCena, sugestao_cena_id)
     if sugestao is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe sugestão de frame com id {sugestao_frame_id}.",
+            detail=f"Não existe sugestão de cena com id {sugestao_cena_id}.",
         )
     if sugestao.capitulo_id != capitulo_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
-                f"A sugestão {sugestao_frame_id} é do capítulo {sugestao.capitulo_id}, "
+                f"A sugestão {sugestao_cena_id} é do capítulo {sugestao.capitulo_id}, "
                 f"não do capítulo {capitulo_id}."
             ),
         )
@@ -244,9 +244,9 @@ def _buscar_sugestao_de_frame(
 
 
 def _resolver_estados_da_sugestao(
-    sessao: Session, sugestao: SugestaoDeFrame, capitulo: Capitulo
+    sessao: Session, sugestao: SugestaoDeCena, capitulo: Capitulo
 ) -> list[int]:
-    """Resolve ``estados_ids`` a partir dos participantes de uma sugestão de frame.
+    """Resolve ``estados_ids`` a partir dos participantes de uma cena sugerida.
 
     Cada participante precisa já ter ``elemento_id`` resolvido — sem isso não há
     como saber qual estado usar, e confirmar elemento sempre vem antes de

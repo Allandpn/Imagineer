@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.elemento import (
+    CenaSugerida as CenaSugeridaResposta,
     ElementoAjuste,
     ElementoDetalhe,
     ElementoNovo,
@@ -24,7 +25,6 @@ from imagineer.esquemas.elemento import (
     EstadoNovo,
     EstadoResumo,
     EstadosDeSugestoes,
-    FrameSugerido as FrameSugeridoResposta,
     ParticipanteSugerido as ParticipanteSugeridoResposta,
     SugestaoDeElementoBuscada,
     SugestoesDeCapitulo,
@@ -43,8 +43,8 @@ from imagineer.modelos import (
     EstadoElemento,
     Imagem,
     Livro,
+    SugestaoDeCena,
     SugestaoDeElemento,
-    SugestaoDeFrame,
     TipoElemento,
 )
 from imagineer.rotas.configuracao import obter_provedor
@@ -104,13 +104,17 @@ def criar_elemento(
     escolhida, cada uma do seu próprio capítulo — resolve o caso em que a IA
     sugeriu o mesmo personagem em capítulos diferentes sem casar pelo nome.
     Pode vir junto com ``estado_inicial``.
+
+    ``tipo``/``nome`` são opcionais quando vêm sugestões: sem ambiguidade,
+    confirmar não deveria exigir redigitar o que a IA já identificou — usa o
+    da primeira sugestão da lista. Sem nenhuma sugestão, os dois continuam
+    obrigatórios (422 sem eles).
     """
     _buscar_livro(sessao, livro_id)
     sugestoes = _sugestoes_de_elemento_do_livro(sessao, novo.sugestoes_elemento_ids, livro_id)
+    tipo, nome = _resolver_tipo_e_nome(novo.tipo, novo.nome, sugestoes)
 
-    elemento = Elemento(
-        livro_id=livro_id, tipo=novo.tipo, nome=novo.nome, descricao=novo.descricao
-    )
+    elemento = Elemento(livro_id=livro_id, tipo=tipo, nome=nome, descricao=novo.descricao)
 
     estados = []
     if novo.estado_inicial is not None:
@@ -125,7 +129,7 @@ def criar_elemento(
     elemento.estados = estados
 
     sessao.add(elemento)
-    _gravar(sessao, _conflito_de_elemento(sessao, livro_id, novo.tipo, novo.nome))
+    _gravar(sessao, _conflito_de_elemento(sessao, livro_id, tipo, nome))
     sessao.refresh(elemento)
 
     if sugestoes:
@@ -390,11 +394,11 @@ def sugerir_elementos(
     sessao: Session = Depends(obter_sessao),
     provedor: ProvedorIA = Depends(obter_provedor),
 ) -> SugestoesDeCapitulo:
-    """Sugere elementos e frames a partir do texto do capítulo (passo 6).
+    """Sugere elementos e cenas a partir do texto do capítulo (passo 6).
 
     **Não grava Elemento nem Frame** — quem confirma é o usuário, pelas rotas
     de cadastro da Etapa 6.3 e de frame da Etapa 6.4. Mas a sugestão em si é
-    persistida, em linhas próprias (`SugestaoDeElemento`/`SugestaoDeFrame`,
+    persistida, em linhas próprias (`SugestaoDeElemento`/`SugestaoDeCena`,
     item 3.4e): sem isso, cada chamada arriscava devolver algo diferente da
     anterior, porque a IA não é determinística. `forcar=true` força uma
     sugestão nova, por iniciativa do usuário.
@@ -511,6 +515,31 @@ def _gravar(sessao: Session, mensagem_de_conflito) -> None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=mensagem_de_conflito()
         ) from erro
+
+
+def _resolver_tipo_e_nome(
+    tipo: TipoElemento | None, nome: str | None, sugestoes: list[SugestaoDeElemento]
+) -> tuple[TipoElemento, str]:
+    """Decide tipo/nome quando o pedido não trouxe os dois (item 3.4e).
+
+    Explícito no pedido sempre vence. Faltando, usa a primeira sugestão da
+    lista — só faz sentido como padrão porque não há como a rota escolher
+    entre nomes diferentes de sugestões diferentes (ex.: "Sextus Hospius" vs.
+    "Hospius") sozinha; se vier mais de uma sugestão com nomes divergentes, é
+    responsabilidade do usuário digitar o nome canônico que quer.
+    """
+    if tipo is not None and nome is not None:
+        return tipo, nome
+    if sugestoes:
+        primeira = sugestoes[0]
+        return tipo or primeira.tipo, nome or primeira.nome
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail=(
+            "'tipo' e 'nome' são obrigatórios quando não vem nenhuma sugestão "
+            "em sugestoes_elemento_ids."
+        ),
+    )
 
 
 def _conflito_de_elemento(
@@ -659,9 +688,9 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
         )
     )
     sessao.execute(
-        delete(SugestaoDeFrame).where(
-            SugestaoDeFrame.capitulo_id == capitulo.id,
-            SugestaoDeFrame.frame_id.is_(None),
+        delete(SugestaoDeCena).where(
+            SugestaoDeCena.capitulo_id == capitulo.id,
+            SugestaoDeCena.frame_id.is_(None),
         )
     )
 
@@ -678,23 +707,23 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
         sessao.add(linha)
         elementos_desta_rodada[_chave_normalizada(item.tipo, item.nome)] = linha
 
-    for frame in extracao.frames:
-        linha_frame = SugestaoDeFrame(
+    for cena in extracao.cenas:
+        linha_cena = SugestaoDeCena(
             capitulo_id=capitulo.id,
-            titulo=frame.titulo,
-            descricao=frame.descricao,
-            horario=frame.horario,
-            clima=frame.clima,
-            humor=frame.humor,
+            titulo=cena.titulo,
+            descricao=cena.descricao,
+            horario=cena.horario,
+            clima=cena.clima,
+            humor=cena.humor,
             modelo=extracao.modelo,
         )
-        for participante in frame.participantes:
+        for participante in cena.participantes:
             correspondente = elementos_desta_rodada.get(
                 _chave_normalizada(participante.tipo, participante.nome)
             )
             if correspondente is not None:
-                linha_frame.participantes.append(correspondente)
-        sessao.add(linha_frame)
+                linha_cena.participantes.append(correspondente)
+        sessao.add(linha_cena)
 
     capitulo.sugestoes_geradas_em = datetime.now(timezone.utc)
     sessao.add(capitulo)
@@ -742,11 +771,11 @@ def _sugestoes_de_capitulo(sessao: Session, capitulo: Capitulo) -> SugestoesDeCa
             .order_by(SugestaoDeElemento.id)
         )
     )
-    frames = list(
+    cenas = list(
         sessao.scalars(
-            select(SugestaoDeFrame)
-            .where(SugestaoDeFrame.capitulo_id == capitulo.id)
-            .order_by(SugestaoDeFrame.id)
+            select(SugestaoDeCena)
+            .where(SugestaoDeCena.capitulo_id == capitulo.id)
+            .order_by(SugestaoDeCena.id)
         )
     )
 
@@ -764,15 +793,15 @@ def _sugestoes_de_capitulo(sessao: Session, capitulo: Capitulo) -> SugestoesDeCa
             )
             for elemento in elementos
         ],
-        frames=[
-            FrameSugeridoResposta(
-                id=frame.id,
-                titulo=frame.titulo,
-                descricao=frame.descricao,
-                horario=frame.horario,
-                clima=frame.clima,
-                humor=frame.humor,
-                modelo=frame.modelo,
+        cenas=[
+            CenaSugeridaResposta(
+                id=cena.id,
+                titulo=cena.titulo,
+                descricao=cena.descricao,
+                horario=cena.horario,
+                clima=cena.clima,
+                humor=cena.humor,
+                modelo=cena.modelo,
                 participantes=[
                     ParticipanteSugeridoResposta(
                         sugestao_elemento_id=participante.id,
@@ -780,10 +809,10 @@ def _sugestoes_de_capitulo(sessao: Session, capitulo: Capitulo) -> SugestoesDeCa
                         nome=participante.nome,
                         elemento_id=participante.elemento_id,
                     )
-                    for participante in frame.participantes
+                    for participante in cena.participantes
                 ],
             )
-            for frame in frames
+            for cena in cenas
         ],
     )
 

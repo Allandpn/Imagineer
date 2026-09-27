@@ -71,7 +71,7 @@ class Capitulo(Base):
     sugestoes_geradas_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     """Quando a última rodada de `POST /capitulos/{id}/sugestoes` chamou a IA
     de verdade para este capítulo — o texto em si não fica mais aqui, fica em
-    linhas próprias (`SugestaoDeElemento`/`SugestaoDeFrame`, item 3.4e).
+    linhas próprias (`SugestaoDeElemento`/`SugestaoDeCena`, item 3.4e).
 
     Controla se a rota pode servir o que já foi sugerido em vez de rechamar a
     IA: sem isso, o usuário via respostas divergentes a cada chamada, porque a

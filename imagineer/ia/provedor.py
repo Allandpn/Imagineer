@@ -96,13 +96,16 @@ class ParticipanteSugerido:
 
 
 @dataclass
-class FrameSugerido:
-    """Um frame do tipo CENA que a IA identificou como digno de virar imagem.
+class CenaSugerida:
+    """Uma cena que a IA identificou como digna de virar imagem.
 
     Ao contrário de ``ElementoSugerido`` (um elemento isolado), isto é uma
     combinação de elementos interagindo num momento específico do capítulo —
     o que faltava quando a extração só listava elementos soltos, sem sugerir
-    quais combinações formam uma cena (item 4.4).
+    quais combinações formam uma cena (item 4.4). Não é um ``Frame``: a IA
+    sugere a cena, o usuário decide se e quando ela vira um Frame de verdade
+    (`tipo=CENA`, item 3.4e) — misturar os dois nomes foi o que causou a
+    confusão registrada na Etapa 5.
     """
 
     titulo: str
@@ -118,8 +121,8 @@ class ExtracaoDeElementos:
     """O resultado de uma extração, com o rastro do que foi usado."""
 
     elementos: list[ElementoSugerido] = field(default_factory=list)
-    frames: list[FrameSugerido] = field(default_factory=list)
-    """Frames do tipo CENA sugeridos, combinando elementos identificados acima."""
+    cenas: list[CenaSugerida] = field(default_factory=list)
+    """Cenas sugeridas, combinando elementos identificados acima."""
 
     modelo: str = ""
     """O modelo que produziu isto. Guardado para o usuário saber a quem creditar

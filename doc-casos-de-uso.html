@@ -561,7 +561,7 @@
         </dl>
         <ol class="steps">
           <li>Usuário pede sugestões do capítulo. <span class="call"><span class="method post">POST</span> /capitulos/{id}/sugestoes</span></li>
-          <li>Servidor lê o estado vigente de cada elemento já cadastrado até este capítulo, manda isso + o texto do capítulo para a IA, e recebe de volta elementos sugeridos (tipo, nome, descrição de identidade, se deve manter o estado atual) e cenas sugeridas (frames candidatos, com participantes).</li>
+          <li>Servidor lê o estado vigente de cada elemento já cadastrado até este capítulo, manda isso + o texto do capítulo para a IA, e recebe de volta elementos sugeridos (tipo, nome, descrição de identidade, se deve manter o estado atual) e cenas sugeridas (candidatas a virar Frame quando confirmadas, com participantes).</li>
           <li>Cada sugestão de elemento já vem casada com um elemento existente por nome (ignorando caixa/acento), quando aplicável — <code>elemento_id</code> preenchido significa "já cadastrado".</li>
           <li>Para um elemento novo, o usuário cadastra, opcionalmente já com o estado deste capítulo. <span class="call"><span class="method post">POST</span> /livros/{id}/elementos</span></li>
           <li>Para um elemento já existente com aparência nova, o usuário registra outro estado. <span class="call"><span class="method post">POST</span> /elementos/{id}/estados</span></li>
@@ -570,7 +570,7 @@
           <li>Usuário confere como cada elemento estava até um ponto específico da narrativa (útil para conferir consistência). <span class="call"><span class="method get">GET</span> /capitulos/{id}/estados-vigentes</span></li>
         </ol>
         <div class="note">Cadastrar o mesmo elemento (mesmo tipo + nome, no mesmo livro) duas vezes responde <code>409</code> — a extração automática reencontra personagens em capítulos diferentes, então essa restrição evita duplicata.</div>
-        <div class="note">Cada elemento/frame sugerido tem <code>id</code> próprio, salvo no banco (item 3.4e) — <code>sugestoes_elemento_ids</code> em <code>POST /livros/{id}/elementos</code> (ou, para um elemento já existente, <code>POST /elementos/{id}/estados-de-sugestoes</code>) confirma várias sugestões escolhidas de uma vez, criando um Estado por capítulo, sem copiar a descrição à mão em cada uma.</div>
+        <div class="note">Cada elemento/cena sugerido tem <code>id</code> próprio, salvo no banco (item 3.4e) — <code>sugestoes_elemento_ids</code> em <code>POST /livros/{id}/elementos</code> (ou, para um elemento já existente, <code>POST /elementos/{id}/estados-de-sugestoes</code>) confirma várias sugestões escolhidas de uma vez, criando um Estado por capítulo, sem copiar a descrição à mão em cada uma.</div>
       </div>
     </section>
 
@@ -604,15 +604,15 @@
           <dt>Pós-condição</dt><dd>Um Prompt salvo, fiel ao que o usuário escreveu sobre a cena</dd>
         </dl>
         <ol class="steps">
-          <li>Usuário cria um frame do tipo <code>CENA</code> (padrão), com título, descrição e atributos situacionais escritos à mão, ligado aos estados dos elementos que participam — <strong>ou</strong> direto de uma cena sugerida (item 3.4e): com <code>sugestao_frame_id</code>, título/descrição/atributos vêm da sugestão e os estados são resolvidos sozinhos a partir dos participantes já confirmados. <span class="call"><span class="method post">POST</span> /capitulos/{id}/frames</span></li>
-          <li><code>titulo</code> é obrigatório aqui (a não ser que venha de <code>sugestao_frame_id</code>) — é a conta do próprio usuário sobre a cena, e o sistema não tem como inventar isso.</li>
+          <li>Usuário cria um frame do tipo <code>CENA</code> (padrão), com título, descrição e atributos situacionais escritos à mão, ligado aos estados dos elementos que participam — <strong>ou</strong> direto de uma cena sugerida (item 3.4e): com <code>sugestao_cena_id</code>, título/descrição/atributos vêm da sugestão e os estados são resolvidos sozinhos a partir dos participantes já confirmados. <span class="call"><span class="method post">POST</span> /capitulos/{id}/frames</span></li>
+          <li><code>titulo</code> é obrigatório aqui (a não ser que venha de <code>sugestao_cena_id</code>) — é a conta do próprio usuário sobre a cena, e o sistema não tem como inventar isso.</li>
           <li>Se precisar ajustar quem participa depois de criado. <span class="call"><span class="method put">PUT</span> /frames/{id}/estados</span></li>
           <li>Usuário pede o prompt. <span class="call"><span class="method post">POST</span> /frames/{id}/prompts</span></li>
           <li>Servidor faz a leitura profunda de cada estado envolvido, depois <strong>fundamenta</strong> o frame — relê o capítulo para confirmar quem/onde/o quê contra o que foi escrito, guardando o resultado em <code>contexto_do_livro</code>. Isso <strong>não sobrescreve</strong> título/descrição: é apoio, com prioridade menor que a escrita do usuário.</li>
           <li>Servidor monta o prompt na ordem: comentário do usuário (se houver) &gt; descrição do frame &gt; contexto do livro.</li>
         </ol>
         <div class="note">Testado com IA real: quando a fundamentação leu o trecho errado do capítulo (cena longa, vários momentos), o prompt final saiu correto mesmo assim — a prioridade protegeu a descrição do usuário de uma alucinação da releitura automática.</div>
-        <div class="note">Criar o frame a partir de <code>sugestao_frame_id</code> exige que cada participante já tenha <code>elemento_id</code> confirmado (422, listando quem falta, senão) — confirmar elemento sempre vem antes de confirmar frame.</div>
+        <div class="note">Criar o frame a partir de <code>sugestao_cena_id</code> exige que cada participante já tenha <code>elemento_id</code> confirmado (422, listando quem falta, senão) — confirmar elemento sempre vem antes de confirmar frame.</div>
       </div>
     </section>
 
@@ -841,8 +841,8 @@
             <h4>Corpo (JSON)</h4>
             <table class="fields">
               <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
-              <tr><td class="field">tipo</td><td class="type">enum</td><td class="req">obrigatório</td><td></td></tr>
-              <tr><td class="field">nome</td><td class="type">texto (200)</td><td class="req">obrigatório</td><td>Sempre o que o usuário escreveu — nunca inferido das sugestões</td></tr>
+              <tr><td class="field">tipo</td><td class="type">enum</td><td class="opt">opcional*</td><td rowspan="2">*Obrigatórios sem nenhuma sugestão referenciada. Com <code>sugestoes_elemento_ids</code>, usa o tipo/nome da <strong>primeira</strong> sugestão da lista quando ausentes — digitar continua sendo a forma de escolher o nome canônico ao combinar sugestões com nomes diferentes entre si (item 3.4e)</td></tr>
+              <tr><td class="field">nome</td><td class="type">texto (200)</td><td class="opt">opcional*</td></tr>
               <tr><td class="field">descricao</td><td class="type">texto</td><td class="opt">opcional</td><td>Identidade: quem/o que é</td></tr>
               <tr><td class="field">estado_inicial.capitulo_id</td><td class="type">inteiro</td><td class="opt">opcional*</td><td rowspan="2">*Se <code>estado_inicial</code> vier, os dois campos dele são obrigatórios</td></tr>
               <tr><td class="field">estado_inicial.descricao</td><td class="type">texto</td><td class="opt">opcional*</td></tr>
@@ -854,7 +854,7 @@
             <ul class="errors">
               <li><span class="status s4">404</span> Livro, capítulo (de <code>estado_inicial</code>) ou alguma sugestão inexistente</li>
               <li><span class="status s4">409</span> Já existe elemento com mesmo tipo+nome neste livro — resposta traz o id existente</li>
-              <li><span class="status s4">422</span> Alguma sugestão é de outro livro</li>
+              <li><span class="status s4">422</span> Alguma sugestão é de outro livro · <code>tipo</code>/<code>nome</code> ausentes sem nenhuma sugestão referenciada</li>
             </ul>
           </div>
         </article>
@@ -993,8 +993,8 @@
               <tr><td class="field">horario</td><td class="type">texto (100)</td><td class="opt">opcional</td><td></td></tr>
               <tr><td class="field">clima</td><td class="type">texto (100)</td><td class="opt">opcional</td><td></td></tr>
               <tr><td class="field">humor</td><td class="type">texto (100)</td><td class="opt">opcional</td><td></td></tr>
-              <tr><td class="field">estados_ids</td><td class="type">lista de inteiros</td><td class="opt">opcional</td><td>Exatamente 1 se <code>tipo=PERSONAGEM</code>; qualquer quantidade (inclusive 0) se <code>CENA</code>. Se ausente e <code>sugestao_frame_id</code> vier, resolvido sozinho</td></tr>
-              <tr><td class="field">sugestao_frame_id</td><td class="type">inteiro</td><td class="opt">opcional</td><td>Item 3.4e. Pré-preenche titulo/descricao/horario/clima/humor da <code>SugestaoDeFrame</code> — campo explícito no pedido sempre vence</td></tr>
+              <tr><td class="field">estados_ids</td><td class="type">lista de inteiros</td><td class="opt">opcional</td><td>Exatamente 1 se <code>tipo=PERSONAGEM</code>; qualquer quantidade (inclusive 0) se <code>CENA</code>. Se ausente e <code>sugestao_cena_id</code> vier, resolvido sozinho</td></tr>
+              <tr><td class="field">sugestao_cena_id</td><td class="type">inteiro</td><td class="opt">opcional</td><td>Item 3.4e. Pré-preenche titulo/descricao/horario/clima/humor da <code>SugestaoDeCena</code> — campo explícito no pedido sempre vence</td></tr>
             </table>
             <h4>Resposta — 201</h4>
             <p class="desc">O frame criado, com os elementos ligados (estado + identidade de cada um).</p>
@@ -1261,9 +1261,9 @@
         <p class="group-desc">Fase 1 do item 4.4 — identificação de elementos e cenas candidatas, a partir do texto de um capítulo.</p>
 
         <article class="route">
-          <header class="rhead"><span class="method post">POST</span><span class="rpath">/capitulos/{capitulo_id}/sugestoes</span><span class="rsummary">Os elementos e frames sugeridos do capítulo</span></header>
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/capitulos/{capitulo_id}/sugestoes</span><span class="rsummary">Os elementos e cenas sugeridos do capítulo</span></header>
           <div class="route-body">
-            <p class="desc">Não grava Elemento nem Frame — quem confirma é o usuário, pelas rotas de Elementos e Frames. A sugestão em si é persistida, em linhas próprias com <code>id</code> estável (item 3.4e): sem <code>forcar=true</code>, o que já está salvo é devolvido sem chamar a IA de novo (a IA não é determinística — evita respostas divergentes a cada leitura). O casamento com <code>elemento_id</code> é sempre recalculado, mesmo servindo do que já está salvo.</p>
+            <p class="desc">Não grava Elemento nem Frame — quem confirma é o usuário, pelas rotas de Elementos e Frames. A sugestão em si é persistida, em linhas próprias com <code>id</code> estável (item 3.4e): sem <code>forcar=true</code>, o que já está salvo é devolvido sem chamar a IA de novo (a IA não é determinística — evita respostas divergentes a cada leitura). O casamento com <code>elemento_id</code> é sempre recalculado, mesmo servindo do que já está salvo. A IA sugere uma <strong>cena</strong>, nunca um Frame — o Frame só passa a existir quando o usuário confirma (item 3.4e, divergência registrada).</p>
             <h4>Query</h4>
             <table class="fields">
               <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
@@ -1273,7 +1273,7 @@
             <ul class="plain">
               <li><code>gerado_em</code>: quando a última rodada de sugestão deste capítulo chamou a IA</li>
               <li><code>elementos[]</code>: <code>id</code>, tipo, nome, descrição de identidade, <code>manter_estado_atual</code>, <code>modelo</code>, <code>elemento_id</code> (nulo = ainda não confirmado)</li>
-              <li><code>frames[]</code>: <code>id</code>, cenas candidatas — título, descrição, horário/clima/humor, <code>modelo</code>, <code>participantes[]</code> (cada um com <code>sugestao_elemento_id</code> e <code>elemento_id</code> quando casado)</li>
+              <li><code>cenas[]</code>: <code>id</code>, cenas candidatas — título, descrição, horário/clima/humor, <code>modelo</code>, <code>participantes[]</code> (cada um com <code>sugestao_elemento_id</code> e <code>elemento_id</code> quando casado)</li>
             </ul>
             <h4>Erros</h4>
             <ul class="errors">

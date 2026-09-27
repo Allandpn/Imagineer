@@ -87,11 +87,11 @@ class FrameNovo(BaseModel):
         default_factory=list,
         description="Os estados de elemento que aparecem no frame.",
     )
-    sugestao_frame_id: int | None = Field(
+    sugestao_cena_id: int | None = Field(
         default=None,
         description=(
             "Item 3.4e. Pré-preenche titulo/descricao/horario/clima/humor a "
-            "partir da SugestaoDeFrame referenciada — um campo explícito no "
+            "partir da SugestaoDeCena referenciada — um campo explícito no "
             "pedido sempre vence sobre o valor da sugestão. Se `estados_ids` "
             "não vier, resolve sozinho por participante (exige que cada "
             "SugestaoDeElemento já tenha `elemento_id`, senão 422) usando o "

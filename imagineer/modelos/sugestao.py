@@ -7,6 +7,13 @@ A motivação concreta: a IA sugeriu "Sextus Hospius" num capítulo e "Hospius"
 três capítulos depois, sem os dois casarem pelo nome — sem um `id` estável
 por sugestão, não havia como o usuário ligar as duas menções antes de
 cadastrar o elemento (ver a divergência em ESPECIFICACAO.md, item 6.7).
+
+``SugestaoDeCena``, e não ``SugestaoDeFrame``: a IA sugere uma **cena**, não
+um Frame — o Frame só existe depois, quando o usuário confirma que aquela
+cena (ou um elemento sozinho) vira de fato um recorte pra gerar imagem.
+Chamar isso de "Frame" desde a sugestão reintroduzia, na camada de
+sugestão, a mesma confusão Cena/Personagem que motivou renomear `Cena` para
+`Frame` na Etapa 5 — ver a divergência registrada lá.
 """
 
 from sqlalchemy import Boolean, Column, Enum, ForeignKey, String, Table, Text, false
@@ -19,8 +26,8 @@ sugestoes_participante = Table(
     "sugestoes_participante",
     Base.metadata,
     Column(
-        "sugestao_frame_id",
-        ForeignKey("sugestoes_frame.id", ondelete="CASCADE"),
+        "sugestao_cena_id",
+        ForeignKey("sugestoes_cena.id", ondelete="CASCADE"),
         primary_key=True,
     ),
     Column(
@@ -29,9 +36,9 @@ sugestoes_participante = Table(
         primary_key=True,
     ),
 )
-"""Liga uma SugestaoDeFrame aos elementos sugeridos que participam dela.
+"""Liga uma SugestaoDeCena aos elementos sugeridos que participam dela.
 
-Sempre do mesmo capítulo: um frame sugerido é montado a partir dos elementos
+Sempre do mesmo capítulo: uma cena sugerida é montada a partir dos elementos
 que a mesma rodada de sugestão já identificou, nunca de um capítulo diferente
 (a mesma regra que já valia na resposta efêmera, antes desta tabela).
 """
@@ -95,14 +102,16 @@ class SugestaoDeElemento(Base):
         return f"<SugestaoDeElemento id={self.id} nome={self.nome!r}>"
 
 
-class SugestaoDeFrame(Base):
-    """Um frame do tipo CENA que a IA sugeriu num capítulo, persistido.
+class SugestaoDeCena(Base):
+    """Uma cena que a IA sugeriu num capítulo, persistida.
 
-    Sempre representa uma cena: a IA só sugere `tipo=CENA` (item 4.4) — um
-    retrato solo nasce direto de um Elemento, por iniciativa do usuário.
+    Sempre uma cena, nunca um retrato: um retrato solo nasce direto de um
+    Elemento, por iniciativa do usuário, nunca de uma sugestão da IA (item
+    4.4). Quando confirmada, vira um `Frame` (`tipo=CENA`) — mas até lá é só
+    a cena sugerida, sem virar Frame nenhum.
     """
 
-    __tablename__ = "sugestoes_frame"
+    __tablename__ = "sugestoes_cena"
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -122,14 +131,15 @@ class SugestaoDeFrame(Base):
     frame_id: Mapped[int | None] = mapped_column(
         ForeignKey("frames.id", ondelete="SET NULL"),
     )
-    """O Frame real criado a partir desta sugestão — nulo até confirmar."""
+    """O Frame real criado a partir desta cena — nulo até confirmar."""
 
     capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
     frame: Mapped["Frame | None"] = relationship()  # noqa: F821
 
     participantes: Mapped[list["SugestaoDeElemento"]] = relationship(
         secondary=sugestoes_participante,
+        order_by="SugestaoDeElemento.id",
     )
 
     def __repr__(self) -> str:
-        return f"<SugestaoDeFrame id={self.id} titulo={self.titulo!r}>"
+        return f"<SugestaoDeCena id={self.id} titulo={self.titulo!r}>"

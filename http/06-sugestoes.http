@@ -1,13 +1,16 @@
-### Pede à IA os elementos e frames sugeridos do capítulo (passo 6)
-# Não grava Elemento nem Frame — é sugestão. Mas a sugestão em si fica salva
-# como linhas (SugestaoDeElemento/SugestaoDeFrame, item 3.4e): rodar de novo
-# sem forcar=true devolve o que já foi salvo, sem chamar a IA (rápido, e sem
-# risco de vir diferente da vez anterior). Cada elemento/frame sugerido tem
-# "id" próprio, usado depois para confirmar (ver 03-elementos-e-estados.http
-# e 04-frames-e-perfis.http). Precisa de chave e de modelo_extracao
-# configurados em 05-configuracao-ia.http, e de primeiroCapituloId (01-livros.http).
+### Pede à IA os elementos e cenas sugeridos do capítulo (passo 6)
+# Não grava Elemento nem Frame — é sugestão. A IA sugere uma CENA, não um
+# Frame — o Frame só existe quando o usuário confirma (item 3.4e, divergência
+# registrada: "frame" na sugestão reintroduzia a confusão Cena/Personagem).
+# A sugestão em si fica salva como linhas (SugestaoDeElemento/SugestaoDeCena):
+# rodar de novo sem forcar=true devolve o que já foi salvo, sem chamar a IA
+# (rápido, e sem risco de vir diferente da vez anterior). Cada elemento/cena
+# sugerido tem "id" próprio, usado depois para confirmar (ver
+# 03-elementos-e-estados.http e 04-frames-e-perfis.http). Precisa de chave e
+# de modelo_extracao configurados em 05-configuracao-ia.http, e de
+# primeiroCapituloId (01-livros.http).
 # POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
-POST {{baseUrl}}/capitulos/7/sugestoes
+POST {{baseUrl}}/capitulos/3/sugestoes
 
 > {%
     client.test("Devolveu sugestões", function () {
@@ -25,7 +28,7 @@ POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
 # Só substitui sugestões ainda não confirmadas (elemento_id/frame_id nulos) —
 # uma sugestão já virada Elemento ou Frame sobrevive (item 3.4e). Útil se a
 # resposta salva não ficou boa e você quer tentar de novo. Vale notar: a IA
-# não é determinística, então isso pode vir com elementos/frames diferentes
+# não é determinística, então isso pode vir com elementos/cenas diferentes
 # da vez anterior.
 POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes?forcar=true
 

@@ -11,13 +11,13 @@ import re
 import httpx
 
 from imagineer.ia.provedor import (
+    CenaSugerida,
     ChaveDeApiAusente,
     ElementoSugerido,
     ErroDoProvedorIA,
     EstadoSugerido,
     ExtracaoDeElementos,
     FrameFundamentado,
-    FrameSugerido,
     ModeloDisponivel,
     ModeloNaoEscolhido,
     ParticipanteSugerido,
@@ -338,7 +338,7 @@ class ProvedorOpenRouter(ProvedorIA):
             )
         return ExtracaoDeElementos(
             elementos=_interpretar_elementos(bruto),
-            frames=_interpretar_frames_sugeridos(bruto),
+            cenas=_interpretar_cenas_sugeridas(bruto),
             modelo=modelo,
         )
 
@@ -610,13 +610,12 @@ def _interpretar_elementos(bruto: dict) -> list[ElementoSugerido]:
     return sugeridos
 
 
-def _interpretar_frames_sugeridos(bruto: dict) -> list[FrameSugerido]:
+def _interpretar_cenas_sugeridas(bruto: dict) -> list[CenaSugerida]:
     """Lê a lista de cenas sugeridas de dentro do JSON já interpretado.
 
-    Cada uma vira um ``FrameSugerido`` (rascunho de um frame do tipo CENA).
-    Mesma tolerância de ``_interpretar_elementos``: uma entrada malformada, ou
-    sem nenhum participante, é descartada em silêncio em vez de derrubar as
-    outras.
+    Cada uma vira uma ``CenaSugerida``. Mesma tolerância de
+    ``_interpretar_elementos``: uma entrada malformada, ou sem nenhum
+    participante, é descartada em silêncio em vez de derrubar as outras.
     """
     sugeridos = []
     for entrada in bruto.get("cenas") or []:
@@ -643,7 +642,7 @@ def _interpretar_frames_sugeridos(bruto: dict) -> list[FrameSugerido]:
             continue
 
         sugeridos.append(
-            FrameSugerido(
+            CenaSugerida(
                 titulo=titulo,
                 descricao=_texto_ou_nulo(entrada.get("descricao")),
                 horario=_texto_ou_nulo(entrada.get("horario")),
