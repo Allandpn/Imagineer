@@ -61,8 +61,19 @@ Content-Type: application/json
 # Resolve o caso em que a IA sugeriu o mesmo personagem em capítulos
 # diferentes sem casar pelo nome ("Sextus Hospius" num, "Hospius" noutro) —
 # ache os ids em 06-sugestoes.http (GET /livros/{id}/sugestoes-elemento).
-# tipo/nome continuam escolha sua, nunca vêm da sugestão; cada id na lista
-# vira um Estado, um por capítulo.
+# Sem ambiguidade nenhuma pra resolver, tipo/nome nem precisam vir: usa os da
+# primeira sugestão da lista sozinho. Cada id vira um Estado, um por capítulo.
+# POST {{baseUrl}}/livros/{{livroId}}/elementos
+# Content-Type: application/json
+#
+# {
+#   "sugestoes_elemento_ids": [3, 8]
+# }
+
+### O mesmo, mas escolhendo o nome canônico na mão
+# Só precisa disso quando as sugestões escolhidas têm nomes diferentes entre
+# si (o caso acima: "Sextus Hospius" vs. "Hospius") e você quer decidir qual
+# vira o nome do elemento — sem isso, a rota pegaria o da primeira da lista.
 # POST {{baseUrl}}/livros/{{livroId}}/elementos
 # Content-Type: application/json
 #
