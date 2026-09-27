@@ -115,9 +115,11 @@ O EPUB é lido direto da memória (`BytesIO`), sem arquivo temporário — o `re
 | `titulo` | `dc:title` | usa o nome do arquivo, sem a extensão |
 | `autor` | `dc:creator` | fica nulo |
 | `idioma` | `dc:language` | fica nulo |
-| `identificador_epub` | `dc:identifier` | fica nulo |
+| `identificador_epub` | o `dc:identifier` **declarado** pelo pacote | fica nulo |
 
 Só o `titulo` tem valor de reserva, porque é obrigatório no modelo e é o que identifica o livro na tela do app. Um livro sem título na lista seria inutilizável; um livro sem autor, não.
+
+Um EPUB pode listar **vários** `dc:identifier` — ASIN, ISBN, id do Calibre, UUID — e o pacote aponta, pelo atributo `unique-identifier`, qual deles identifica a obra. Não é necessariamente o primeiro da lista. Usar o primeiro faria a detecção de livro repetido depender da ordem em que o arquivo foi escrito.
 
 **Capítulos** — a ordem e o conteúdo vêm do **spine**; os títulos vêm do **índice (TOC)**.
 
@@ -128,11 +130,14 @@ Essa combinação é deliberada, porque cada fonte resolve metade do problema:
 
 Então percorremos o spine para definir `ordem` e `texto`, e consultamos o TOC para preencher `titulo` — casando pelo caminho do arquivo. O TOC é achatado (seções aninhadas são percorridas por inteiro) e a âncora é descartada: `capitulo3.xhtml#inicio` casa com `capitulo3.xhtml`. Um capítulo sem entrada no TOC fica com `titulo` nulo, que o modelo já aceita (item 3.4a).
 
-**Texto** — o HTML de cada documento é convertido em texto simples preservando as quebras de parágrafo, porque é esse texto que a IA vai ler. Blocos (`p`, `div`, títulos, `li`, `blockquote`) passam a ser separados por linha em branco, `<br>` por quebra simples, e `script`/`style` são descartados. Espaços repetidos e linhas em branco excedentes são normalizados.
+**Texto** — o HTML de cada documento é convertido em texto simples preservando as quebras de parágrafo, porque é esse texto que a IA vai ler. Blocos (`p`, `div`, títulos, `li`, `blockquote`) passam a ser separados por linha em branco, `<br>` por quebra simples, e `script`/`style` são descartados. Espaços repetidos e linhas em branco excedentes são normalizados, e as quebras de linha do Windows (`
+`) são convertidas — sem isso, um `
+` solto sobra no meio dos parágrafos e iria assim para o prompt.
 
 #### O que é descartado
 
 - **Documentos de navegação** (`nav.xhtml`, `toc.ncx`): fazem parte da mecânica do formato, não da obra. Aparecem no spine e seriam importados como se fossem capítulos.
+- **Sumários disfarçados de capítulo**: muitos EPUBs trazem uma página "Sumário" como documento XHTML comum, que o formato não marca como navegação. O critério é a proporção do texto que está dentro de links — uma página de sumário é quase só links, um capítulo praticamente não tem nenhum. Descarta-se acima de 60% do texto em links, e só se houver pelo menos 5 links, para não confundir com um capítulo que cita notas de rodapé.
 - **Documentos sem texto útil**: menos de 100 caracteres depois da extração. Na prática são capas, folhas de rosto e páginas de créditos, que todo EPUB tem em quantidade.
 
 O limite de 100 caracteres é baixo de propósito: é o suficiente para pegar páginas praticamente vazias sem risco de descartar um capítulo curto de verdade. A alternativa — importar tudo — deixaria o app com meia dúzia de "capítulos" que não são capítulos, e o usuário teria de filtrar à mão em cada livro.
@@ -156,6 +161,23 @@ Tudo acima, em `imagineer/servicos/importacao_epub.py`, com 21 testes.
 Uma constatação que veio da prática: o `ebooklib` **inventa** um identificador UUID ao escrever um EPUB sem `dc:identifier`, porque o formato exige o elemento. Então o caso real não é "sem identificador", e sim "identificador vazio" — que é o que se vê em arquivos convertidos. O tratamento é o mesmo (fica nulo), mas o teste precisou ser escrito sobre o caso certo.
 
 A validação mais útil foi um EPUB montado para parecer com os de verdade: documentos em subpasta (`Text/`), capa, folha de rosto, página de créditos, índice aninhado em partes e uma entrada do índice apontando para uma âncora no meio de um capítulo. É aí que um parsing ingênuo produz capítulo duplicado, título trocado ou capa virada capítulo — e é o caso que ficou fixado como teste de regressão.
+
+#### Validação contra um EPUB real
+
+Depois dos testes sintéticos, a importação foi rodada contra um livro publicado de verdade (um romance comercial, 2,7 MB, 93 documentos no spine, índice aninhado em três partes, 74 capítulos numerados). Ela funcionou — e expôs **três defeitos** que nenhum EPUB gerado em teste teria mostrado:
+
+1. **O identificador errado.** O arquivo declarava cinco `dc:identifier` e o código pegava o primeiro (`asin:...`), quando o declarado pelo pacote era o último (`urn:asin:...`). Corrigido para respeitar o `unique-identifier`.
+2. **Retorno de carro sobrando.** O HTML usava `
+`, e a normalização só tratava `
+` — o texto saía com um `
+` solto no meio dos parágrafos.
+3. **Sumário virando capítulo.** O livro trazia, depois do último capítulo, uma página de sumário em XHTML comum — 86 links, 99,3% do texto dentro deles. Não sendo um `nav.xhtml` declarado, passava pelo filtro de tipo. Foi o caso que motivou o critério de proporção de links.
+
+Os três viraram testes de regressão, reproduzidos com EPUBs sintéticos equivalentes — o arquivo real não entra no repositório.
+
+O que funcionou de primeira: os 74 capítulos numerados com os títulos corretos, o índice aninhado em três partes achatado sem duplicar nada, e o descarte certeiro de capa, folha de rosto, dedicatória e das quatro páginas divisoras de parte (que são só imagem, zero caractere de texto). O texto de um capítulo saiu com 245 parágrafos, diálogos preservados e nenhum resíduo de HTML.
+
+**Limitação conhecida, ainda aberta:** sobraram 8 documentos importados como capítulos que não são narrativa — créditos, uma tabela de classificações, agradecimentos, lista de personagens, glossário, lugares, uma página de "mande sua opinião" e um anúncio de outro livro da editora. Todos têm texto de verdade e tamanho de capítulo curto, então nenhum critério automático os separa de um capítulo legítimo sem risco de descartar conteúdo. A solução não é no parsing: o app precisa permitir marcar um capítulo como ignorado. Ver Etapa 6.
 
 ---
 
@@ -473,6 +495,8 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 | `ordem` atribuída **depois** dos descartes | Vinda da posição no arquivo, a numeração pularia justamente as páginas descartadas, e a listagem no app teria buracos |
 | Conversão de HTML para texto com `lxml`, sem BeautifulSoup | O `lxml` já vem como dependência do `ebooklib`; acrescentar `bs4` seria uma biblioteca a mais para o mesmo resultado |
 | Exceção própria `ArquivoEpubInvalido` | Um arquivo corrompido viraria erro 500 sem explicação, com traço de pilha do `zipfile` no log, em vez de uma mensagem que o app possa mostrar |
+| Identificador do livro vindo do `unique-identifier` declarado, não do primeiro `dc:identifier` | Um EPUB real listava cinco identificadores e o declarado era o último. Usar o primeiro faria a detecção de livro repetido depender da ordem em que o arquivo foi escrito |
+| Página de navegação detectada pela proporção de texto dentro de links | Um "Sumário" em XHTML comum não é marcado como navegação pelo formato. Medido num livro real: 99,3% em 86 links na página de sumário, contra 20,5% no segundo colocado e nenhum link em 81 dos 85 documentos |
 
 ---
 
@@ -482,4 +506,5 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 - [x] ~~Definir estrutura de pastas/módulos do projeto Python (FastAPI).~~ Concluído — ver item **1.5**.
 - [ ] Desenhar as rotas da API (endpoints, contratos de request/response).
 - [ ] Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).
+- [ ] Permitir marcar um capítulo como ignorado. Descoberto ao importar um EPUB real: créditos, glossário, agradecimentos e anúncios da editora têm texto de capítulo curto e nenhum critério automático os separa de narrativa legítima (ver item 2.2).
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).

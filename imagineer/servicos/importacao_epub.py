@@ -32,6 +32,22 @@ O limite é baixo de propósito: pega capas, folhas de rosto e páginas de créd
 verdade.
 """
 
+PROPORCAO_DE_LINKS_PARA_NAVEGACAO = 0.6
+MINIMO_DE_LINKS_PARA_NAVEGACAO = 5
+"""Quando um documento é considerado uma página de navegação, e não um capítulo.
+
+Muitos EPUBs trazem um "Sumário" como documento XHTML comum dentro do spine.
+Ele não é declarado como documento de navegação do formato, então a checagem de
+tipo não o pega — e ele entraria no catálogo como se fosse um capítulo.
+
+O critério é a proporção do texto que está dentro de links. Medido num livro
+real de 85 documentos: a página de sumário tinha **99,3%** do texto em 86 links,
+enquanto o segundo maior índice era 20,5% (um único link de e-mail) e 81 dos 85
+documentos não tinham link nenhum. O limite de 60% fica confortavelmente no
+meio dessa distância, e a exigência de pelo menos 5 links evita descartar um
+capítulo curto que por acaso contenha uma nota de rodapé.
+"""
+
 _TAGS_DE_BLOCO = ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "tr", "pre")
 
 
@@ -94,7 +110,7 @@ def extrair_epub(conteudo: bytes, nome_arquivo: str) -> LivroExtraido:
         titulo=_primeiro_metadado(epub_lido, "title") or _titulo_do_nome(nome_arquivo),
         autor=_primeiro_metadado(epub_lido, "creator"),
         idioma=_primeiro_metadado(epub_lido, "language"),
-        identificador_epub=_primeiro_metadado(epub_lido, "identifier"),
+        identificador_epub=_identificador_unico(epub_lido),
         nome_arquivo=nome_arquivo,
         capitulos=capitulos,
     )
@@ -169,7 +185,14 @@ def _extrair_capitulos(epub_lido: epub.EpubBook) -> list[CapituloExtraido]:
         if isinstance(item, (epub.EpubNav, epub.EpubNcx)):
             continue
 
-        texto = _extrair_texto(item.get_content())
+        conteudo = item.get_content()
+
+        # Um "Sumário" em XHTML comum não é declarado como documento de
+        # navegação, então a checagem de tipo acima não o pega.
+        if _parece_pagina_de_navegacao(conteudo):
+            continue
+
+        texto = _extrair_texto(conteudo)
         if len(texto) < MINIMO_DE_CARACTERES:
             continue
 
@@ -249,10 +272,65 @@ def _extrair_texto(conteudo: bytes) -> str:
         elemento.tail = "\n\n" + (elemento.tail or "")
 
     texto = arvore.text_content().replace("\xa0", " ")
+    # Normaliza as quebras de linha do Windows e do Mac clássico antes de
+    # qualquer outra coisa. Sem isso, um "\r\n" do arquivo original deixa o "\r"
+    # sobrando no meio do texto, que iria assim para o prompt da IA.
+    texto = texto.replace("\r\n", "\n").replace("\r", "\n")
     texto = re.sub(r"[ \t]+", " ", texto)
     texto = re.sub(r" *\n *", "\n", texto)
     texto = re.sub(r"\n{3,}", "\n\n", texto)
     return texto.strip()
+
+
+def _parece_pagina_de_navegacao(conteudo: bytes) -> bool:
+    """Diz se um documento é um sumário disfarçado de capítulo.
+
+    O critério é a proporção do texto que está dentro de links: uma página de
+    sumário é quase só links, um capítulo praticamente não tem nenhum. Ver
+    ``PROPORCAO_DE_LINKS_PARA_NAVEGACAO`` para os números medidos num livro real.
+    """
+    try:
+        arvore = lxml.html.fromstring(conteudo)
+    except Exception:  # noqa: BLE001 - documento vazio ou HTML irrecuperável
+        return False
+
+    for elemento in arvore.xpath("//script|//style"):
+        elemento.drop_tree()
+
+    links = arvore.xpath("//a")
+    if len(links) < MINIMO_DE_LINKS_PARA_NAVEGACAO:
+        return False
+
+    # Conta sem espaços: a indentação do HTML não deve pesar na proporção.
+    def sem_espacos(texto: str) -> int:
+        return len("".join(texto.split()))
+
+    total = sem_espacos(arvore.text_content())
+    if total == 0:
+        return False
+
+    dentro_de_links = sum(sem_espacos(link.text_content()) for link in links)
+    return dentro_de_links / total >= PROPORCAO_DE_LINKS_PARA_NAVEGACAO
+
+
+def _identificador_unico(epub_lido: epub.EpubBook) -> str | None:
+    """Devolve o identificador que o EPUB declara como sendo o do livro.
+
+    Um EPUB pode listar vários ``dc:identifier`` — ASIN, ISBN, id do Calibre,
+    UUID — e o pacote aponta, pelo atributo ``unique-identifier``, qual deles
+    identifica a obra. **Não é necessariamente o primeiro da lista**: num livro
+    real, o declarado era o último dos cinco.
+
+    Pegar o primeiro faria a detecção de livro repetido depender da ordem em que
+    o arquivo foi escrito: duas conversões do mesmo livro poderiam listar os
+    identificadores em ordem diferente e deixar de casar.
+    """
+    declarado = (getattr(epub_lido, "uid", None) or "").strip()
+    if declarado:
+        return declarado
+
+    # Sem declaração, o primeiro é o melhor palpite disponível.
+    return _primeiro_metadado(epub_lido, "identifier")
 
 
 def _primeiro_metadado(epub_lido: epub.EpubBook, campo: str) -> str | None:

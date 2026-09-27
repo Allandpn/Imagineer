@@ -425,3 +425,91 @@ def teste_epub_realista_com_indice_aninhado_subpastas_e_ancoras() -> None:
     assert "Bran — parte 2" not in [c.titulo for c in extraido.capitulos]
     assert extraido.capitulos[1].texto.count("Bran") == 1
     assert "Parte 2" in extraido.capitulos[1].texto
+
+
+# --------------------------------------------------------------------------- #
+# Casos descobertos rodando contra um EPUB real
+# --------------------------------------------------------------------------- #
+
+
+def teste_usa_o_identificador_declarado_e_nao_o_primeiro_da_lista() -> None:
+    """Um EPUB pode listar vários identificadores; vale o que ele declara.
+
+    Caso real: um livro publicado listava cinco ``dc:identifier`` — ASIN, ISBN,
+    id do Calibre, UUID e um ASIN em forma de URN — e o declarado no atributo
+    ``unique-identifier`` do pacote era o **último**. Pegar o primeiro faria a
+    detecção de livro repetido depender da ordem em que o arquivo foi escrito.
+    """
+    livro = epub.EpubBook()
+    # add_metadata acrescenta identificadores sem mexer no declarado.
+    livro.add_metadata("DC", "identifier", "asin:PRIMEIRO-DA-LISTA")
+    livro.add_metadata("DC", "identifier", "calibre:12345")
+    # set_identifier define qual é o identificador único do livro.
+    livro.set_identifier("urn:isbn:O-DECLARADO")
+    livro.set_title("Livro com vários identificadores")
+    item = epub.EpubHtml(title="Cap", file_name="c1.xhtml")
+    item.content = f"<p>{TEXTO_LONGO}</p>"
+    livro.add_item(item)
+    livro.toc = (item,)
+    livro.add_item(epub.EpubNcx())
+    livro.add_item(epub.EpubNav())
+    livro.spine = ["nav", item]
+
+    buffer = io.BytesIO()
+    epub.write_epub(buffer, livro)
+    extraido = extrair_epub(buffer.getvalue(), "varios-ids.epub")
+
+    assert extraido.identificador_epub == "urn:isbn:O-DECLARADO"
+
+
+def teste_sumario_em_xhtml_nao_vira_capitulo() -> None:
+    """Um "Sumário" como documento comum não é declarado como navegação.
+
+    Caso real: o livro trazia, depois do último capítulo, uma página de sumário
+    em XHTML comum — 86 links e 99,3% do texto dentro deles. Ela não é um
+    ``EpubNav``, então a checagem de tipo não a pegava, e ela entrava no catálogo
+    como se fosse um capítulo.
+    """
+    links = "".join(
+        f'<p><a href="c{i}.xhtml">Capítulo {i}</a></p>' for i in range(1, 30)
+    )
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO}</p>", "Capítulo de verdade"),
+                (f"<h1>Sumário</h1>{links}", "Sumário"),
+            ]
+        ),
+        "com-sumario.epub",
+    )
+
+    assert [c.titulo for c in extraido.capitulos] == ["Capítulo de verdade"]
+
+
+def teste_capitulo_com_poucas_notas_de_rodape_nao_e_descartado() -> None:
+    """O outro lado do critério: link não é sinal de página de navegação.
+
+    A exigência de vários links, e de que eles dominem o texto, é o que impede
+    de descartar um capítulo legítimo que cita uma nota de rodapé.
+    """
+    html = (
+        f"<p>{TEXTO_LONGO}</p>"
+        '<p>Como já foi dito <a href="nota1.xhtml">[1]</a> e também '
+        '<a href="nota2.xhtml">[2]</a>.</p>'
+        f"<p>{TEXTO_LONGO}</p>"
+    )
+    extraido = extrair_epub(_montar_epub(capitulos=[(html, "Com notas")]), "notas.epub")
+
+    assert [c.titulo for c in extraido.capitulos] == ["Com notas"]
+
+
+def teste_texto_nao_deixa_retorno_de_carro_sobrando() -> None:
+    """Quebras de linha do Windows não podem vazar para o texto do capítulo.
+
+    Caso real: o livro usava ``\r\n`` no HTML, e o texto extraído saía com um
+    ``\r`` solto no meio dos parágrafos — que iria assim para o prompt da IA.
+    """
+    html = f"<p>Primeiro parágrafo.</p>\r\n<p>{TEXTO_LONGO}</p>\r\n"
+    extraido = extrair_epub(_montar_epub(capitulos=[(html, "Cap")]), "crlf.epub")
+
+    assert "\r" not in extraido.capitulos[0].texto
