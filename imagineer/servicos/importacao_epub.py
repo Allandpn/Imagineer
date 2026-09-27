@@ -57,34 +57,57 @@ meio dessa distância, e a exigência de pelo menos 5 links evita descartar um
 capítulo curto que por acaso contenha uma nota de rodapé.
 """
 
-PROPORCAO_MINIMA_DA_MEDIANA = 0.25
+PROPORCAO_MINIMA_DA_MEDIANA = 0.10
 """Abaixo desta fração da mediana, o capítulo é **sugerido** como ignorado.
 
-Medido em cinco livros reais, comparando o menor capítulo narrativo de cada um
-com a mediana do próprio livro: 78% (Odisseia), 46% (A Vontade de Muitos), 40%
-(Mistborn) e 33% (Devoradores de Estrelas). O limite de 25% fica abaixo do menor
-deles, com margem — então nenhum capítulo narrativo desses livros é sugerido só
-por ser curto.
+O valor saiu de uma varredura sobre os nove livros de validação, contando quantos
+capítulos narrativos cada limite escondia (erro grave) e quantos apêndices
+deixava passar (incômodo):
 
-Note que o critério é **relativo à mediana do próprio livro**, não absoluto: a
-mediana variou de 17 mil a 44 mil caracteres entre os cinco. Um limite fixo
-serviria para um livro e falharia nos outros.
+| Limite | Narrativa escondida | Apêndice mantido |
+|--------|---------------------|------------------|
+| 5%     | 0                   | 19               |
+| **10%**| **0**               | **14**           |
+| 12%    | 1                   | 11               |
+| 15%    | 2                   | 10               |
+| 25%    | 2                   | 5                |
+
+Subir de 10% para 25% troca nove incômodos por dois fragmentos de *O Processo*
+escondidos — e esconder narrativa é muito pior que deixar um item para o usuário
+desmarcar. Daí 10%.
+
+O critério é **relativo à mediana do próprio livro**, não absoluto: a mediana
+variou de 7 mil a 44 mil caracteres entre os nove. Um limite fixo serviria para
+um livro e falharia nos outros.
+"""
+
+_PREFIXOS_DE_ISBN = ("978", "979")
+"""Prefixos de ISBN-13, usados para reconhecer anúncios de outros livros.
+
+E-books comerciais costumam terminar com páginas de "compre agora e leia",
+listando outros títulos da editora com título, autor, ISBN e número de páginas.
+Elas não têm entrada no índice e são curtas, mas nada no título as denuncia —
+porque não têm título. O ISBN é o que as distingue de narrativa: um número de 13
+dígitos começando em 978 ou 979 não aparece em prosa.
+
+Nos nove livros de validação essas páginas eram 6 dos 12 apêndices que passavam.
 """
 
 _TAGS_DE_BLOCO = ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "tr", "pre")
 
 _ROTULOS_NAO_NARRATIVOS = (
     "abreviatura", "agradecimento", "anexo", "apendice", "apresentacao",
-    "bibliografia", "citacao", "colofao", "copyright", "credito", "dedicatoria",
-    "epigrafe", "errata", "ficha tecnica", "glossario", "indice", "introducao",
-    "lugares", "mapa", "nota", "personagens", "posfacio", "prefacio",
-    "publicidade", "sobre a autora", "sobre o autor", "sumario",
+    "bibliografia", "citacao", "colofao", "copyright", "credito", "cronologia",
+    "dedicatoria", "epigrafe", "errata", "ficha tecnica", "glossario", "indice",
+    "introducao", "lugares", "mapa", "nota", "obras do autor", "obras da autora",
+    "outras leituras", "personagens", "posfacio", "prefacio", "publicidade",
+    "sobre a autora", "sobre o autor", "sumario",
 )
 """Títulos que costumam nomear material não-narrativo.
 
 Comparados **sem acento e em minúsculas**, e só no começo do título — "Notas ao
 Canto 1" casa com ``nota``, mas um capítulo chamado "A nota final" não casaria.
-A lista vem dos cinco livros reais usados na validação; é uma heurística de
+A lista vem dos nove livros reais usados na validação; é uma heurística de
 sugestão, não uma regra: o usuário confirma.
 """
 
@@ -125,8 +148,6 @@ class EntradaIndice:
     """O ``id`` dentro do arquivo, quando a entrada aponta para um ponto dele."""
 
     titulo: str | None
-    nivel: int
-    """0 para entradas na raiz do índice, 1+ para as aninhadas em seções."""
 
 
 @dataclass
@@ -135,7 +156,6 @@ class _Pedaco:
 
     titulo: str | None
     texto: str
-    nivel: int | None
     continuacao: bool = False
     """Este trecho é a continuação do capítulo anterior, não um capítulo novo.
 
@@ -268,8 +288,6 @@ def _extrair_capitulos(epub_lido: epub.EpubBook) -> list[CapituloExtraido]:
     for entrada in entradas:
         por_arquivo.setdefault(entrada.arquivo, []).append(entrada)
 
-    indice_tem_niveis = any(entrada.nivel > 0 for entrada in entradas)
-
     # Primeira passada: junta os pedaços de texto com o título e o nível de cada
     # um. A sugestão de ignorar só pode ser calculada depois, quando a mediana
     # de tamanho do livro inteiro for conhecida.
@@ -311,10 +329,8 @@ def _extrair_capitulos(epub_lido: epub.EpubBook) -> list[CapituloExtraido]:
             texto=pedaco.texto,
             ignorado=_sugerir_ignorar(
                 titulo=pedaco.titulo,
-                tamanho=len(pedaco.texto),
+                texto=pedaco.texto,
                 mediana=mediana,
-                nivel=pedaco.nivel,
-                indice_tem_niveis=indice_tem_niveis,
             ),
         )
         for posicao, pedaco in enumerate(pedacos, start=1)
@@ -360,7 +376,6 @@ def _dividir_documento(conteudo: bytes, entradas: list[EntradaIndice]) -> list[_
             _Pedaco(
                 titulo=primeira.titulo if primeira else None,
                 texto=_extrair_texto(conteudo),
-                nivel=primeira.nivel if primeira else None,
             )
         ]
 
@@ -372,18 +387,19 @@ def _dividir_por_ancoras(
 ) -> list[_Pedaco]:
     """Corta o documento nos pontos apontados pelas âncoras do índice.
 
-    O corte é feito entre os **filhos diretos do corpo** do documento: para cada
-    âncora, subimos da tag que tem o ``id`` até o ancestral que é filho do corpo,
-    e é aí que o capítulo começa.
+    O corte acontece entre os filhos de um **contêiner**, que é o ancestral comum
+    mais profundo de todas as âncoras. Na maioria dos livros esse contêiner é o
+    próprio ``<body>``, mas em *O Processo* o documento inteiro estava embrulhado
+    num único ``<div>``: cortar entre os filhos do corpo daria uma fatia só, e o
+    capítulo de fragmentos não se dividiria nos seus 11 trechos.
 
-    Se duas âncoras caírem no mesmo filho do corpo, não há como separá-las e as
-    duas entradas viram um pedaço só, com o título da primeira. Preferir juntar a
-    arriscar perder texto é a mesma escolha que orienta o resto do módulo.
+    Nada de texto é perdido: o que estiver fora do contêiner entra na primeira
+    fatia (se vier antes) ou na última (se vier depois).
     """
     try:
         arvore = lxml.html.fromstring(conteudo)
     except Exception:  # noqa: BLE001 - HTML irrecuperável
-        return [_Pedaco(titulo=entradas[0].titulo, texto="", nivel=entradas[0].nivel)]
+        return [_Pedaco(titulo=entradas[0].titulo, texto="")]
 
     for elemento in arvore.xpath("//script|//style"):
         elemento.drop_tree()
@@ -391,99 +407,151 @@ def _dividir_por_ancoras(
     corpo = arvore.find("body")
     if corpo is None:
         corpo = arvore
-    filhos = list(corpo)
 
-    # Para cada entrada, em que posição dos filhos do corpo ela começa.
-    inicios: list[tuple[int, EntradaIndice]] = []
+    # Localiza o elemento de cada âncora. Uma âncora declarada no índice mas
+    # ausente do documento é simplesmente ignorada — melhor do que inventar um
+    # corte no lugar errado.
+    elementos: dict[int, object] = {}
     for entrada in entradas:
         if not entrada.ancora:
-            inicios.append((0, entrada))
             continue
-        encontrados = corpo.xpath(".//*[@id=$identificador]", identificador=entrada.ancora)
-        if not encontrados:
-            # Âncora declarada no índice mas ausente do documento: ignora a
-            # entrada em vez de inventar um corte.
+        achados = corpo.xpath(".//*[@id=$identificador]", identificador=entrada.ancora)
+        if achados:
+            elementos[id(entrada)] = achados[0]
+
+    if not elementos:
+        return [_Pedaco(titulo=entradas[0].titulo, texto=_extrair_texto(conteudo))]
+
+    container = _container_de_corte(list(elementos.values()), corpo)
+    filhos = list(container)
+
+    # Para cada entrada, em que posição dos filhos do contêiner ela começa.
+    inicios: list[tuple[int, EntradaIndice]] = []
+    for entrada in entradas:
+        elemento = elementos.get(id(entrada))
+        if elemento is None:
+            # Entrada sem âncora: representa o começo do arquivo.
+            if not entrada.ancora:
+                inicios.append((0, entrada))
             continue
-        ancestral = encontrados[0]
-        while ancestral.getparent() is not None and ancestral.getparent() is not corpo:
-            ancestral = ancestral.getparent()
+        alvo = elemento
+        while alvo.getparent() is not None and alvo.getparent() is not container:
+            alvo = alvo.getparent()
         try:
-            inicios.append((filhos.index(ancestral), entrada))
+            inicios.append((filhos.index(alvo), entrada))
         except ValueError:
             continue
 
     if not inicios:
-        return [
-            _Pedaco(
-                titulo=entradas[0].titulo,
-                texto=_extrair_texto(conteudo),
-                nivel=entradas[0].nivel,
-            )
-        ]
+        return [_Pedaco(titulo=entradas[0].titulo, texto=_extrair_texto(conteudo))]
 
     # Ordena pela posição no documento — a ordem do índice não é garantia — e
-    # descarta cortes repetidos, mantendo o primeiro título de cada posição.
+    # descarta cortes repetidos. Quando duas entradas caem na mesma posição,
+    # prevalece a que tem âncora, por ser a mais específica: em *O Processo*, a
+    # seção "Fragmentos" e o primeiro fragmento começam no mesmo ponto, e o
+    # título útil é o do fragmento.
     inicios.sort(key=lambda par: par[0])
     unicos: list[tuple[int, EntradaIndice]] = []
     for posicao, entrada in inicios:
         if unicos and unicos[-1][0] == posicao:
+            if entrada.ancora and not unicos[-1][1].ancora:
+                unicos[-1] = (posicao, entrada)
             continue
         unicos.append((posicao, entrada))
 
+    # O que está fora do contêiner precisa ir para algum lugar, ou desaparece.
+    antes_do_container, depois_do_container = _vizinhos_do_container(container, corpo)
+
     pedacos: list[_Pedaco] = []
 
-    # Texto antes do primeiro corte. Sem isso ele desapareceria — e ele não é um
-    # capítulo novo, é o resto do capítulo do arquivo anterior, partido ao meio
-    # por uma ferramenta de conversão. Marcado como continuação para ser colado
-    # de volta em ``_juntar_continuacoes``.
-    if unicos[0][0] > 0:
-        pedacos.append(
-            _Pedaco(
-                titulo=None,
-                texto=_texto_de(filhos[: unicos[0][0]]),
-                nivel=unicos[0][1].nivel,
-                continuacao=True,
-            )
-        )
+    # Texto antes do primeiro corte. Ele não é um capítulo novo: é o resto do
+    # capítulo do arquivo anterior, partido ao meio por uma ferramenta de
+    # conversão. Marcado como continuação para ser colado de volta em
+    # ``_juntar_continuacoes``.
+    inicio_do_miolo = filhos[: unicos[0][0]]
+    if antes_do_container or inicio_do_miolo:
+        texto_inicial = _texto_de(antes_do_container + inicio_do_miolo)
+        if texto_inicial:
+            pedacos.append(_Pedaco(titulo=None, texto=texto_inicial, continuacao=True))
 
     for indice, (posicao, entrada) in enumerate(unicos):
-        fim = unicos[indice + 1][0] if indice + 1 < len(unicos) else len(filhos)
-        pedacos.append(
-            _Pedaco(
-                titulo=entrada.titulo,
-                texto=_texto_de(filhos[posicao:fim]),
-                nivel=entrada.nivel,
-            )
-        )
+        ultimo = indice + 1 == len(unicos)
+        fim = len(filhos) if ultimo else unicos[indice + 1][0]
+        recorte = filhos[posicao:fim] + (depois_do_container if ultimo else [])
+        pedacos.append(_Pedaco(titulo=entrada.titulo, texto=_texto_de(recorte)))
 
     return pedacos
 
 
+def _container_de_corte(elementos: list, padrao):
+    """O elemento cujos filhos servem de fatias para o corte.
+
+    É o ancestral comum mais profundo de todas as âncoras. Usar sempre o
+    ``<body>`` não serve: quando o documento está embrulhado num único ``<div>``,
+    todas as âncoras caem no mesmo filho do corpo e o corte não acontece.
+    """
+    cadeias = [list(elemento.iterancestors()) for elemento in elementos]
+    if not cadeias or not cadeias[0]:
+        return padrao
+
+    comuns = set(cadeias[0])
+    for cadeia in cadeias[1:]:
+        comuns &= set(cadeia)
+
+    # A cadeia vai do pai para a raiz, então o primeiro comum é o mais profundo.
+    for candidato in cadeias[0]:
+        if candidato in comuns:
+            return candidato
+    return padrao
+
+
+def _vizinhos_do_container(container, corpo) -> tuple[list, list]:
+    """Devolve o que está no corpo antes e depois do contêiner de corte.
+
+    Quando o contêiner não é o próprio corpo, esse conteúdo ficaria fora de todas
+    as fatias e desapareceria da importação.
+    """
+    if container is corpo:
+        return [], []
+
+    ancestral = container
+    while ancestral.getparent() is not None and ancestral.getparent() is not corpo:
+        ancestral = ancestral.getparent()
+
+    irmaos = list(corpo)
+    if ancestral not in irmaos:
+        return [], []
+
+    posicao = irmaos.index(ancestral)
+    return irmaos[:posicao], irmaos[posicao + 1 :]
+
+
 def _sugerir_ignorar(
-    *,
-    titulo: str | None,
-    tamanho: int,
-    mediana: float,
-    nivel: int | None,
-    indice_tem_niveis: bool,
+    *, titulo: str | None, texto: str, mediana: float
 ) -> bool:
     """Diz se este capítulo **parece** não ser narrativa.
 
     É só uma sugestão: nada é descartado, e o usuário confirma ou desmarca. A
-    validação em cinco livros reais mostrou que nenhum critério automático separa
+    validação em nove livros reais mostrou que nenhum critério automático separa
     narrativa de apêndice com segurança, então a decisão fica com quem lê.
 
-    Três sinais somam, e um protege:
+    Três sinais sugerem, e um protege:
 
     - **Título conhecido** de material não-narrativo ("Créditos", "Glossário",
       "Notas ao Canto 1").
+    - **Anúncio de outro livro da editora**, reconhecido pelo ISBN no texto.
     - **Tamanho** muito abaixo da mediana do próprio livro.
-    - **Posição no índice**: num índice de dois níveis, o corpo do livro fica
-      aninhado nas seções e o material pré/pós-textual fica na raiz. Só vale
-      para documentos que *têm* entrada no índice — um documento sem entrada
-      nenhuma pode muito bem ser narrativa, como as duas versões alternativas da
-      cena final de *A Vontade de Muitos*.
-    - **Proteção**: um título claramente narrativo vence todos os outros sinais.
+    - **Proteção**: um título claramente narrativo vence os dois. É o que salva o
+      capítulo 26 de *O apanhador no campo de centeio*, que tem 11% da mediana do
+      livro e é o desfecho da obra.
+
+    Um terceiro sinal foi testado e **descartado**: a posição no índice. A ideia
+    era que, num índice de dois níveis, o corpo do livro ficaria aninhado nas
+    seções e o material pré/pós-textual na raiz — o que vale em três dos nove
+    livros. Mas em *O Processo* a única seção aninhada é "Fragmentos", o apêndice,
+    e os doze capítulos reais estão na raiz: o sinal se inverte e esconde o
+    romance inteiro. Ele contribuía com exatamente um item nos nove livros, e o
+    risco era esse. Ver item 2.2 da especificação.
     """
     normalizado = _normalizar(titulo)
 
@@ -493,10 +561,23 @@ def _sugerir_ignorar(
     if normalizado.startswith(_ROTULOS_NAO_NARRATIVOS):
         return True
 
-    if mediana > 0 and tamanho < mediana * PROPORCAO_MINIMA_DA_MEDIANA:
+    if _parece_anuncio_de_editora(texto):
         return True
 
-    return indice_tem_niveis and nivel == 0
+    return mediana > 0 and len(texto) < mediana * PROPORCAO_MINIMA_DA_MEDIANA
+
+
+def _parece_anuncio_de_editora(texto: str) -> bool:
+    """Diz se o texto é uma página de "compre agora e leia" de outro livro.
+
+    Reconhecida pelo ISBN: um número de 13 dígitos começando em 978 ou 979 não
+    aparece em prosa narrativa, mas aparece em toda página que lista um livro com
+    seus dados de catálogo.
+    """
+    for numero in re.findall(r"(?<![0-9])[0-9]{13}(?![0-9])", texto):
+        if numero.startswith(_PREFIXOS_DE_ISBN):
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -507,18 +588,19 @@ def _sugerir_ignorar(
 def _entradas_do_indice(epub_lido: epub.EpubBook) -> list[EntradaIndice]:
     """Achata o índice do EPUB numa lista ordenada de entradas.
 
-    O TOC pode ser aninhado em seções, então a função é recursiva. O nível é
-    preservado porque é um sinal útil: num índice de dois níveis, o corpo do
-    livro fica aninhado e o material pré/pós-textual fica na raiz.
+    O TOC pode ser aninhado em seções, então a função é recursiva. O aninhamento
+    é achatado e descartado: ele parecia um bom sinal para separar corpo de
+    apêndice, mas em *O Processo* significa o contrário (ver
+    ``_sugerir_ignorar``).
     """
     entradas: list[EntradaIndice] = []
 
-    def percorrer(itens, nivel: int) -> None:
+    def percorrer(itens) -> None:
         for item in itens:
             # Uma seção do índice vem como (objeto da seção, lista de filhos).
             if isinstance(item, (tuple, list)):
-                percorrer([item[0]], nivel)
-                percorrer(item[1], nivel + 1)
+                percorrer([item[0]])
+                percorrer(item[1])
                 continue
 
             href = getattr(item, "href", None)
@@ -531,11 +613,10 @@ def _entradas_do_indice(epub_lido: epub.EpubBook) -> list[EntradaIndice]:
                     arquivo=_caminho_sem_ancora(arquivo),
                     ancora=ancora or None,
                     titulo=titulo.strip() if titulo else None,
-                    nivel=nivel,
                 )
             )
 
-    percorrer(epub_lido.toc, 0)
+    percorrer(epub_lido.toc)
     return entradas
 
 

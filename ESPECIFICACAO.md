@@ -156,46 +156,98 @@ Um EPUB válido mas **sem nenhum capítulo aproveitável** também é erro: impo
 
 #### O que foi implementado
 
-Tudo acima, em `imagineer/servicos/importacao_epub.py`, com 21 testes.
+Tudo acima, em `imagineer/servicos/importacao_epub.py`, coberto por testes que
+constroem EPUBs em memória com o próprio `ebooklib` — nenhum arquivo binário
+entra no repositório.
 
-Uma constatação que veio da prática: o `ebooklib` **inventa** um identificador UUID ao escrever um EPUB sem `dc:identifier`, porque o formato exige o elemento. Então o caso real não é "sem identificador", e sim "identificador vazio" — que é o que se vê em arquivos convertidos. O tratamento é o mesmo (fica nulo), mas o teste precisou ser escrito sobre o caso certo.
+#### Como a implementação foi validada
 
-A validação mais útil foi um EPUB montado para parecer com os de verdade: documentos em subpasta (`Text/`), capa, folha de rosto, página de créditos, índice aninhado em partes e uma entrada do índice apontando para uma âncora no meio de um capítulo. É aí que um parsing ingênuo produz capítulo duplicado, título trocado ou capa virada capítulo — e é o caso que ficou fixado como teste de regressão.
+O caminho foi em três etapas, e cada uma achou coisa que a anterior não acharia.
 
-#### Validação contra um EPUB real
+**1. EPUBs sintéticos.** Montados sob medida para cada situação: sem índice, sem
+autor, com capítulo vazio, com página de navegação. Uma constatação veio daqui: o
+`ebooklib` **inventa** um identificador UUID ao escrever um EPUB sem
+`dc:identifier`, porque o formato exige o elemento. O caso real não é "sem
+identificador", e sim "identificador vazio" — o que se vê em arquivos
+convertidos. O teste precisou ser reescrito sobre o caso certo.
 
-Depois dos testes sintéticos, a importação foi rodada contra um livro publicado de verdade (um romance comercial, 2,7 MB, 93 documentos no spine, índice aninhado em três partes, 74 capítulos numerados). Ela funcionou — e expôs **três defeitos** que nenhum EPUB gerado em teste teria mostrado:
+**2. Um EPUB sintético "realista"**, com documentos em subpasta, capa, folha de
+rosto, créditos, índice aninhado em partes e uma entrada apontando para âncora no
+meio de um capítulo. É onde um parsing ingênuo produz capítulo duplicado, título
+trocado ou capa virada capítulo.
 
-1. **O identificador errado.** O arquivo declarava cinco `dc:identifier` e o código pegava o primeiro (`asin:...`), quando o declarado pelo pacote era o último (`urn:asin:...`). Corrigido para respeitar o `unique-identifier`.
-2. **Retorno de carro sobrando.** O HTML usava `
-`, e a normalização só tratava `
-` — o texto saía com um `
-` solto no meio dos parágrafos.
-3. **Sumário virando capítulo.** O livro trazia, depois do último capítulo, uma página de sumário em XHTML comum — 86 links, 99,3% do texto dentro deles. Não sendo um `nav.xhtml` declarado, passava pelo filtro de tipo. Foi o caso que motivou o critério de proporção de links.
+**3. Nove livros publicados de verdade:** *A Vontade de Muitos*, a *Odisseia*
+(tradução de Frederico Lourenço), *Mistborn: O Império Final*, *Flores para
+Algernon*, *Devoradores de Estrelas*, *O apanhador no campo de centeio*, *O
+estrangeiro*, *O Processo* e *O Alienista*. Alguns são EPUB 3, outros EPUB 2,
+vários passaram por conversão no Calibre. Esta etapa foi a que mais valeu.
 
-Os três viraram testes de regressão, reproduzidos com EPUBs sintéticos equivalentes — o arquivo real não entra no repositório.
+#### Os defeitos que só os livros reais mostraram
 
-O que funcionou de primeira: os 74 capítulos numerados com os títulos corretos, o índice aninhado em três partes achatado sem duplicar nada, e o descarte certeiro de capa, folha de rosto, dedicatória e das quatro páginas divisoras de parte (que são só imagem, zero caractere de texto). O texto de um capítulo saiu com 245 parágrafos, diálogos preservados e nenhum resíduo de HTML.
+Nenhum deles apareceria em EPUB gerado em teste. Todos viraram teste de
+regressão, reproduzidos com EPUBs sintéticos equivalentes.
 
-#### Validação contra cinco livros
+1. **O identificador errado.** Um arquivo declarava cinco `dc:identifier` e o
+   código pegava o primeiro (`asin:...`), quando o declarado pelo pacote no
+   atributo `unique-identifier` era o último (`urn:asin:...`). Isso quebraria a
+   detecção de livro repetido, que passaria a depender da ordem em que o arquivo
+   foi escrito.
 
-A validação foi ampliada para cinco livros publicados, de formatos e origens diferentes: *A Vontade de Muitos*, a *Odisseia* (tradução de Frederico Lourenço), *Mistborn: O Império Final*, *Flores para Algernon* e *Devoradores de Estrelas*. Dois são EPUB 3, três são EPUB 2, dois passaram por conversão no Calibre.
+2. **Retorno de carro sobrando.** O HTML usava quebras de linha do Windows e a
+   normalização só tratava as de Unix, deixando um caractere de retorno solto no
+   meio dos parágrafos — que iria assim para o prompt da IA.
 
-**Um defeito grave apareceu:** em *Flores para Algernon*, as fronteiras de capítulo são **âncoras dentro dos arquivos**, não os arquivos. O livro tem 13 documentos mas 23 entradas de índice, e um único arquivo continha 11 relatórios de progresso. A importação produzia 4 capítulos gigantes — um deles com 131 mil caracteres — em vez dos 17 relatórios que o livro declara. Ver "Divisão por âncoras" abaixo.
+3. **Sumário virando capítulo.** Um livro trazia, depois do último capítulo, uma
+   página de sumário em XHTML comum: 86 links, 99,3% do texto dentro deles. Não
+   sendo um `nav.xhtml` declarado, passava pelo filtro de tipo.
 
-**Três sinais foram medidos para separar narrativa de material pré/pós-textual, e nenhum resolve sozinho:**
+4. **Capítulos no lugar errado das fronteiras.** Em *Flores para Algernon*, as
+   fronteiras de capítulo são âncoras dentro dos arquivos, não os arquivos: 13
+   documentos para 23 entradas de índice, com um arquivo contendo 11 relatórios de
+   progresso. A importação produzia 4 capítulos gigantes, um com 131 mil
+   caracteres, em vez dos 17 relatórios.
 
-| Sinal | Por que falha |
+5. **Divisão que não acontecia.** Em *O Processo*, o documento de fragmentos
+   estava inteiro dentro de um único `<div>`, então todas as âncoras caíam no mesmo
+   filho do corpo e o corte degenerava numa fatia só.
+
+6. **O romance inteiro escondido.** Ainda em *O Processo*, o índice tem uma única
+   seção aninhada — "Fragmentos", o apêndice — e os doze capítulos estão na raiz.
+   O critério de posição no índice, que valia em três dos nove livros, se invertia
+   aqui e sugeria ignorar todos os capítulos do livro.
+
+#### Os quatro sinais testados para separar narrativa de apêndice
+
+| Sinal | Situação |
 |---|---|
-| Tamanho relativo à mediana | As faixas se sobrepõem: o menor capítulo narrativo é 33% da mediana (Devoradores), e o maior item indesejado é 303% (`Notas ao Canto 1`, na Odisseia — são 24 documentos de notas, cada um do tamanho de um canto) |
-| Marcadores padrão do formato (`guide`, `landmarks`) | Em dois dos cinco livros o marcador `type=text`, que significa "o corpo do livro começa aqui", aponta para a **própria capa** |
-| Aninhamento do índice | Funciona muito bem em três livros (em *A Vontade de Muitos* os 74 aninhados são exatamente os 74 capítulos), mas em Mistborn o `PRÓLOGO` fica na raiz junto dos créditos — filtrar por aninhamento **descartaria narrativa** |
+| **Título conhecido** (`Créditos`, `Glossário`, `Notas`…) | **Usado.** O mais confiável, e o que pega a maioria dos casos |
+| **Tamanho relativo à mediana do livro** | **Usado**, a 10%. Ver a varredura abaixo |
+| **ISBN no texto** | **Usado.** Reconhece as páginas de "compre agora e leia", que não têm título nenhum |
+| **Posição no índice** (raiz vs. aninhado) | **Descartado.** Vale em três livros e se inverte em três; contribuía com exatamente um item e escondia o *Processo* inteiro |
 
-A conclusão é que não existe critério automático simultaneamente seguro e eficaz. Daí a decisão de **sugerir em vez de descartar**: os três sinais somam para marcar `Capitulo.ignorado`, um quarto critério protege títulos claramente narrativos, e o usuário confirma. É o mesmo padrão do item 4.4.
+A varredura do limite de tamanho sobre os nove livros:
+
+| Limite | Narrativa escondida | Apêndice mantido |
+|---|---|---|
+| 5% | 0 | 19 |
+| **10%** | **0** | **14** |
+| 12% | 1 | 11 |
+| 15% | 2 | 10 |
+| 25% | 2 | 5 |
+
+Subir de 10% para 25% trocaria nove incômodos por dois fragmentos de *O Processo*
+escondidos. Como esconder narrativa é muito pior que deixar um item para o
+usuário desmarcar, o limite ficou em 10%.
+
+Os marcadores padrão do formato (`guide`, `landmarks`) também foram examinados e
+**não servem**: em dois dos livros o marcador `type=text`, que significa "o corpo
+do livro começa aqui", aponta para a própria capa.
 
 #### Divisão por âncoras
 
-Quando o índice aponta para **várias âncoras do mesmo arquivo**, o arquivo é cortado nesses pontos: para cada âncora, sobe-se da tag que tem o `id` até o ancestral que é filho direto do corpo do documento, e é aí que o capítulo começa.
+Quando o índice aponta para **várias âncoras do mesmo arquivo**, o arquivo é cortado nesses pontos.
+
+O corte acontece entre os filhos de um **contêiner**, que é o ancestral comum mais profundo de todas as âncoras. Na maioria dos livros esse contêiner é o próprio `<body>`, mas em *O Processo* o documento inteiro estava embrulhado num único `<div>`: cortar entre os filhos do corpo daria uma fatia só, e os onze fragmentos não se separariam. O que estiver fora do contêiner entra na primeira fatia (se vier antes) ou na última (se vier depois), para que nada de texto se perca.
 
 Duas situações de borda, resolvidas no sentido de nunca perder texto:
 
@@ -206,25 +258,35 @@ Duas situações de borda, resolvidas no sentido de nunca perder texto:
 
 Um capítulo é **sugerido** como ignorado quando qualquer um destes vale:
 
-1. O título começa com um rótulo conhecido de material não-narrativo (`Créditos`, `Glossário`, `Notas`, `Sobre o autor`, `Apêndice`, `Índice`…), comparado sem acento e em minúsculas.
-2. O texto tem menos de 25% da mediana do próprio livro. O critério é relativo porque a mediana variou de 17 mil a 44 mil caracteres entre os cinco livros — um limite fixo serviria para um e falharia nos outros.
-3. O índice tem dois níveis e a entrada deste documento está na raiz. Vale só para documentos que **têm** entrada no índice: em *A Vontade de Muitos* duas versões alternativas da cena final não têm entrada nenhuma, e são narrativa.
+1. O título começa com um rótulo conhecido de material não-narrativo (`Créditos`, `Glossário`, `Notas`, `Sobre o autor`, `Apêndice`, `Índice`, `Cronologia`…), comparado sem acento e em minúsculas.
+2. O texto contém um **ISBN** — um número de 13 dígitos começando em 978 ou 979. É o que reconhece as páginas de "compre agora e leia" que os e-books comerciais trazem no fim: elas não têm título nenhum, então nenhum outro critério as pega, e um ISBN não aparece em prosa narrativa.
+3. O texto tem menos de **10%** da mediana do próprio livro. O critério é relativo porque a mediana variou de 7 mil a 44 mil caracteres entre os nove livros — um limite fixo serviria para um e falharia nos outros.
 
-E um critério **protege**, vencendo os três: um título claramente narrativo (`Capítulo`, `Canto`, `Prólogo`, `Epílogo`, `Parte`, `Relatório de Progresso`, ou um número/numeral romano isolado). É o que impede de esconder o `PRÓLOGO` do Mistborn ou um capítulo legitimamente curto.
+E um critério **protege**, vencendo os três: um título claramente narrativo (`Capítulo`, `Canto`, `Prólogo`, `Epílogo`, `Parte`, `Relatório de Progresso`, ou um número/numeral romano isolado). É o que salva o capítulo 26 de *O apanhador no campo de centeio*, que tem 11% da mediana do livro e é o desfecho da obra.
 
-#### Resultado nos cinco livros
+#### Resultado nos nove livros
 
 | Livro | Capítulos | Mantidos | Sugeridos | Narrativa escondida |
 |---|---|---|---|---|
 | A Vontade de Muitos | 84 | 76 | 8 | **0** |
-| Odisseia | 56 | 24 | 32 | **0** |
+| Odisseia | 56 | 25 | 31 | **0** |
 | Mistborn | 48 | 40 | 8 | **0** |
-| Flores para Algernon | 21 | 17 | 4 | **0** |
+| Flores para Algernon | 21 | 18 | 3 | **0** |
 | Devoradores de Estrelas | 38 | 30 | 8 | **0** |
+| O apanhador no campo de centeio | 33 | 26 | 7 | **0** |
+| O estrangeiro | 20 | 11 | 9 | **0** |
+| O Processo | 23 | 21 | 2 | **0** |
+| O Alienista | 19 | 14 | 5 | **0** |
 
-Nenhum capítulo narrativo foi escondido em nenhum dos cinco. No Algernon, os 17 mantidos são exatamente os 17 relatórios de progresso. Na Odisseia, os 24 mantidos são exatamente os 24 cantos, com os 24 documentos de notas sugeridos como ignorados.
+**Nenhum capítulo narrativo foi escondido em nenhum dos nove livros.** Alguns acertos que valem registro:
 
-Sobrou **um** falso negativo em cinco livros: um anúncio de outro título da editora, no fim de *A Vontade de Muitos*, sem título no índice e com 7 mil caracteres. Fica para o usuário desmarcar.
+- *Flores para Algernon*: os 18 mantidos incluem exatamente os 17 relatórios de progresso, remontados a partir de 13 arquivos.
+- *Odisseia*: os 25 mantidos são os 24 cantos, com os 24 documentos de "Notas ao Canto" sugeridos como ignorados.
+- *O Processo*: os 12 capítulos do romance e os 11 fragmentos, todos mantidos.
+- *O apanhador no campo de centeio*: os 26 capítulos, inclusive o de número 26, que tem 1.523 caracteres — 11% da mediana — e foi salvo pela proteção de título narrativo.
+- *O estrangeiro*: os 11 capítulos, com a numeração reiniciando entre as duas partes.
+
+Sobraram **quatro** itens não-narrativos mantidos, nos nove livros: um estudo métrico na Odisseia, uma nota editorial no Algernon, uma notícia bibliográfica no Processo e uma nota biográfica no Alienista. Todos têm texto real e tamanho de capítulo curto; ficam para o usuário desmarcar com um toque.
 
 ---
 
@@ -310,7 +372,7 @@ Restrição de unicidade em (`livro_id`, `ordem`): dois capítulos não podem oc
 
 Apagar um Livro apaga seus Capítulos (`ON DELETE CASCADE`), em dois níveis: no banco e no ORM. Um capítulo não existe sozinho, sem o livro a que pertence.
 
-`ignorado` existe porque todo EPUB traz, misturado aos capítulos, material que não é narrativa: créditos, glossário, agradecimentos, notas do tradutor, anúncios da editora. A importação **sugere** marcando este campo (ver item 2.2) e o usuário confirma — nada é descartado no parsing. Acrescentado depois da validação contra cinco livros reais, que mostrou que nenhum critério automático separa os dois com segurança.
+`ignorado` existe porque todo EPUB traz, misturado aos capítulos, material que não é narrativa: créditos, glossário, agradecimentos, notas do tradutor, anúncios da editora. A importação **sugere** marcando este campo (ver item 2.2) e o usuário confirma — nada é descartado no parsing. Acrescentado depois da validação contra nove livros reais, que mostrou que nenhum critério automático separa os dois com segurança.
 
 #### (b) Elemento
 
@@ -548,9 +610,12 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 | Identificador do livro vindo do `unique-identifier` declarado, não do primeiro `dc:identifier` | Um EPUB real listava cinco identificadores e o declarado era o último. Usar o primeiro faria a detecção de livro repetido depender da ordem em que o arquivo foi escrito |
 | Página de navegação detectada pela proporção de texto dentro de links | Um "Sumário" em XHTML comum não é marcado como navegação pelo formato. Medido num livro real: 99,3% em 86 links na página de sumário, contra 20,5% no segundo colocado e nenhum link em 81 dos 85 documentos |
 | Capítulos divididos pelas âncoras do índice quando ele é mais fino que os arquivos | Em *Flores para Algernon*, um arquivo continha 11 relatórios de progresso e a importação produzia um capítulo de 131 mil caracteres. As fronteiras que valem são as que o livro declara |
+| Corte feito no ancestral comum das âncoras, não nos filhos do `<body>` | Em *O Processo* o documento estava inteiro dentro de um único `<div>`, e cortar entre os filhos do corpo dava uma fatia só |
+| Posição no índice **descartada** como sinal | Em *O Processo* a única seção aninhada é o apêndice e os doze capítulos estão na raiz: o sinal se inverte e esconde o romance inteiro. Contribuía com exatamente um item nos nove livros |
+| Anúncios de outros livros reconhecidos pelo ISBN no texto | Essas páginas não têm título nenhum, então nenhum critério de título as pega. Um número de 13 dígitos começando em 978 ou 979 não aparece em prosa narrativa |
 | Texto antes da primeira âncora colado no capítulo anterior | O Calibre parte arquivos grandes no meio de um capítulo; sem isso, 42 mil caracteres do relatório anterior virariam um capítulo sem título e o relatório apareceria partido em dois |
-| Material não-narrativo **sugerido** como ignorado, não descartado | Medição em cinco livros: o menor capítulo narrativo é 33% da mediana e o maior apêndice é 303%; o marcador padrão do formato aponta para a capa em dois deles; e filtrar pelo aninhamento do índice descartaria o `PRÓLOGO` do Mistborn. Esconder narrativa é muito pior que listar um glossário |
-| Limite de tamanho **relativo à mediana do livro**, não absoluto | A mediana de tamanho de capítulo variou de 17 mil a 44 mil caracteres entre os cinco livros; um limite fixo serviria para um e falharia nos outros |
+| Material não-narrativo **sugerido** como ignorado, não descartado | Medição em nove livros: nenhum dos quatro sinais testados separa narrativa de apêndice com segurança. Esconder narrativa é muito pior que listar um glossário, então nada é descartado — a importação sugere e o usuário confirma |
+| Limite de tamanho **relativo à mediana do livro**, não absoluto, e fixado em 10% | A mediana variou de 7 mil a 44 mil caracteres entre os nove livros, então um limite fixo serviria para um e falharia nos outros. Os 10% saíram de uma varredura: acima disso começa a esconder narrativa |
 
 ---
 

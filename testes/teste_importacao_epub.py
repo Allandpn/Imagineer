@@ -692,7 +692,7 @@ def teste_titulo_narrativo_protege_capitulo_curto() -> None:
 def teste_sugere_ignorar_o_que_e_muito_curto_para_o_livro() -> None:
     """O critério é relativo à mediana do próprio livro, não absoluto.
 
-    A mediana variou de 17 mil a 44 mil caracteres entre os cinco livros reais —
+    A mediana variou de 7 mil a 44 mil caracteres entre os nove livros reais —
     um limite fixo serviria para um e falharia nos outros.
     """
     extraido = extrair_epub(
@@ -712,15 +712,23 @@ def teste_sugere_ignorar_o_que_e_muito_curto_para_o_livro() -> None:
     assert por_titulo["Capítulo 1"] is False
 
 
-def teste_em_indice_de_dois_niveis_a_raiz_e_sugerida_como_ignorada() -> None:
-    """Num índice aninhado, o corpo do livro fica nas seções e o resto na raiz.
+def teste_secao_aninhada_de_apendice_nao_esconde_os_capitulos_da_raiz() -> None:
+    """A posição no índice **não** é usada para sugerir. Aqui está o porquê.
 
-    Caso real: em *A Vontade de Muitos* os 74 capítulos estavam aninhados em três
-    partes, e capa, créditos, glossário e personagens ficavam na raiz.
+    Caso real, *O Processo*: o índice tem uma única seção aninhada, "Fragmentos",
+    que é o apêndice com os trechos inacabados — e os doze capítulos do romance
+    estão todos na raiz. Uma versão anterior deste serviço tratava "está na raiz
+    de um índice aninhado" como sinal de material pré/pós-textual, e escondeu o
+    livro inteiro.
+
+    O sinal valia em três dos nove livros de validação e se invertia em outros
+    três, contribuindo com exatamente um item que os outros critérios não pegavam.
+    Foi removido: esconder um romance é muito pior que deixar um item para o
+    usuário desmarcar.
     """
     livro = epub.EpubBook()
-    livro.set_identifier("urn:teste:niveis")
-    livro.set_title("Livro com partes")
+    livro.set_identifier("urn:teste:processo")
+    livro.set_title("O Processo")
     livro.set_language("pt-BR")
 
     def documento(nome: str) -> epub.EpubHtml:
@@ -729,34 +737,72 @@ def teste_em_indice_de_dois_niveis_a_raiz_e_sugerida_como_ignorada() -> None:
         livro.add_item(item)
         return item
 
-    apresentacao = documento("apres.xhtml")
-    cap1 = documento("c1.xhtml")
-    cap2 = documento("c2.xhtml")
+    detencao = documento("c1.xhtml")
+    interrogatorio = documento("c2.xhtml")
+    catedral = documento("c3.xhtml")
+    fragmentos = documento("frag.xhtml")
+    fragmentos.content = (
+        f'<div><h2 id="f1">A amiga de B.</h2><p>{TEXTO_LONGO}</p>'
+        f'<h2 id="f2">O procurador</h2><p>{TEXTO_LONGO}</p></div>'
+    )
 
     livro.toc = (
-        epub.Link("apres.xhtml", "O funcionamento do verso homérico", "ap"),
+        epub.Link("c1.xhtml", "Detenção", "c1"),
+        epub.Link("c2.xhtml", "Primeiro interrogatório", "c2"),
+        epub.Link("c3.xhtml", "Na catedral", "c3"),
         (
-            epub.Section("PARTE I"),
+            epub.Section("Fragmentos"),
             (
-                epub.Link("c1.xhtml", "Canto 1", "c1"),
-                epub.Link("c2.xhtml", "Canto 2", "c2"),
+                epub.Link("frag.xhtml#f1", "A amiga de B.", "f1"),
+                epub.Link("frag.xhtml#f2", "O procurador", "f2"),
             ),
         ),
     )
     livro.add_item(epub.EpubNcx())
     livro.add_item(epub.EpubNav())
-    livro.spine = ["nav", apresentacao, cap1, cap2]
+    livro.spine = ["nav", detencao, interrogatorio, catedral, fragmentos]
 
     buffer = io.BytesIO()
     epub.write_epub(buffer, livro)
-    extraido = extrair_epub(buffer.getvalue(), "niveis.epub")
+    extraido = extrair_epub(buffer.getvalue(), "processo.epub")
 
     por_titulo = {c.titulo: c.ignorado for c in extraido.capitulos}
-    # Está na raiz do índice e o título não está na lista de rótulos conhecidos —
-    # só a posição no índice o denuncia.
-    assert por_titulo["O funcionamento do verso homérico"] is True
-    assert por_titulo["Canto 1"] is False
-    assert por_titulo["Canto 2"] is False
+    # Os capítulos do romance estão na raiz do índice e precisam ser mantidos.
+    assert por_titulo["Detenção"] is False
+    assert por_titulo["Primeiro interrogatório"] is False
+    assert por_titulo["Na catedral"] is False
+
+
+def teste_documento_embrulhado_em_div_unica_ainda_divide_por_ancoras() -> None:
+    """O corte acontece no ancestral comum das âncoras, não no ``<body>``.
+
+    Caso real, *O Processo*: o documento de fragmentos estava inteiro dentro de um
+    único ``<div>``, então todas as âncoras caíam no mesmo filho do corpo. Cortar
+    entre os filhos do corpo dava uma fatia só, e os fragmentos não se separavam.
+    """
+    dados = _montar_epub_com_ancoras(
+        documentos=[
+            (
+                "frag.xhtml",
+                "<div>"
+                f'<h2 id="f1">Primeiro</h2><p>Texto um. {TEXTO_LONGO}</p>'
+                f'<h2 id="f2">Segundo</h2><p>Texto dois. {TEXTO_LONGO}</p>'
+                f'<h2 id="f3">Terceiro</h2><p>Texto três. {TEXTO_LONGO}</p>'
+                "</div>",
+            )
+        ],
+        indice=[
+            ("Primeiro", "frag.xhtml#f1"),
+            ("Segundo", "frag.xhtml#f2"),
+            ("Terceiro", "frag.xhtml#f3"),
+        ],
+    )
+
+    extraido = extrair_epub(dados, "frag.epub")
+
+    assert [c.titulo for c in extraido.capitulos] == ["Primeiro", "Segundo", "Terceiro"]
+    assert "Texto dois" not in extraido.capitulos[0].texto
+    assert "Texto dois" in extraido.capitulos[1].texto
 
 
 def teste_documento_sem_entrada_no_indice_nao_e_sugerido_pela_posicao() -> None:
@@ -818,3 +864,60 @@ def teste_sugestao_chega_ao_banco(sessao_com_tabelas: Session) -> None:
 
     por_titulo = {c.titulo: c.ignorado for c in livro.capitulos}
     assert por_titulo == {"Capítulo 1": False, "Capítulo 2": False, "Créditos": True}
+
+
+def teste_sugere_ignorar_anuncio_de_outro_livro_da_editora() -> None:
+    """E-books comerciais terminam com páginas de "compre agora e leia".
+
+    Elas não têm entrada no índice e nada no título as denuncia — porque não têm
+    título. O ISBN é o que as distingue de narrativa: um número de 13 dígitos
+    começando em 978 ou 979 não aparece em prosa.
+
+    Caso real: eram 6 das 12 páginas indesejadas que passavam nos nove livros de
+    validação.
+    """
+    anuncio = (
+        "<p>Mensageira da sorte</p><p>Nia, Fernanda</p>"
+        "<p>9788592783839</p><p>426</p>"
+        "<p>Compre agora e leia (Publicidade)</p>"
+        f"<p>{TEXTO_LONGO}</p>"
+    )
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Capítulo 1"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Capítulo 2"),
+                (anuncio, None),
+            ]
+        ),
+        "com-anuncio.epub",
+    )
+
+    anuncios = [c for c in extraido.capitulos if c.titulo is None]
+    assert len(anuncios) == 1
+    assert anuncios[0].ignorado is True
+
+
+def teste_numero_de_treze_digitos_que_nao_e_isbn_nao_conta() -> None:
+    """O prefixo importa: só 978 e 979 são faixas de ISBN.
+
+    Sem checar o prefixo, qualquer número comprido no texto — uma data, um código
+    — marcaria um capítulo como anúncio.
+    """
+    from imagineer.servicos.importacao_epub import _parece_anuncio_de_editora
+
+    assert _parece_anuncio_de_editora("ISBN 9788592783839 do livro") is True
+    assert _parece_anuncio_de_editora("ISBN 9798592783839 do livro") is True
+    assert _parece_anuncio_de_editora("o código 1234567890123 apareceu") is False
+    assert _parece_anuncio_de_editora("Era uma noite escura e sem estrelas.") is False
+
+
+def teste_isbn_nao_confunde_numero_mais_longo() -> None:
+    """Um número de 20 dígitos não contém um ISBN de 13.
+
+    As bordas do padrão existem para isso: sem elas, qualquer sequência longa de
+    dígitos que comece com 978 em algum ponto casaria.
+    """
+    from imagineer.servicos.importacao_epub import _parece_anuncio_de_editora
+
+    assert _parece_anuncio_de_editora("codigo 97885927838391234567") is False
