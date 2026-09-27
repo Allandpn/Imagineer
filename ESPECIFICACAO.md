@@ -29,7 +29,7 @@ Modelo cliente-servidor:
 - **Parsing de EPUB**: `ebooklib` (extração de capítulos via TOC/spine e texto).
 - **Banco de dados**: PostgreSQL, rodando em container próprio.
 - **ORM**: SQLAlchemy.
-- **Mobile**: **assumido** Kotlin + Jetpack Compose (Android nativo), aproveitando a familiaridade com JVM. **Ainda não confirmado formalmente** — ver Etapa 7 (Pendências).
+- **Mobile**: **assumido** Kotlin + Jetpack Compose (Android nativo), aproveitando a familiaridade com JVM. **Ainda não confirmado formalmente** — ver Etapa 8 (Pendências). Telas esboçadas na Etapa 7.
 
 ### 1.4 Infraestrutura
 
@@ -1002,11 +1002,115 @@ O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado c
 
 ---
 
-## Etapa 7 — Pendências / Próximos Passos
+## Etapa 7 — Telas do App (Mobile)
+
+Esboço do fluxo de UI, ainda sem código — o objetivo aqui é fechar **quais telas existem, o que cada uma mostra, quais rotas ela consome e para onde ela navega**, antes de tocar em Kotlin (item 7.10, Etapa 8). Cada tela é numerada e mapeada ao passo correspondente do fluxo da Etapa 2.
+
+### 7.1 Mapa de navegação
+
+```
+Biblioteca ──(importar)──> [upload] ──> Livro
+Livro ──(abrir capítulo)──> Capítulo ──(nova cena)──> Cena ──(gerar prompt)──> Prompt ──(importar imagem)── volta para Prompt (catálogo)
+Livro ──(ver elementos)──> Elementos do Livro
+Livro ──(perfil padrão)──> Perfis de Renderização
+Qualquer tela ──(engrenagem)──> Configuração
+```
+
+Não há tela de "cena" ou "prompt" soltas fora de um capítulo/cena — a navegação é sempre hierárquica: **livro → capítulo → cena → prompt**, espelhando as rotas (`/livros/{id}/...`, `/capitulos/{id}/...`, `/cenas/{id}/...`, `/prompts/{id}/...`).
+
+### 7.2 Biblioteca
+
+Tela inicial do app. Lista os livros já importados.
+
+- **Rota**: `GET /livros`.
+- **Mostra**: título, autor, total de capítulos e quantos estão ignorados, por livro (`LivroResumo`).
+- **Ações**: tocar num livro abre a tela de Livro (7.3); botão flutuante "Importar" abre o seletor de arquivo do sistema operacional e dispara o upload.
+- **Vazio**: lista vazia mostra um convite a importar o primeiro livro — não é um estado de erro.
+
+### 7.3 Importar livro
+
+Não é bem uma tela própria — é o estado de progresso do upload, sobreposto à Biblioteca (passos 1 a 4).
+
+- **Rota**: `POST /livros` (multipart).
+- **Durante**: barra de progresso do upload (arquivos grandes existem — o maior do corpus de validação tem 46 MB, item 4.3).
+- **Ao terminar**: se `livros_semelhantes` vier não-vazio na resposta (item 6.2), mostra um aviso — "já existe um livro parecido" — com a opção de abrir o existente em vez do novo, ou seguir mesmo assim. Não impede a importação (é aviso, não bloqueio, coerente com o item 3.4a).
+- **Erro**: EPUB inválido (422) mostra a mensagem que a API devolve; a importação é fiel ao que o arquivo diz, então um erro aqui costuma significar arquivo mesmo corrompido, não um bug.
+
+### 7.4 Livro (detalhe)
+
+Passos 3 a 5: a estrutura de capítulos do livro, e o ponto de entrada para tudo que pertence a ele.
+
+- **Rota**: `GET /livros/{id}` (estrutura, sem texto — item 6.2).
+- **Mostra**: metadados (título, autor, idioma), perfil de renderização padrão (ou "nenhum definido"), lista de capítulos em ordem, com indicação visual dos que estão marcados como ignorados.
+- **Ações**: tocar num capítulo não-ignorado abre a tela de Capítulo (7.5); alternar o estado "ignorado" de um capítulo direto na lista (`PATCH /capitulos/{id}`, item 2.2); editar metadados e perfil padrão (`PATCH /livros/{id}`); atalho para "Elementos do livro" (7.6) e para "Perfis de renderização" (7.8); apagar o livro (`DELETE /livros/{id}`) com confirmação — é destrutivo e leva capítulos, elementos, cenas, prompts e imagens junto (item 3.4).
+
+### 7.5 Capítulo
+
+O coração dos passos 5 a 7: ler o texto, pedir sugestões à IA, e confirmar o que de fato existe.
+
+- **Rotas**: `GET /capitulos/{id}` (texto completo), `POST /capitulos/{id}/sugestoes` (passo 6, fase 1 do item 4.4), `GET /capitulos/{id}/estados-vigentes`, `POST /livros/{id}/elementos`, `POST /elementos/{id}/estados`.
+- **Mostra**: o texto do capítulo (rolável); um botão "Analisar com IA" que dispara `POST /capitulos/{id}/sugestoes` e traz a lista de elementos identificados (tipo, nome, identidade, `manter_estado_atual`) — **sem** descrição de aparência, porque essa parte só existe na leitura profunda da fase 2 (item 4.4), que acontece mais adiante, na tela de Prompt.
+- **Ações por sugestão**: confirmar (grava `Elemento` + `EstadoElemento` inicial), ajustar tipo/nome antes de confirmar, ou descartar (não faz nada — é só sugestão). Também dá para cadastrar um elemento à mão, sem passar pela IA. A lista de "estados vigentes" (item 3.4b) mostra o que já se sabe de cada elemento do livro até este ponto, útil para o usuário decidir se o que a IA sugeriu já é conhecido.
+- **Navega para**: "Nova cena" cria uma cena vinculada a este capítulo e abre a tela de Cena (7.6, vazia, pronta para escolher quem aparece); lista de cenas já criadas neste capítulo, cada uma abrindo a tela de Cena existente.
+
+### 7.6 Cena
+
+O recorte narrativo que vai virar uma imagem — passo 6.4.
+
+- **Rotas**: `POST /capitulos/{id}/cenas`, `GET /cenas/{id}`, `PATCH /cenas/{id}`, `PUT /cenas/{id}/estados`.
+- **Mostra**: título, descrição, atributos situacionais (horário, clima, humor) e a lista de elementos que aparecem na cena, cada um com o estado atual (item 6.4 — a API já devolve o estado com a identidade do elemento, para a tela não ter que remontar isso).
+- **Ações**: editar os campos da cena; marcar/desmarcar quais estados de elemento aparecem (a tela mostra os elementos do livro com um "toggle" — os já marcados vêm de `GET /cenas/{id}`, salvar manda a lista inteira via `PUT`, item 6.4); apagar a cena (não apaga os estados que ela citava).
+- **Navega para**: "Gerar prompt" abre a tela de Prompt (7.7) e já dispara `POST /cenas/{id}/prompts`; histórico de prompts já gerados para esta cena, cada um abrindo a tela de Prompt no modo "ver resultado existente".
+
+### 7.7 Prompt
+
+Passos 8 a 11 — onde o texto vira, de fato, o insumo para a imagem, e onde a imagem volta para o catálogo.
+
+- **Rotas**: `POST /cenas/{id}/prompts`, `GET /prompts/{id}`, `PATCH /prompts/{id}`, `POST /prompts/{id}/imagens`, `GET /imagens/{id}/arquivo`, `DELETE /imagens/{id}`.
+- **Ao gerar** (`POST /cenas/{id}/prompts`): mostra um indicador de carregamento — a leitura profunda (fase 2 do item 4.4) pode levar alguns segundos por elemento da cena, então isso não é instantâneo, e a tela precisa deixar isso claro (evita o usuário achar que travou).
+- **Mostra**: o texto do prompt pronto, com um botão "copiar" (passo 9 é manual — colar numa ferramenta de imagem externa); campo de comentário opcional, com um botão "gerar de novo com este comentário" que refaz a chamada passando `comentario` (item 4.4 — é a mesma rota, não existe "refinar" separado); histórico de tentativas anteriores da mesma cena, para comparar.
+- **Importar imagem** (passos 10-11): depois de gerar a imagem numa ferramenta externa, o usuário volta ao app e usa o seletor de arquivo do sistema para escolher a imagem, que sobe via `POST /prompts/{id}/imagens`. As imagens já importadas aparecem em miniatura (buscando o arquivo por `GET /imagens/{id}/arquivo`); tocar numa abre em tamanho cheio, com a opção de apagar (`DELETE /imagens/{id}`).
+- **Avaliação**: campo de texto livre para anotar como a imagem ficou (`PATCH /prompts/{id}` — item 3.1/6.6), útil para comparar modelos depois.
+
+### 7.8 Elementos do livro
+
+Fora do fluxo capítulo-a-capítulo — uma tela de consulta e correção geral, para quando o usuário quer ver ou ajustar um personagem sem estar processando um capítulo específico.
+
+- **Rotas**: `GET /livros/{id}/elementos` (com filtro por tipo), `GET /elementos/{id}`, `PATCH /elementos/{id}`, `DELETE /elementos/{id}`.
+- **Mostra**: lista de elementos do livro, separável por tipo (personagem, ambiente, objeto, criatura, grupo, veículo, edificação), cada um com o estado mais recente.
+- **Ações**: abrir um elemento mostra todos os seus estados em ordem narrativa (histórico completo — a "ficha" do personagem ao longo do livro); editar identidade (nome, tipo, descrição); apagar (leva todos os estados junto).
+
+### 7.9 Perfis de renderização
+
+Lista compartilhada entre livros, acessível tanto pela tela de Livro quanto pela Biblioteca/Configuração.
+
+- **Rotas**: `GET /perfis-renderizacao`, `POST`, `GET /{id}`, `PATCH /{id}`, `DELETE /{id}`.
+- **Mostra**: nome e campos de estilo de cada perfil.
+- **Ações**: criar, editar, apagar (não leva livros nem prompts — só desfaz a referência, item 6.5); ao editar um livro, a escolha do perfil padrão usa esta mesma lista.
+
+### 7.10 Configuração
+
+Acessível de qualquer tela.
+
+- **Rotas**: `GET/PUT /configuracao`, `GET /configuracao/modelos`.
+- **Mostra**: se há chave cadastrada e de onde ela vem (nunca a chave em si — item 4.3); modelo de extração e de prompt escolhidos; `prioridade_ia` (`ECONOMIA`/`QUALIDADE` — item 4.4).
+- **Ações**: cadastrar/apagar a chave; escolher os modelos a partir da lista dinâmica do OpenRouter (com filtro "só gratuitos"); trocar a prioridade de IA.
+
+### 7.11 Fora do escopo desta rodada
+
+- Login/múltiplos usuários: o sistema é pessoal, de um usuário só (item 1.1) — não há tela de autenticação.
+- Notificações push, modo offline, sincronização em segundo plano: nada disso está no MVP.
+- Tela de "grupos com membros explícitos": adiada para v2 junto com a modelagem (item 3.1).
+
+---
+
+## Etapa 8 — Pendências / Próximos Passos
 
 - [ ] Confirmar formalmente o stack mobile (assumido Kotlin + Jetpack Compose nativo Android).
 - [x] ~~Definir estrutura de pastas/módulos do projeto Python (FastAPI).~~ Concluído — ver item **1.5**.
 - [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**, todas as seções (6.2 a 6.7): livros, capítulos, elementos e estados, cenas, perfis de renderização, prompts e catálogo de imagens, configuração e sugestões de IA.
-- [ ] Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).
-- [x] ~~Permitir marcar um capítulo como ignorado.~~ Concluído — campo `Capitulo.ignorado`, pré-sugerido pela importação e confirmado pelo usuário (itens 2.2 e 3.4a). Falta expor o ajuste na API e no app.
+- [x] ~~Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).~~ Concluído — **Etapa 7**: dez telas mapeadas às rotas da Etapa 6, mais o mapa de navegação. Ainda sem código — falta criar o projeto Android, próximo item desta lista.
+- [x] ~~Permitir marcar um capítulo como ignorado.~~ Concluído — campo `Capitulo.ignorado`, pré-sugerido pela importação e confirmado pelo usuário (itens 2.2 e 3.4a). Exposto na API (item 6.2) e na tela de Livro (item 7.4).
+- [ ] Criar o projeto Android (Kotlin + Jetpack Compose) e implementar as telas da Etapa 7.
+- [ ] Refinar a engenharia do prompt de geração de imagens (instrução do item 4.2/`montar_prompt`) — próxima rodada, a pedido de Allan.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).
