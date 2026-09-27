@@ -375,6 +375,8 @@ Esse mesmo arquivo também traz metadados de **outro livro** — declara-se *Dea
 - **PerfilRenderizacao**: perfil de estilo visual (estilo, artista de referência, iluminação, paleta, formato, modelo alvo). Configurado por padrão a nível de Livro, com possibilidade de override pontual ao gerar um prompt específico.
 - **Prompt**: registro de cada prompt gerado (modelo de IA usado, texto, data, resultado, imagem associada), permitindo regenerar ou comparar modelos depois.
 - **Imagem**: arquivo final importado pelo usuário, com referência ao Prompt/Frame/Elementos de origem, compondo o catálogo.
+- **SugestaoDeElemento**: um elemento que a IA identificou num capítulo (fase 1 do item 4.4), persistido — não um resultado descartável. Aponta para um `Elemento` real quando resolvida (automaticamente, por nome, ou manualmente, pelo usuário). Ver item 3.4e.
+- **SugestaoDeFrame** / **SugestaoDeParticipante**: o equivalente, do lado da cena sugerida (`tipo=CENA`) — um frame candidato e os elementos sugeridos que participam dele. Ver item 3.4e.
 
 ### 3.2 Relacionamentos
 
@@ -382,6 +384,7 @@ Esse mesmo arquivo também traz metadados de **outro livro** — declara-se *Dea
 - Um Elemento tem vários EstadoElemento ao longo da história (um por "momento narrativo relevante").
 - Um Frame referencia um ou mais Elementos (com o Estado vigente de cada um naquele ponto) — exatamente um, se `tipo=PERSONAGEM`.
 - Um Prompt está associado a um Frame (e, por meio dele, aos Elementos/Estados usados como contexto) e a uma Imagem.
+- Um Capítulo tem várias SugestaoDeElemento e várias SugestaoDeFrame (uma rodada de `POST /capitulos/{id}/sugestoes`). Uma SugestaoDeFrame referencia várias SugestaoDeElemento (via SugestaoDeParticipante) do **mesmo** capítulo (item 3.4e).
 
 ### 3.3 Decisões de modelagem (justificativas)
 
@@ -393,13 +396,15 @@ Esse mesmo arquivo também traz metadados de **outro livro** — declara-se *Dea
 
 ### 3.4 Campos das entidades
 
-Esta seção detalha as colunas de cada tabela. Foi preenchida em três partes, todas **implementadas**:
+Esta seção detalha as colunas de cada tabela. Foi preenchida em partes:
 
-- **(a)** `Livro` e `Capitulo` — a base da importação do EPUB.
-- **(b)** `Elemento` e `EstadoElemento` — o coração da consistência visual.
-- **(c)** `Frame`, `PerfilRenderizacao`, `Prompt` e `Imagem` — a geração e o catálogo.
+- **(a)** `Livro` e `Capitulo` — a base da importação do EPUB. **Implementada.**
+- **(b)** `Elemento` e `EstadoElemento` — o coração da consistência visual. **Implementada.**
+- **(c)** `Frame`, `PerfilRenderizacao`, `Prompt` e `Imagem` — a geração e o catálogo. **Implementada.**
+- **(d)** `Configuracao` — a integração com IA. **Implementada.**
+- **(e)** `SugestaoDeElemento`, `SugestaoDeFrame`, `SugestaoDeParticipante` — sugestões da IA persistidas. **Implementada.**
 
-O modelo do MVP está completo: 9 tabelas, criadas por três migrations que encadeiam a partir de um banco vazio.
+O modelo do MVP tem 14 tabelas, criadas por migrations que encadeiam a partir de um banco vazio.
 
 Decisões que valem para todas as tabelas:
 
@@ -438,9 +443,13 @@ Um capítulo de um Livro, com o texto extraído do EPUB.
 | `titulo` | texto (500) | **sim** | o índice do EPUB nem sempre nomeia o capítulo |
 | `texto` | texto longo | não | conteúdo textual, sem limite de tamanho |
 | `ignorado` | booleano | não | se este "capítulo" fica de fora do trabalho de catalogação; padrão falso |
-| `sugestoes_ia` | JSON | sim | a última resposta de `POST /capitulos/{id}/sugestoes` (elementos e frames, sem `elemento_id`) — cache para não rechamar a IA a cada consulta (item 6.7) |
-| `sugestoes_modelo` | texto (200) | sim | o modelo que gerou `sugestoes_ia` |
-| `sugestoes_geradas_em` | data/hora | sim | quando `sugestoes_ia` foi gerado |
+| `sugestoes_ia` | JSON | sim | **superseded, ver nota abaixo** — a última resposta de `POST /capitulos/{id}/sugestoes` (elementos e frames, sem `elemento_id`) |
+| `sugestoes_modelo` | texto (200) | sim | **superseded** — o modelo que gerou `sugestoes_ia` |
+| `sugestoes_geradas_em` | data/hora | sim | quando a última rodada de sugestões deste capítulo foi gerada (sobrevive à mudança abaixo) |
+
+> **Divergência registrada.** `sugestoes_ia`/`sugestoes_modelo` nasceram como um blob JSON único por capítulo (cache simples, para a IA não ser rechamada a cada consulta — item 6.7). Discutindo casos reais de teste (um personagem citado com nomes diferentes em capítulos distintos, sem casamento automático), ficou claro que um blob opaco não dava para referenciar nem para buscar: não tinha como o usuário dizer "esta sugestão do capítulo 7 é a mesma pessoa desta do capítulo 3" sem reprocessar tudo. Os dois campos foram substituídos por três tabelas de verdade (`SugestaoDeElemento`, `SugestaoDeFrame`, `SugestaoDeParticipante` — item 3.4e), com `id` próprio por sugestão, buscáveis e referenciáveis. `sugestoes_geradas_em` sobreviveu, agora como "quando foi a última rodada de sugestão deste capítulo", sem o texto junto.
+>
+> A migration que fez essa troca (`694c20b4e5d2`) precisou de um passo extra além do que o Alembic gerou sozinho: `sugestoes_geradas_em` continuou preenchido, com a data da última chamada sob o sistema antigo, mesmo sem nenhuma linha nas tabelas novas — a rota lia esse campo como "já tem sugestão salva" e nunca mais chamava a IA para aquele capítulo, devolvendo uma lista vazia para sempre. Achado testando contra o banco real (capítulos que já tinham sugestão do sistema antigo). A migration zera `sugestoes_geradas_em` de todos os capítulos como parte da própria mudança de schema.
 
 Restrição de unicidade em (`livro_id`, `ordem`): dois capítulos não podem ocupar a mesma posição no mesmo livro. É o banco garantindo uma regra que um erro no parsing poderia violar silenciosamente.
 
@@ -615,6 +624,64 @@ Uma linha única, com a configuração da integração com IA (item 4.3).
 **Uma linha só, com `id` fixo em 1.** Não é a modelagem mais elegante, mas é a mais honesta para o que é: não existem "duas configurações" num sistema pessoal de um usuário. A alternativa — uma tabela de pares chave/valor — perderia a tipagem de cada campo e ganharia só flexibilidade que não vai ser usada. Uma restrição `CHECK (id = 1)` impede uma segunda linha aparecer por acidente.
 
 Os três campos aceitam nulo porque o sistema precisa subir sem configuração nenhuma: a chave pode estar só na variável de ambiente, e os modelos podem ainda não ter sido escolhidos.
+
+#### (e) SugestaoDeElemento, SugestaoDeFrame, SugestaoDeParticipante
+
+Substitui `Capitulo.sugestoes_ia`/`sugestoes_modelo` (nota no item 3.4a). Cada sugestão da IA (fase 1 do item 4.4) vira uma linha própria, com `id` estável — buscável e referenciável, ao contrário do blob JSON que substituiu.
+
+**SugestaoDeElemento**
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária |
+| `capitulo_id` | inteiro | não | referência ao Capítulo que originou a sugestão; indexado |
+| `tipo` | enum (`TipoElemento`) | não | como a IA classificou |
+| `nome` | texto (200) | não | como a IA nomeou |
+| `descricao` | texto longo | sim | identidade sugerida (fase 1 — não é aparência) |
+| `manter_estado_atual` | booleano | não | julgamento da IA: o estado conhecido continua valendo |
+| `modelo` | texto (200) | não | o modelo que gerou esta sugestão especificamente |
+| `elemento_id` | inteiro | sim | o Elemento real a que esta sugestão corresponde — preenchido automaticamente (nome normalizado casando, como já acontece hoje) ou manualmente pelo usuário |
+
+**SugestaoDeFrame**
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária |
+| `capitulo_id` | inteiro | não | referência ao Capítulo; indexado |
+| `titulo` | texto (300) | não | |
+| `descricao` | texto longo | sim | |
+| `horario` | texto (100) | sim | |
+| `clima` | texto (100) | sim | |
+| `humor` | texto (100) | sim | |
+| `modelo` | texto (200) | não | o modelo que gerou esta sugestão |
+| `frame_id` | inteiro | sim | o Frame real criado a partir desta sugestão, quando confirmada |
+
+`modelo` vive em cada linha, não numa coluna só do Capítulo: como `forcar=true` só substitui sugestões ainda não confirmadas, um mesmo capítulo pode acabar com sugestões de rodadas (e modelos) diferentes ao mesmo tempo.
+
+Sempre `tipo=CENA` implícito: a IA só sugere cenas (item 4.4); um retrato (`tipo=PERSONAGEM`) nasce direto de um Elemento, por iniciativa do usuário, nunca de uma sugestão.
+
+**SugestaoDeParticipante** (associação, sem `id` próprio — as duas colunas formam a chave primária)
+
+| Coluna | Observação |
+|---|---|
+| `sugestao_frame_id` | referência à SugestaoDeFrame |
+| `sugestao_elemento_id` | referência à SugestaoDeElemento — sempre do **mesmo** capítulo da SugestaoDeFrame |
+
+**`elemento_id`/`frame_id` nulos não bloqueiam nada — só marcam "ainda não confirmada".** É a mesma filosofia do `elemento_id` que a resposta de `POST /capitulos/{id}/sugestoes` já devolve hoje, só que persistido: a sugestão em si nunca vira Elemento/Frame sozinha, o usuário confirma pelas rotas de cadastro (item 6.3/6.4). A diferença é que agora a confirmação pode ser **em lote** e **cross-capítulo**: `GET /livros/{id}/sugestoes-elemento?nome=...` busca todas as menções de um nome no livro inteiro, e `POST /elementos`/`POST /elementos/{id}/estados` aceitam uma lista de `sugestoes_elemento_ids` para criar um Elemento com um Estado por capítulo, numa chamada só (item 6.3).
+
+**`forcar=true` preserva sugestões já confirmadas.** Regenerar a sugestão de um capítulo (`POST /capitulos/{id}/sugestoes?forcar=true`) só substitui as linhas com `elemento_id`/`frame_id` nulos — uma sugestão já virada Elemento ou Frame de verdade não desaparece numa rodada nova, mesmo que a IA não repita a mesma sugestão da vez anterior.
+
+**Por que não um vínculo direto entre duas sugestões ainda não confirmadas** (ex.: `SugestaoDeElemento.associada_a_id`, auto-referência): foi considerado e descartado. Resolveria o caso de duas sugestões nenhuma confirmada, mas introduziria um conceito novo — cadeia de sugestões pendentes, com as perguntas de o que acontece num ciclo, numa cadeia longa, ou quando `forcar=true` regenera uma sugestão que já está associada. A busca por nome (`GET /livros/{id}/sugestoes-elemento?nome=...`) resolve a mesma necessidade — achar todas as menções de "Hospius" no livro — sem esse conceito extra: o "vínculo" nunca existe como dado solto, só aparece no momento em que o usuário confirma, como a lista de sugestões escolhidas naquela chamada.
+
+#### O que foi implementado
+
+As três tabelas, mais `GET /livros/{id}/sugestoes-elemento`, `sugestoes_elemento_ids` em `POST /livros/{id}/elementos` e no novo `POST /elementos/{id}/estados-de-sugestoes`, e `sugestao_frame_id` em `POST /capitulos/{id}/frames` — 13 testes novos (Etapa 6.3/6.4/6.7).
+
+**`POST /elementos/{id}/estados-de-sugestoes` nasceu como rota própria, não como campo a mais em `POST /elementos/{id}/estados`.** O plano original (item 6.3, antes desta rodada) era só acrescentar `sugestoes_elemento_ids` à rota que já existe. Na hora de implementar, ficou claro o problema: aquela rota cria **um** estado e devolve **um** `EstadoResumo`; confirmar várias sugestões de uma vez cria vários estados. Misturar os dois faria o formato da resposta depender do corpo do pedido — mais simples abrir uma rota nova com resposta sempre em lista.
+
+**Validado com o caso real que motivou tudo isto.** No livro de teste, a IA sugeriu "Sextus Hospius" no capítulo I e só "Hospius" no capítulo V — os dois nomes não casaram pelo nome normalizado, exatamente o problema original. `GET /livros/1/sugestoes-elemento?nome=hospius` achou as duas sugestões, capítulos diferentes; `POST /livros/1/elementos` com as duas em `sugestoes_elemento_ids` criou um Elemento com dois Estados, um por capítulo, numa chamada só; as leituras seguintes de `POST /capitulos/{id}/sugestoes` (para os dois capítulos, sem `forcar`) já mostraram `elemento_id` casado nos dois, sem rechamar a IA. Depois, `POST /capitulos/3/frames` com `sugestao_frame_id` da cena "A chegada de Hospius" resolveu os dois participantes (Hospius e um segundo personagem, Hrolf, confirmado à parte) sozinho, sem `estados_ids` no pedido.
+
+**Divergência registrada, achada validando contra o banco real.** A migration que cria as tabelas novas e apaga `sugestoes_ia`/`sugestoes_modelo` (`694c20b4e5d2`) inicialmente não tratava `Capitulo.sugestoes_geradas_em` — a coluna sobrevive à troca, com o mesmo nome. Capítulos que já tinham sugestão gerada pelo sistema antigo ficaram com essa data preenchida e nenhuma linha nas tabelas novas: a rota lia "já tem sugestão salva" e nunca mais chamava a IA para aqueles capítulos, devolvendo lista vazia para sempre. A migration ganhou um `UPDATE capitulos SET sugestoes_geradas_em = NULL` como parte da própria mudança de schema — sem isso, qualquer ambiente que já tivesse usado a versão anterior ficaria com capítulos "mudos" depois do deploy.
 
 #### (c) As duas chaves estrangeiras pendentes
 
@@ -848,6 +915,8 @@ Revisão feita a partir de material técnico externo (um documento de boas prát
 | Geração de imagem automatizada (FLUX.1/SDXL via OpenRouter) não adotada nesta rodada | É mudança de arquitetura real, não afinação de prompt: custo por imagem, escolha de provedor e uma UI diferente da que a Etapa 7 já esboçou (fluxo manual de copiar/colar, passo 9). Registrada como ideia para decisão futura, não decidida sem o usuário |
 | `extrair_elementos` também sugere `cenas` (recortes narrativos), na mesma chamada da fase 1 | Feedback do usuário revisando uma extração real: uma lista de elementos soltos não bastava, faltava sugerir quais combinações formam um momento que vale ilustrar. Juntar na mesma chamada evita reler o capítulo inteiro de novo só para esse fim |
 | Filtro de relevância para objetos, e definições explícitas de cada `tipo` na instrução de extração | O mesmo teste real mostrou objetos irrelevantes (papelada genérica) e classificação errada (tabuleiro como `AMBIENTE`, porta como `VEICULO`). A instrução ganhou exemplos e um critério — "teria peso visual memorável?" — para reduzir os dois problemas |
+| Sugestões persistidas em tabelas próprias (`SugestaoDeElemento`/`SugestaoDeFrame`/`SugestaoDeParticipante`), não num blob JSON por capítulo (item 3.4e) | Um blob não é buscável nem referenciável: não dava para achar "todas as menções de Hospius no livro" nem confirmar várias de uma vez. Testado o caso real: "Sextus Hospius" (capítulo 3) e "Hospius" (capítulo 7) não casaram pelo nome normalizado, e a causa raiz (gerar sugestões em lote, sem confirmar nada entre chamadas, priva `estados_conhecidos` da informação que ajudaria a IA a reconhecer) não elimina a necessidade de uma confirmação manual para os casos em que o casamento automático ainda assim falhar |
+| Confirmação em lote via Elemento/EstadoElemento, sem vínculo direto entre duas sugestões não confirmadas (`associada_a_id` descartado) | Um vínculo sugestão-para-sugestão resolveria o mesmo caso, mas introduziria conceito novo (cadeia pendente: ciclo, cadeia longa, o que fazer se `forcar=true` regenerar uma sugestão associada). A busca por nome cross-capítulo (`GET /livros/{id}/sugestoes-elemento?nome=...`) resolve a mesma necessidade de descoberta sem esse conceito extra |
 
 ---
 
@@ -920,14 +989,16 @@ para ler `multipart/form-data`, e sem ela a rota nem é registrada.
 | Método e caminho | O que faz | Estado |
 |---|---|---|
 | `GET /livros/{id}/elementos` | Os elementos do livro, com o estado mais recente de cada | **implementado** |
-| `POST /livros/{id}/elementos` | Cadastra um elemento confirmado pelo usuário (passo 7) | **implementado** |
+| `POST /livros/{id}/elementos` | Cadastra um elemento confirmado pelo usuário (passo 7); aceita `sugestoes_elemento_ids` para criar um Estado por capítulo sugerido, numa chamada só (item 3.4e) | **implementado** |
 | `GET /elementos/{id}` | O elemento com todos os seus estados | **implementado** |
 | `PATCH /elementos/{id}` | Ajusta nome, tipo e descrição | **implementado** |
 | `DELETE /elementos/{id}` | Remove o elemento e seus estados | **implementado** |
 | `POST /elementos/{id}/estados` | Registra um novo estado a partir de um capítulo | **implementado** |
+| `POST /elementos/{id}/estados-de-sugestoes` | Registra um Estado por sugestão escolhida, numa chamada só (item 3.4e) | **implementado** |
 | `PATCH /estados/{id}` | Ajusta a descrição ou define a imagem-âncora | **implementado** |
 | `DELETE /estados/{id}` | Remove um estado | **implementado** |
 | `GET /capitulos/{id}/estados-vigentes` | O estado vigente de cada elemento naquele ponto da narrativa | **implementado** |
+| `GET /livros/{id}/sugestoes-elemento?nome=...` | Busca sugestões de elemento por nome, em todos os capítulos do livro — acha menções antigas do mesmo personagem para associar (item 3.4e) | **implementado** |
 
 **`GET /livros/{id}/elementos` traz o estado mais recente de cada elemento**, e aceita `?tipo=PERSONAGEM` para a tela poder separar por tipo. "Mais recente" é pela ordem **narrativa**, não pela data de criação: o último estado em ordem de capítulo (item 3.4b).
 
@@ -940,6 +1011,8 @@ As duas rotas usam uma consulta só, com função de janela, em vez de uma consu
 **Cadastrar o mesmo elemento duas vezes responde 409.** A restrição de unicidade (`livro_id`, `tipo`, `nome`) do item 3.4b existe justamente porque a extração automática reencontra o mesmo personagem em outro capítulo. A resposta traz o id do elemento que já existe, para o app poder oferecer "usar o existente" em vez de só reclamar.
 
 **O capítulo de um estado precisa ser do mesmo livro do elemento.** Nada no banco impede associar um estado a um capítulo de outro livro — as duas chaves estrangeiras são independentes. A rota verifica e responde 422, porque o dado resultante seria silenciosamente incoerente: o estado apareceria na narrativa errada.
+
+> **Item 3.4e.** `sugestoes_elemento_ids` em `POST /livros/{id}/elementos` resolve o caso em que a IA sugeriu o mesmo personagem em capítulos diferentes, com nomes diferentes demais para o casamento automático reconhecer (ex.: "Sextus Hospius" no capítulo 3, "Hospius" no capítulo 7) — sem isso, o usuário teria que confirmar cada capítulo numa chamada separada, copiando a descrição à mão. `tipo`/`nome` do Elemento continuam sempre explícitos no pedido do usuário, nunca inferidos das sugestões — só `capitulo_id`/`descricao` de cada sugestão escolhida viram Estados, um por capítulo distinto entre elas. Para um elemento **já existente**, o mesmo em lote é `POST /elementos/{id}/estados-de-sugestoes` — rota própria, não o mesmo campo em `POST /elementos/{id}/estados`, porque aquela cria um estado só e devolve um objeto, não uma lista. `GET /livros/{id}/sugestoes-elemento?nome=...` é o que permite achar essas sugestões antes de confirmar, sem vasculhar capítulo por capítulo.
 
 #### O que foi implementado
 
@@ -964,7 +1037,7 @@ estado, aparece nos três com `estado_vigente` nulo.
 | Método e caminho | O que faz | Estado |
 |---|---|---|
 | `GET /capitulos/{id}/frames` | Os frames de um capítulo | **implementado** |
-| `POST /capitulos/{id}/frames` | Cria um frame | **implementado** |
+| `POST /capitulos/{id}/frames` | Cria um frame; aceita `sugestao_frame_id` para pré-preencher a partir de uma cena sugerida (item 3.4e) | **implementado** |
 | `GET /frames/{id}` | O frame com os elementos e estados que ele referencia | **implementado** |
 | `PATCH /frames/{id}` | Ajusta título, descrição e atributos situacionais | **implementado** |
 | `DELETE /frames/{id}` | Remove o frame, sem apagar os estados que ele citava | **implementado** |
@@ -981,6 +1054,8 @@ estado, aparece nos três com `estado_vigente` nulo.
 **`titulo` é opcional no pedido de criação quando `tipo=PERSONAGEM`.** A coluna continua obrigatória no banco (item 3.4c), mas exigir que o app digite um título para um retrato solo era pedir de novo uma informação que o próprio pedido já contém: o nome do elemento já está implícito em `estados_ids`. Se `titulo` não vier, a rota gera `"Retrato de <nome do elemento>"` sozinha. Para `tipo=CENA` continua obrigatório — ali o título é a conta do usuário sobre quem, onde e o quê (item 4.4), e o sistema não tem como inventar isso.
 
 > **Divergência registrada, pós-uso real.** O campo nasceu obrigatório para os dois tipos, herdado do antigo `Cena` (item 3.4c). Um teste manual expôs que, para `PERSONAGEM`, `titulo` não é usado em lugar nenhum — `_descricao_do_frame` o descarta — e digitá-lo manualmente é retrabalho sem função, já que o único uso real (identificar o frame na listagem, que não traz nomes de elemento) o sistema já sabe preencher sozinho a partir do estado ligado.
+
+> **Item 3.4e.** Com `sugestao_frame_id`, `titulo`/`descricao`/`horario`/`clima`/`humor` vêm da `SugestaoDeFrame` referenciada, a não ser que o pedido também traga um valor explícito para aquele campo — o explícito sempre vence, mesmo princípio do `titulo` do retrato acima. Se `estados_ids` não vier, a rota resolve sozinha, participante por participante: precisa que a `SugestaoDeElemento` de cada um já tenha `elemento_id` preenchido (senão 422, listando quem falta confirmar — **confirmar elemento sempre vem antes de confirmar frame**), e usa o **estado vigente** daquele elemento até este capítulo (mesma função já usada no item 6.3), não exige um estado criado *neste* capítulo especificamente. Ao criar com sucesso, marca `SugestaoDeFrame.frame_id`.
 
 ### 6.5 Perfis de renderização
 
@@ -1084,6 +1159,8 @@ As três rotas de `/configuracao` foram implementadas junto com a camada de IA (
 A checagem de "cabe no modelo" (`conferir_se_cabe`) saiu de método de `ProvedorOpenRouter` para função livre em `ia/openrouter.py`: a rota precisa da mesma checagem antes de chamar **qualquer** provedor, inclusive o `ProvedorFalso` dos testes, e a estimativa de tokens não depende de nenhum detalhe de um fornecedor específico. O método antigo continua existindo, agora só delegando para a função — o que evitou reescrever os testes que já cobriam esse comportamento.
 
 O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado com um elemento cadastrado como "João" e uma sugestão da IA vindo como "joão" — casa; com o mesmo nome mas tipo diferente — não casa, porque dois elementos diferentes podem legitimamente ter o mesmo nome (um personagem chamado "Winterfell" e um lugar chamado "Winterfell" não seriam a mesma coisa, hipoteticamente).
+
+> **Terceira divergência, registrada e implementada (item 3.4e).** O casamento automático por nome (parágrafo acima) tem um limite real: só pega variações de caixa/acento, não nomes genuinamente diferentes para a mesma pessoa (`"Sextus Hospius"` num capítulo, `"Hospius"` só, capítulos depois). A causa raiz tem uma parte evitável pelo fluxo de uso — `estados_conhecidos` (o que alimenta o reconhecimento da IA) só inclui elementos **já confirmados com um estado registrado**, então gerar sugestões de vários capítulos em lote, sem confirmar nada entre uma chamada e outra, priva a IA da própria informação que ajudaria a reconhecer o personagem — mas mesmo confirmando capítulo a capítulo, o casamento automático continua limitado a nomes parecidos. `Capitulo.sugestoes_ia` foi substituído por tabelas de sugestão persistidas e buscáveis, com confirmação em lote (`sugestoes_elemento_ids`) para os casos em que o casamento automático falha.
 
 ---
 
@@ -1201,3 +1278,4 @@ Acessível de qualquer tela.
 - [ ] Criar o projeto Android (Kotlin + Jetpack Compose) e implementar as telas da Etapa 7.
 - [ ] Refinar a engenharia do prompt de geração de imagens (instrução do item 4.2/`montar_prompt`) — próxima rodada, a pedido de Allan.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).
+- [x] ~~Implementar sugestões persistidas (`SugestaoDeElemento`/`SugestaoDeFrame`/`SugestaoDeParticipante`), busca por nome cross-capítulo e confirmação em lote.~~ Concluído — item 3.4e, validado com o caso real do "Sextus Hospius"/"Hospius".

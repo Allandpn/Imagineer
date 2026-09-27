@@ -1,0 +1,140 @@
+erDiagram
+    LIVRO ||--o{ CAPITULO : "tem"
+    LIVRO ||--o{ ELEMENTO : "tem"
+    LIVRO }o--o| PERFIL_RENDERIZACAO : "perfil_padrao (SET NULL)"
+
+    CAPITULO ||--o{ ESTADO_ELEMENTO : "origina"
+    CAPITULO ||--o{ FRAME : "recorta"
+    CAPITULO ||--o{ SUGESTAO_ELEMENTO : "sugere"
+    CAPITULO ||--o{ SUGESTAO_FRAME : "sugere"
+
+    ELEMENTO ||--o{ ESTADO_ELEMENTO : "tem"
+
+    ESTADO_ELEMENTO }o--o| IMAGEM : "imagem_ancora (SET NULL)"
+    ESTADO_ELEMENTO }o--o{ FRAME : "frames_estados_elemento"
+
+    FRAME ||--o{ PROMPT : "gera"
+
+    PROMPT }o--o| PERFIL_RENDERIZACAO : "usou (SET NULL)"
+    PROMPT ||--o{ IMAGEM : "resulta em"
+
+    SUGESTAO_ELEMENTO }o--o| ELEMENTO : "elemento_id (SET NULL, confirmada)"
+    SUGESTAO_FRAME }o--o| FRAME : "frame_id (SET NULL, confirmada)"
+    SUGESTAO_FRAME ||--o{ SUGESTAO_PARTICIPANTE : "tem"
+    SUGESTAO_PARTICIPANTE }o--|| SUGESTAO_ELEMENTO : "referencia"
+
+    LIVRO {
+        int id PK
+        string titulo
+        string autor
+        string idioma
+        string identificador_epub
+        string nome_arquivo
+        datetime data_importacao
+        int perfil_renderizacao_padrao_id FK
+    }
+
+    CAPITULO {
+        int id PK
+        int livro_id FK
+        int ordem
+        string titulo
+        text texto
+        bool ignorado
+        datetime sugestoes_geradas_em "quando foi a ultima rodada"
+    }
+
+    ELEMENTO {
+        int id PK
+        int livro_id FK
+        enum tipo
+        string nome
+        text descricao
+    }
+
+    ESTADO_ELEMENTO {
+        int id PK
+        int elemento_id FK
+        int capitulo_id FK
+        text descricao
+        datetime data_criacao
+        int imagem_ancora_id FK
+        bool confirmado_pela_leitura_profunda
+    }
+
+    FRAME {
+        int id PK
+        int capitulo_id FK
+        enum tipo
+        string titulo
+        text descricao
+        string horario
+        string clima
+        string humor
+        text contexto_do_livro
+        bool confirmado_pela_leitura_profunda
+    }
+
+    SUGESTAO_ELEMENTO {
+        int id PK
+        int capitulo_id FK
+        enum tipo
+        string nome
+        text descricao
+        bool manter_estado_atual
+        string modelo
+        int elemento_id FK "nulo ate confirmar"
+    }
+
+    SUGESTAO_FRAME {
+        int id PK
+        int capitulo_id FK
+        string titulo
+        text descricao
+        string horario
+        string clima
+        string humor
+        string modelo
+        int frame_id FK "nulo ate confirmar"
+    }
+
+    SUGESTAO_PARTICIPANTE {
+        int sugestao_frame_id FK
+        int sugestao_elemento_id FK
+    }
+
+    PERFIL_RENDERIZACAO {
+        int id PK
+        string nome
+        text estilo
+        string artista_referencia
+        string iluminacao
+        string paleta
+        string formato
+        string modelo_alvo
+    }
+
+    PROMPT {
+        int id PK
+        int frame_id FK
+        int perfil_renderizacao_id FK
+        string modelo_ia
+        text texto
+        text avaliacao
+        datetime data_criacao
+    }
+
+    IMAGEM {
+        int id PK
+        int prompt_id FK
+        string caminho_arquivo
+        datetime data_importacao
+    }
+
+    CONFIGURACAO {
+        int id PK "sempre 1"
+        string chave_api_openrouter
+        string modelo_extracao
+        string modelo_prompt
+        enum prioridade_ia
+    }

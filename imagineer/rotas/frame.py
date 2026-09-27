@@ -26,9 +26,11 @@ from imagineer.modelos import (
     Elemento,
     EstadoElemento,
     Frame,
+    SugestaoDeFrame,
     TipoDeFrame,
     frames_estados_elemento,
 )
+from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 
 rotas_de_capitulo = APIRouter(prefix="/capitulos", tags=["Frames"])
 rotas = APIRouter(prefix="/frames", tags=["Frames"])
@@ -69,25 +71,53 @@ def listar_frames(
 def criar_frame(
     capitulo_id: int, novo: FrameNovo, sessao: Session = Depends(obter_sessao)
 ) -> FrameDetalhe:
-    """Cria o frame e, se vier, já liga os estados dos elementos que aparecem nele."""
+    """Cria o frame e, se vier, já liga os estados dos elementos que aparecem nele.
+
+    Com ``sugestao_frame_id`` (item 3.4e), título/descrição/atributos e
+    ``estados_ids`` ausentes do pedido são pré-preenchidos a partir da
+    ``SugestaoDeFrame`` referenciada — um valor explícito no pedido sempre
+    vence sobre o da sugestão.
+    """
     capitulo = _buscar_capitulo(sessao, capitulo_id)
-    _exigir_contagem_valida(novo.tipo, novo.estados_ids)
-    estados = _estados_do_livro(sessao, novo.estados_ids, capitulo.livro_id)
+
+    sugestao = None
+    if novo.sugestao_frame_id is not None:
+        sugestao = _buscar_sugestao_de_frame(sessao, novo.sugestao_frame_id, capitulo_id)
+
+    titulo = novo.titulo if novo.titulo is not None else (sugestao.titulo if sugestao else None)
+    descricao = (
+        novo.descricao if novo.descricao is not None else (sugestao.descricao if sugestao else None)
+    )
+    horario = novo.horario if novo.horario is not None else (sugestao.horario if sugestao else None)
+    clima = novo.clima if novo.clima is not None else (sugestao.clima if sugestao else None)
+    humor = novo.humor if novo.humor is not None else (sugestao.humor if sugestao else None)
+
+    estados_ids = novo.estados_ids
+    if not estados_ids and sugestao is not None:
+        estados_ids = _resolver_estados_da_sugestao(sessao, sugestao, capitulo)
+
+    _exigir_contagem_valida(novo.tipo, estados_ids)
+    estados = _estados_do_livro(sessao, estados_ids, capitulo.livro_id)
 
     frame = Frame(
         capitulo_id=capitulo.id,
         tipo=novo.tipo,
-        titulo=_resolver_titulo(novo.tipo, novo.titulo, estados),
-        descricao=novo.descricao,
-        horario=novo.horario,
-        clima=novo.clima,
-        humor=novo.humor,
+        titulo=_resolver_titulo(novo.tipo, titulo, estados),
+        descricao=descricao,
+        horario=horario,
+        clima=clima,
+        humor=humor,
     )
     frame.estados_elemento = estados
 
     sessao.add(frame)
     sessao.commit()
     sessao.refresh(frame)
+
+    if sugestao is not None:
+        sugestao.frame_id = frame.id
+        sessao.commit()
+
     return _detalhe(sessao, frame)
 
 
@@ -191,6 +221,65 @@ def _resolver_titulo(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail="O campo 'titulo' é obrigatório para frames do tipo CENA.",
     )
+
+
+def _buscar_sugestao_de_frame(
+    sessao: Session, sugestao_frame_id: int, capitulo_id: int
+) -> SugestaoDeFrame:
+    sugestao = sessao.get(SugestaoDeFrame, sugestao_frame_id)
+    if sugestao is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Não existe sugestão de frame com id {sugestao_frame_id}.",
+        )
+    if sugestao.capitulo_id != capitulo_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"A sugestão {sugestao_frame_id} é do capítulo {sugestao.capitulo_id}, "
+                f"não do capítulo {capitulo_id}."
+            ),
+        )
+    return sugestao
+
+
+def _resolver_estados_da_sugestao(
+    sessao: Session, sugestao: SugestaoDeFrame, capitulo: Capitulo
+) -> list[int]:
+    """Resolve ``estados_ids`` a partir dos participantes de uma sugestão de frame.
+
+    Cada participante precisa já ter ``elemento_id`` resolvido — sem isso não há
+    como saber qual estado usar, e confirmar elemento sempre vem antes de
+    confirmar frame (item 3.4e). Usa o **estado vigente** de cada elemento até
+    este capítulo (mesma função do item 6.3), não exige um estado criado *neste*
+    capítulo especificamente.
+    """
+    pendentes = [p.nome for p in sugestao.participantes if p.elemento_id is None]
+    if pendentes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                "Confirme primeiro os elementos desta cena, antes de criar o "
+                f"frame a partir dela: ainda faltam {', '.join(pendentes)}."
+            ),
+        )
+
+    elementos_ids = [p.elemento_id for p in sugestao.participantes]
+    vigentes = estado_vigente_por_elemento(sessao, capitulo.livro_id, capitulo.ordem)
+
+    sem_estado = [
+        eid for eid in elementos_ids if eid not in vigentes
+    ]
+    if sem_estado:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"Os elementos {sem_estado} ainda não têm nenhum estado registrado "
+                "até este capítulo."
+            ),
+        )
+
+    return [vigentes[eid].id for eid in elementos_ids]
 
 
 def _estados_do_livro(

@@ -1,0 +1,1344 @@
+<title>Imagineer</title>
+<style>
+  :root {
+    --bg: #f5f6f3;
+    --surface: #ffffff;
+    --surface-2: #eef0ec;
+    --ink: #1a1d1b;
+    --ink-muted: #565f5a;
+    --ink-faint: #8a938d;
+    --border: #dde1dc;
+    --accent: #2f6f4f;
+    --accent-ink: #ffffff;
+    --accent-soft: #e3ede7;
+    --code-bg: #eef1ed;
+    --get: #2563a6;
+    --get-bg: #e5eef7;
+    --post: #2f7d4f;
+    --post-bg: #e4f0e8;
+    --patch: #96690a;
+    --patch-bg: #f5ecdb;
+    --put: #7c5cbf;
+    --put-bg: #ece6f7;
+    --delete: #b3413e;
+    --delete-bg: #f6e5e4;
+    --planned: #a35a00;
+    --planned-bg: #fbeed9;
+    --planned-border: #e8c68a;
+    color-scheme: light;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #14171a;
+      --surface: #1b1f22;
+      --surface-2: #21262a;
+      --ink: #e9ece8;
+      --ink-muted: #a6afa9;
+      --ink-faint: #6f7873;
+      --border: #2c3236;
+      --accent: #6fbf94;
+      --accent-ink: #0d1512;
+      --accent-soft: #1d2e26;
+      --code-bg: #202523;
+      --get: #7cb0e6;
+      --get-bg: #1b2a38;
+      --post: #7fd0a0;
+      --post-bg: #17301f;
+      --patch: #e0b158;
+      --patch-bg: #332a15;
+      --put: #b9a2e8;
+      --put-bg: #271f3a;
+      --delete: #e39490;
+      --delete-bg: #34201f;
+      --planned: #e0b158;
+      --planned-bg: #2c2415;
+      --planned-border: #4a3c1e;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171a;
+    --surface: #1b1f22;
+    --surface-2: #21262a;
+    --ink: #e9ece8;
+    --ink-muted: #a6afa9;
+    --ink-faint: #6f7873;
+    --border: #2c3236;
+    --accent: #6fbf94;
+    --accent-ink: #0d1512;
+    --accent-soft: #1d2e26;
+    --code-bg: #202523;
+    --get: #7cb0e6;
+    --get-bg: #1b2a38;
+    --post: #7fd0a0;
+    --post-bg: #17301f;
+    --patch: #e0b158;
+    --patch-bg: #332a15;
+    --put: #b9a2e8;
+    --put-bg: #271f3a;
+    --delete: #e39490;
+    --delete-bg: #34201f;
+    --planned: #e0b158;
+    --planned-bg: #2c2415;
+    --planned-border: #4a3c1e;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  h1, h2, h3, h4 {
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 600;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  a { color: var(--accent); }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 16px;
+    gap: 32px;
+  }
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; }
+  }
+
+  /* ---------- Sidebar ---------- */
+  nav.toc {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    align-self: start;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding: 20px 0 40px;
+  }
+  @media (max-width: 860px) {
+    nav.toc {
+      position: static;
+      max-height: none;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+  }
+  nav.toc .brand {
+    font-family: "Fraunces", serif;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  nav.toc .brand small {
+    display: block;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 12px;
+    color: var(--ink-faint);
+    font-weight: 400;
+    margin-top: 2px;
+  }
+  nav.toc ul {
+    list-style: none;
+    margin: 16px 0 0;
+    padding: 0;
+  }
+  nav.toc .group-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    margin: 18px 0 6px;
+  }
+  nav.toc a {
+    display: block;
+    padding: 4px 8px;
+    margin: 1px 0;
+    border-radius: 6px;
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: 13.5px;
+    border-left: 2px solid transparent;
+  }
+  nav.toc a:hover { background: var(--surface-2); color: var(--ink); }
+  nav.toc a.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--accent-soft);
+    font-weight: 500;
+  }
+  nav.toc a.planned-link::after {
+    content: "planejado";
+    margin-left: 6px;
+    font-size: 10px;
+    color: var(--planned);
+    border: 1px solid var(--planned-border);
+    background: var(--planned-bg);
+    border-radius: 4px;
+    padding: 1px 4px;
+  }
+
+  /* ---------- Main content ---------- */
+  main { min-width: 0; padding: 28px 0 80px; }
+
+  header.hero {
+    padding: 12px 0 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+  }
+  header.hero h1 { font-size: 34px; margin: 0 0 8px; }
+  header.hero p.lede {
+    color: var(--ink-muted);
+    max-width: 60ch;
+    font-size: 16px;
+    margin: 0 0 14px;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+  }
+  .pill {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 10px;
+    background: var(--surface);
+  }
+
+  section.block { margin: 0 0 52px; scroll-margin-top: 16px; }
+  section.block h2 {
+    font-size: 24px;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  section.block > p.intro {
+    color: var(--ink-muted);
+    max-width: 72ch;
+    margin: 0 0 20px;
+  }
+  h3.sub {
+    font-size: 17px;
+    margin: 32px 0 10px;
+    padding-top: 4px;
+    scroll-margin-top: 16px;
+  }
+
+  .badge {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+  }
+  .badge.impl { background: var(--accent-soft); color: var(--accent); }
+  .badge.planned { background: var(--planned-bg); color: var(--planned); border: 1px solid var(--planned-border); }
+
+  /* ---------- Use case cards ---------- */
+  .usecase {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-bottom: 18px;
+  }
+  .usecase h3 {
+    margin: 0 0 4px;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .usecase .goal {
+    color: var(--ink-muted);
+    font-size: 13.5px;
+    margin: 0 0 14px;
+    font-style: italic;
+  }
+  .usecase .kv {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 12px;
+    font-size: 13px;
+    color: var(--ink-muted);
+    margin-bottom: 14px;
+  }
+  .usecase .kv dt { color: var(--ink-faint); }
+  .usecase .kv dd { margin: 0; }
+  ol.steps {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  ol.steps li { padding-left: 2px; }
+  ol.steps .call {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 4px;
+    font-size: 12.5px;
+    background: var(--code-bg);
+    border-radius: 6px;
+    padding: 1px 7px;
+    white-space: nowrap;
+  }
+  .note {
+    margin-top: 14px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border-left: 3px solid var(--accent);
+    font-size: 13.5px;
+    color: var(--ink-muted);
+  }
+  .note.warn {
+    border-left-color: var(--planned);
+    background: var(--planned-bg);
+    color: var(--ink);
+  }
+
+  /* ---------- Route cards ---------- */
+  article.route {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  article.route.is-planned { border-style: dashed; border-color: var(--planned-border); }
+  article.route > header.rhead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .method {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    letter-spacing: 0.02em;
+  }
+  .method.get { color: var(--get); background: var(--get-bg); }
+  .method.post { color: var(--post); background: var(--post-bg); }
+  .method.patch { color: var(--patch); background: var(--patch-bg); }
+  .method.put { color: var(--put); background: var(--put-bg); }
+  .method.delete { color: var(--delete); background: var(--delete-bg); }
+  .rpath { font-family: "IBM Plex Mono", monospace; font-size: 13.5px; }
+  .rsummary { color: var(--ink-muted); font-size: 13px; margin-left: auto; }
+  .route-body { padding: 14px 16px 18px; }
+  .route-body p.desc { margin: 0 0 14px; color: var(--ink-muted); font-size: 13.5px; }
+  .route-body h4 {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    margin: 16px 0 8px;
+    font-weight: 600;
+  }
+  .route-body h4:first-child { margin-top: 0; }
+
+  table.fields {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.fields th, table.fields td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table.fields th {
+    color: var(--ink-faint);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  table.fields td.field { font-family: "IBM Plex Mono", monospace; white-space: nowrap; }
+  table.fields td.type { color: var(--ink-muted); white-space: nowrap; }
+  .req { color: var(--delete); font-weight: 700; font-size: 12px; }
+  .opt { color: var(--ink-faint); font-size: 12px; }
+
+  ul.plain { margin: 0; padding-left: 18px; font-size: 13.5px; }
+  ul.plain li { margin-bottom: 4px; }
+  ul.errors { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  ul.errors li { font-size: 13px; display: flex; gap: 8px; }
+  .status {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    font-weight: 700;
+    min-width: 34px;
+  }
+  .status.s4 { color: var(--patch); }
+  .status.s5 { color: var(--delete); }
+
+  details.group {
+    margin-bottom: 28px;
+  }
+  details.group > summary {
+    cursor: pointer;
+    font-family: "Fraunces", serif;
+    font-size: 19px;
+    font-weight: 600;
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    list-style: none;
+  }
+  details.group > summary::-webkit-details-marker { display: none; }
+  details.group > summary::before {
+    content: "▸";
+    color: var(--ink-faint);
+    transition: transform 0.15s ease;
+    font-size: 14px;
+  }
+  details.group[open] > summary::before { transform: rotate(90deg); }
+  details.group .group-desc {
+    color: var(--ink-muted);
+    font-size: 13.5px;
+    margin: 4px 0 16px;
+    max-width: 72ch;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .toolbar button {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 12.5px;
+    padding: 6px 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+  .toolbar button:hover { background: var(--surface-2); color: var(--ink); }
+
+  footer.page {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--ink-faint);
+    font-size: 12.5px;
+  }
+
+  mark.planned-inline {
+    background: var(--planned-bg);
+    color: var(--planned);
+    border-radius: 4px;
+    padding: 0 4px;
+    font-size: 0.85em;
+    font-weight: 600;
+  }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<div class="shell">
+  <nav class="toc" id="toc">
+    <div class="brand">Imagineer<small>Casos de uso &amp; rotas — Etapa 6</small></div>
+    <ul>
+      <li><a href="#visao-geral">Visão geral</a></li>
+      <li><a href="#fluxo">Fluxo passo a passo</a></li>
+      <div class="group-title">Casos de uso</div>
+      <li><a href="#uc-livro">Importar e organizar um livro</a></li>
+      <li><a href="#uc-elementos">Descobrir e confirmar elementos</a></li>
+      <li><a href="#uc-retrato">Gerar o retrato de um personagem</a></li>
+      <li><a href="#uc-cena">Montar e gerar uma cena</a></li>
+      <li><a href="#uc-catalogo">Refinar, importar imagem e avaliar</a></li>
+      <li><a href="#uc-config">Configurar a integração com IA</a></li>
+      <li><a href="#uc-perfis">Gerenciar perfis de renderização</a></li>
+      <div class="group-title">Referência de rotas</div>
+      <li><a href="#ref-saude">Saúde</a></li>
+      <li><a href="#ref-livros">Livros</a></li>
+      <li><a href="#ref-capitulos">Capítulos</a></li>
+      <li><a href="#ref-elementos">Elementos &amp; Estados</a></li>
+      <li><a href="#ref-frames">Frames</a></li>
+      <li><a href="#ref-perfis">Perfis de Renderização</a></li>
+      <li><a href="#ref-prompts">Prompts &amp; Imagens</a></li>
+      <li><a href="#ref-config">Configuração</a></li>
+      <li><a href="#ref-sugestoes">Sugestões (IA)</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <h1>Imagineer — casos de uso e rotas</h1>
+      <p class="lede">Mapa completo de como um usuário interage com o sistema hoje — do EPUB importado até a imagem catalogada — e o contrato exato de cada rota da API implementada até a Etapa 6.7 (incluindo o item 3.4e, sugestões persistidas). Gerado a partir de <code>ESPECIFICACAO.md</code> e do código em <code>imagineer/</code>.</p>
+      <div class="meta-row">
+        <span class="pill">27 de setembro de 2026</span>
+        <span class="pill">41 rotas implementadas</span>
+      </div>
+    </header>
+
+    <section class="block" id="visao-geral">
+      <h2>Visão geral</h2>
+      <p class="intro">O Imagineer ajuda um leitor com afantasia a transformar um livro (EPUB) em imagens de referência: primeiro identifica quem/o quê aparece em cada capítulo, depois monta o texto (prompt) que descreve um retrato solo ou uma cena, e por fim guarda a imagem gerada numa ferramenta externa, formando um catálogo visual do livro.</p>
+      <p class="intro">Cinco entidades sustentam o fluxo: <strong>Elemento</strong> (quem/o que é — não muda) e <strong>EstadoElemento</strong> (como está num ponto da história — muda) resolvem a consistência visual; <strong>Frame</strong> é o recorte que vira prompt, com <code>tipo</code> distinguindo retrato solo (<code>PERSONAGEM</code>) de cena com vários elementos (<code>CENA</code>); <strong>Prompt</strong> e <strong>Imagem</strong> fecham o catálogo. Uma sexta peça, <strong>PerfilRenderizacao</strong>, carrega o estilo visual, independente do livro.</p>
+      <p class="intro">Todo o texto do sistema — nomes de campo, mensagens, rotas — é em português, com exceções pontuais registradas: <code>Frame</code> (nome da entidade) e o nome de uma variável de ambiente.</p>
+    </section>
+
+    <section class="block" id="fluxo">
+      <h2>Fluxo passo a passo</h2>
+      <p class="intro">A sequência completa, da Etapa 2 da especificação — cada caso de uso abaixo é um recorte deste fluxo.</p>
+      <ol class="steps">
+        <li>Usuário importa o EPUB no app.</li>
+        <li>App envia o EPUB para o servidor. <span class="call"><span class="method post">POST</span> /livros</span></li>
+        <li>Servidor estrutura o arquivo em capítulos.</li>
+        <li>Servidor devolve a estrutura para o app.</li>
+        <li>Usuário escolhe um capítulo. <span class="call"><span class="method get">GET</span> /capitulos/{id}</span></li>
+        <li>Servidor chama a IA para sugerir personagens, ambientes, objetos, criaturas e cenas — usando o último estado conhecido de cada elemento já cadastrado. <span class="call"><span class="method post">POST</span> /capitulos/{id}/sugestoes</span></li>
+        <li>Usuário revisa: confirma, ajusta ou descarta cada sugestão; decide se cada elemento mantém o estado atual ou ganha um novo. <span class="call"><span class="method post">POST</span> /livros/{id}/elementos</span></li>
+        <li>Servidor usa o histórico (estado dos elementos escolhidos) para montar o prompt de imagem. <span class="call"><span class="method post">POST</span> /frames/{id}/prompts</span></li>
+        <li>Usuário copia o prompt e gera a imagem numa ferramenta de IA externa, gratuita.</li>
+        <li>Usuário importa a imagem gerada de volta para o app. <span class="call"><span class="method post">POST</span> /prompts/{id}/imagens</span></li>
+        <li>Imagem é salva, associada ao frame/elementos de origem, compondo o catálogo.</li>
+      </ol>
+    </section>
+
+    <!-- ==================== CASOS DE USO ==================== -->
+
+    <section class="block" id="uc-livro">
+      <h2>Casos de uso</h2>
+
+      <div class="usecase">
+        <h3 id="uc-livro-1">UC1 — Importar e organizar um livro</h3>
+        <p class="goal">Levar um arquivo EPUB da máquina do usuário até uma biblioteca navegável de capítulos.</p>
+        <dl class="kv">
+          <dt>Ator</dt><dd>Usuário (único, sistema pessoal)</dd>
+          <dt>Pré-condição</dt><dd>Nenhuma</dt>
+          <dt>Pós-condição</dt><dd>Livro com capítulos estruturados, pronto para revisão</dd>
+        </dl>
+        <ol class="steps">
+          <li>Usuário seleciona o arquivo <code>.epub</code>. <span class="call"><span class="method post">POST</span> /livros</span></li>
+          <li>Servidor extrai metadados (título, autor, idioma) e divide o texto em capítulos pelo spine/TOC do EPUB; descarta sumário, navegação e páginas sem texto útil; sugere capítulos não-narrativos como <code>ignorado</code>.</li>
+          <li>Resposta traz o livro criado e, se algum outro livro já importado tiver o mesmo identificador do EPUB, avisa sem bloquear (<code>livros_semelhantes</code>).</li>
+          <li>Usuário revê a biblioteca. <span class="call"><span class="method get">GET</span> /livros</span></li>
+          <li>Usuário abre o livro para ver a estrutura de capítulos. <span class="call"><span class="method get">GET</span> /livros/{id}</span></li>
+          <li>Usuário corrige metadados errados (comum: EPUBs convertidos trazem metadado de outro livro) ou desfaz uma sugestão de "ignorado". <span class="call"><span class="method patch">PATCH</span> /livros/{id}</span> <span class="call"><span class="method patch">PATCH</span> /capitulos/{id}</span></li>
+          <li>Usuário abre um capítulo específico para ler o texto completo. <span class="call"><span class="method get">GET</span> /capitulos/{id}</span></li>
+        </ol>
+        <div class="note">A importação nunca descarta conteúdo por conta própria — só sugere. É o mesmo princípio usado depois para elementos e estados: a IA/o parser sugerem, o usuário confirma.</div>
+      </div>
+    </section>
+
+    <section class="block" id="uc-elementos">
+      <div class="usecase">
+        <h3>UC2 — Descobrir e confirmar elementos de um capítulo</h3>
+        <p class="goal">Transformar o texto de um capítulo em personagens/ambientes/objetos/criaturas cadastrados, com o estado (aparência) de cada um naquele ponto da história.</p>
+        <dl class="kv">
+          <dt>Ator</dt><dd>Usuário, com apoio da IA</dd>
+          <dt>Pré-condição</dt><dd>Livro importado; <code>modelo_extracao</code> e chave de API configurados</dd>
+          <dt>Pós-condição</dt><dd>Elementos cadastrados, cada um com um Estado válido até este capítulo</dd>
+        </dl>
+        <ol class="steps">
+          <li>Usuário pede sugestões do capítulo. <span class="call"><span class="method post">POST</span> /capitulos/{id}/sugestoes</span></li>
+          <li>Servidor lê o estado vigente de cada elemento já cadastrado até este capítulo, manda isso + o texto do capítulo para a IA, e recebe de volta elementos sugeridos (tipo, nome, descrição de identidade, se deve manter o estado atual) e cenas sugeridas (frames candidatos, com participantes).</li>
+          <li>Cada sugestão de elemento já vem casada com um elemento existente por nome (ignorando caixa/acento), quando aplicável — <code>elemento_id</code> preenchido significa "já cadastrado".</li>
+          <li>Para um elemento novo, o usuário cadastra, opcionalmente já com o estado deste capítulo. <span class="call"><span class="method post">POST</span> /livros/{id}/elementos</span></li>
+          <li>Para um elemento já existente com aparência nova, o usuário registra outro estado. <span class="call"><span class="method post">POST</span> /elementos/{id}/estados</span></li>
+          <li>Se a IA sugeriu o mesmo personagem em capítulos diferentes sem casar pelo nome ("Sextus Hospius" num, "Hospius" noutro), o usuário busca todas as menções e confirma as duas juntas, como o mesmo Elemento, com um Estado por capítulo. <span class="call"><span class="method get">GET</span> /livros/{id}/sugestoes-elemento?nome=...</span> <span class="call"><span class="method post">POST</span> /livros/{id}/elementos</span></li>
+          <li>Usuário revisa a lista de elementos do livro, filtrando por tipo se quiser. <span class="call"><span class="method get">GET</span> /livros/{id}/elementos</span></li>
+          <li>Usuário confere como cada elemento estava até um ponto específico da narrativa (útil para conferir consistência). <span class="call"><span class="method get">GET</span> /capitulos/{id}/estados-vigentes</span></li>
+        </ol>
+        <div class="note">Cadastrar o mesmo elemento (mesmo tipo + nome, no mesmo livro) duas vezes responde <code>409</code> — a extração automática reencontra personagens em capítulos diferentes, então essa restrição evita duplicata.</div>
+        <div class="note">Cada elemento/frame sugerido tem <code>id</code> próprio, salvo no banco (item 3.4e) — <code>sugestoes_elemento_ids</code> em <code>POST /livros/{id}/elementos</code> (ou, para um elemento já existente, <code>POST /elementos/{id}/estados-de-sugestoes</code>) confirma várias sugestões escolhidas de uma vez, criando um Estado por capítulo, sem copiar a descrição à mão em cada uma.</div>
+      </div>
+    </section>
+
+    <section class="block" id="uc-retrato">
+      <div class="usecase">
+        <h3>UC3 — Gerar o retrato de um personagem</h3>
+        <p class="goal">Produzir o texto de prompt para uma imagem de UM elemento sozinho, sem citar mais ninguém.</p>
+        <dl class="kv">
+          <dt>Ator</dt><dd>Usuário, com apoio da IA</dd>
+          <dt>Pré-condição</dt><dd>Elemento com ao menos um Estado; <code>modelo_prompt</code> configurado; perfil de renderização definido (no pedido ou como padrão do livro)</dd>
+          <dt>Pós-condição</dt><dd>Um Prompt salvo, pronto para colar numa ferramenta de imagem externa</dd>
+        </dl>
+        <ol class="steps">
+          <li>Usuário cria um frame do tipo <code>PERSONAGEM</code>, ligado a exatamente um Estado. <span class="call"><span class="method post">POST</span> /capitulos/{id}/frames</span></li>
+          <li><code>titulo</code> é opcional aqui — sem ele, o servidor gera <code>"Retrato de &lt;nome&gt;"</code> sozinho.</li>
+          <li>Usuário pede o prompt. <span class="call"><span class="method post">POST</span> /frames/{id}/prompts</span></li>
+          <li>Servidor faz a <strong>leitura profunda</strong> do estado (relê o capítulo de origem e reescreve <code>EstadoElemento.descricao</code> — o livro é a fonte de verdade, mesmo sobrescrevendo o que foi digitado à mão) e monta o prompt usando só essa descrição, o perfil de renderização e, se houver, o comentário do usuário. Nenhum outro elemento é citado.</li>
+          <li>Usuário copia <code>texto</code> da resposta e gera a imagem fora do sistema.</li>
+        </ol>
+        <div class="note">Por padrão (<code>prioridade_ia: ECONOMIA</code>) a leitura profunda de um estado só acontece uma vez; pedir o prompt de novo é rápido porque reaproveita. Com <code>QUALIDADE</code>, relê toda vez.</div>
+      </div>
+    </section>
+
+    <section class="block" id="uc-cena">
+      <div class="usecase">
+        <h3>UC4 — Montar e gerar uma cena com vários elementos</h3>
+        <p class="goal">Produzir o prompt de um momento da narrativa com vários elementos interagindo — quem, onde, o quê, sem ambiguidade.</p>
+        <dl class="kv">
+          <dt>Ator</dt><dd>Usuário, com apoio da IA</dd>
+          <dt>Pré-condição</dt><dd>Um ou mais elementos com Estado; <code>modelo_extracao</code> e <code>modelo_prompt</code> configurados</dd>
+          <dt>Pós-condição</dt><dd>Um Prompt salvo, fiel ao que o usuário escreveu sobre a cena</dd>
+        </dl>
+        <ol class="steps">
+          <li>Usuário cria um frame do tipo <code>CENA</code> (padrão), com título, descrição e atributos situacionais escritos à mão, ligado aos estados dos elementos que participam — <strong>ou</strong> direto de uma cena sugerida (item 3.4e): com <code>sugestao_frame_id</code>, título/descrição/atributos vêm da sugestão e os estados são resolvidos sozinhos a partir dos participantes já confirmados. <span class="call"><span class="method post">POST</span> /capitulos/{id}/frames</span></li>
+          <li><code>titulo</code> é obrigatório aqui (a não ser que venha de <code>sugestao_frame_id</code>) — é a conta do próprio usuário sobre a cena, e o sistema não tem como inventar isso.</li>
+          <li>Se precisar ajustar quem participa depois de criado. <span class="call"><span class="method put">PUT</span> /frames/{id}/estados</span></li>
+          <li>Usuário pede o prompt. <span class="call"><span class="method post">POST</span> /frames/{id}/prompts</span></li>
+          <li>Servidor faz a leitura profunda de cada estado envolvido, depois <strong>fundamenta</strong> o frame — relê o capítulo para confirmar quem/onde/o quê contra o que foi escrito, guardando o resultado em <code>contexto_do_livro</code>. Isso <strong>não sobrescreve</strong> título/descrição: é apoio, com prioridade menor que a escrita do usuário.</li>
+          <li>Servidor monta o prompt na ordem: comentário do usuário (se houver) &gt; descrição do frame &gt; contexto do livro.</li>
+        </ol>
+        <div class="note">Testado com IA real: quando a fundamentação leu o trecho errado do capítulo (cena longa, vários momentos), o prompt final saiu correto mesmo assim — a prioridade protegeu a descrição do usuário de uma alucinação da releitura automática.</div>
+        <div class="note">Criar o frame a partir de <code>sugestao_frame_id</code> exige que cada participante já tenha <code>elemento_id</code> confirmado (422, listando quem falta, senão) — confirmar elemento sempre vem antes de confirmar frame.</div>
+      </div>
+    </section>
+
+    <section class="block" id="uc-catalogo">
+      <div class="usecase">
+        <h3>UC5 — Refinar o prompt, importar a imagem e avaliar</h3>
+        <p class="goal">Fechar o ciclo: corrigir o prompt com um detalhe que a IA não captou, trazer a imagem gerada de volta, e registrar o que achou do resultado.</p>
+        <dl class="kv">
+          <dt>Ator</dt><dd>Usuário</dd>
+          <dt>Pré-condição</dt><dd>Um Prompt já existe para o frame</dd>
+          <dt>Pós-condição</dt><dd>Imagem catalogada, ligada ao prompt e, por ele, ao frame de origem</dd>
+        </dl>
+        <ol class="steps">
+          <li>Usuário nota algo que faltou (ex.: uma cicatriz mencionada num capítulo seguinte) e pede o prompt de novo, com um comentário. <span class="call"><span class="method post">POST</span> /frames/{id}/prompts</span></li>
+          <li>Não existe rota separada de "refinar" — é a mesma chamada de sempre, com <code>comentario</code> preenchido, que tem prioridade máxima sobre a leitura automática.</li>
+          <li>Usuário consulta o histórico de tentativas do frame. <span class="call"><span class="method get">GET</span> /frames/{id}/prompts</span></li>
+          <li>Usuário copia o texto escolhido, gera a imagem numa ferramenta externa, e importa o arquivo de volta. <span class="call"><span class="method post">POST</span> /prompts/{id}/imagens</span></li>
+          <li>Usuário anota como a imagem ficou, para comparar modelos depois. <span class="call"><span class="method patch">PATCH</span> /prompts/{id}</span></li>
+          <li>Usuário baixa/exibe o arquivo quando precisar. <span class="call"><span class="method get">GET</span> /imagens/{id}/arquivo</span></li>
+        </ol>
+        <div class="note">Ao abrir um prompt de cena, a resposta também traz <code>referencias_visuais</code> — as imagens-âncora já aprovadas dos elementos envolvidos, para o usuário anexar junto e manter a aparência consistente entre capítulos distantes (o fluxo de geração é manual, fora do sistema).</div>
+      </div>
+    </section>
+
+    <section class="block" id="uc-config">
+      <div class="usecase">
+        <h3>UC6 — Configurar a integração com IA</h3>
+        <p class="goal">Escolher os modelos de IA e o equilíbrio custo/qualidade antes de usar qualquer rota que dependa de IA.</p>
+        <dl class="kv">
+          <dt>Ator</dt><dd>Usuário</dd>
+          <dt>Pré-condição</dt><dd>Nenhuma (a chave pode já vir de variável de ambiente)</dd>
+          <dt>Pós-condição</dt><dd>Modelos escolhidos, prontos para as rotas de sugestão e prompt</dd>
+        </dl>
+        <ol class="steps">
+          <li>Usuário vê a lista de modelos disponíveis no OpenRouter — funciona sem chave cadastrada, o endpoint de modelos é público. <span class="call"><span class="method get">GET</span> /configuracao/modelos</span></li>
+          <li>Usuário escolhe <code>modelo_extracao</code> (sugestões) e <code>modelo_prompt</code> (montagem), e, se preferir não usar variável de ambiente, cadastra a chave pelo app. <span class="call"><span class="method put">PUT</span> /configuracao</span></li>
+          <li>Usuário decide entre <code>ECONOMIA</code> (padrão — reaproveita leituras já feitas) e <code>QUALIDADE</code> (relê sempre) para a leitura profunda e a fundamentação de frame.</li>
+          <li>Usuário confere a configuração atual — a chave em si nunca é devolvida, só se existe e de onde veio. <span class="call"><span class="method get">GET</span> /configuracao</span></li>
+        </ol>
+        <div class="note">Uma chave enviada como texto vazio apaga o cadastro no banco e devolve a vez à variável de ambiente — é assim que se desfaz.</div>
+      </div>
+    </section>
+
+    <section class="block" id="uc-perfis">
+      <div class="usecase">
+        <h3>UC7 — Gerenciar perfis de renderização</h3>
+        <p class="goal">Definir e reaproveitar um estilo visual (aquarela, iluminação, paleta) entre livros diferentes.</p>
+        <dl class="kv">
+          <dt>Ator</dt><dd>Usuário</dd>
+          <dt>Pré-condição</dt><dd>Nenhuma</dd>
+          <dt>Pós-condição</dt><dd>Um perfil disponível para usar como padrão de um livro, ou pontualmente num prompt</dd>
+        </dl>
+        <ol class="steps">
+          <li>Usuário cria um perfil com o estilo desejado. <span class="call"><span class="method post">POST</span> /perfis-renderizacao</span></li>
+          <li>Usuário define esse perfil como padrão de um livro. <span class="call"><span class="method patch">PATCH</span> /livros/{id}</span></li>
+          <li>Ao montar um prompt, o usuário pode usar o padrão do livro ou informar outro perfil pontualmente, no próprio pedido de prompt.</li>
+          <li>Usuário ajusta o perfil (ex.: mais contraste na iluminação) — vale para os próximos prompts, não reescreve os já gerados. <span class="call"><span class="method patch">PATCH</span> /perfis-renderizacao/{id}</span></li>
+        </ol>
+        <div class="note">Apagar um perfil não apaga livros nem o histórico de prompts — a referência vira nula (<code>ON DELETE SET NULL</code>); o texto do prompt já gerado continua fiel ao que foi usado na hora.</div>
+      </div>
+    </section>
+
+    <!-- ==================== REFERÊNCIA DE ROTAS ==================== -->
+
+    <section class="block" id="referencia">
+      <h2>Referência de rotas</h2>
+      <p class="intro">Contrato de cada rota implementada: método, caminho, campos do corpo (obrigatórios em <span class="req">vermelho</span>, opcionais em <span class="opt">cinza</span>), o que a resposta traz, e os erros esperados. Rotas planejadas (item 3.4e, ainda sem código) ficam numa seção separada ao final.</p>
+
+      <div class="toolbar">
+        <button id="btn-expand">Expandir tudo</button>
+        <button id="btn-collapse">Recolher tudo</button>
+      </div>
+
+      <details class="group" open id="ref-saude">
+        <summary>Saúde <span class="badge impl">implementado</span></summary>
+        <p class="group-desc">Confere se a API está no ar e conectada ao banco.</p>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/saude</span><span class="rsummary">Verifica a saúde da aplicação</span></header>
+          <div class="route-body">
+            <h4>Resposta — 200</h4>
+            <p class="desc">Status simples de disponibilidade e conexão com o banco.</p>
+          </div>
+        </article>
+      </details>
+
+      <details class="group" open id="ref-livros">
+        <summary>Livros <span class="badge impl">implementado</span></summary>
+        <p class="group-desc">Importar, listar, abrir, ajustar e remover livros — passos 1 a 4 do fluxo.</p>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/livros</span><span class="rsummary">Importa um arquivo EPUB</span></header>
+          <div class="route-body">
+            <h4>Corpo (multipart/form-data)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">arquivo</td><td class="type">arquivo .epub</td><td class="req">obrigatório</td><td>Limite de 60 MB</td></tr>
+            </table>
+            <h4>Resposta — 201</h4>
+            <ul class="plain">
+              <li><code>livro</code>: o livro criado, com a estrutura de capítulos (sem texto)</li>
+              <li><code>livros_semelhantes</code>: livros já importados com o mesmo identificador do EPUB — aviso, não bloqueio</li>
+            </ul>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">422</span> EPUB inválido, corrompido, ou sem nenhum capítulo aproveitável</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/livros</span><span class="rsummary">Lista a biblioteca</span></header>
+          <div class="route-body">
+            <h4>Resposta — 200</h4>
+            <p class="desc">Lista de livros em ordem alfabética de título, cada um com total de capítulos e quantos estão ignorados.</p>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/livros/{livro_id}</span><span class="rsummary">Abre um livro</span></header>
+          <div class="route-body">
+            <h4>Resposta — 200</h4>
+            <p class="desc">O livro com a estrutura completa de capítulos (sem o texto de cada um).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Livro inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/livros/{livro_id}</span><span class="rsummary">Ajusta um livro</span></header>
+          <div class="route-body">
+            <p class="desc">Só os campos presentes no corpo são aplicados.</p>
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">titulo</td><td class="type">texto</td><td class="opt">opcional</td><td>Corrige metadado errado do EPUB</td></tr>
+              <tr><td class="field">autor</td><td class="type">texto</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">idioma</td><td class="type">texto</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">perfil_renderizacao_padrao_id</td><td class="type">inteiro</td><td class="opt">opcional</td><td>Define o estilo visual padrão do livro</td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Livro inexistente</li>
+              <li><span class="status s4">422</span> Perfil de renderização informado não existe</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method delete">DELETE</span><span class="rpath">/livros/{livro_id}</span><span class="rsummary">Remove um livro</span></header>
+          <div class="route-body">
+            <p class="desc">Apaga o livro e, em cascata, capítulos, elementos, estados, frames, prompts e imagens (204, sem corpo). Perfis de renderização não são afetados.</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Livro inexistente</li></ul>
+          </div>
+        </article>
+      </details>
+
+      <details class="group" open id="ref-capitulos">
+        <summary>Capítulos <span class="badge impl">implementado</span></summary>
+        <p class="group-desc">Abrir um capítulo com o texto completo, e confirmar/desfazer a sugestão de "ignorado".</p>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/capitulos/{capitulo_id}</span><span class="rsummary">Abre um capítulo com o texto</span></header>
+          <div class="route-body">
+            <p class="desc">Única rota que devolve o texto completo — listagens só trazem o tamanho.</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Capítulo inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/capitulos/{capitulo_id}</span><span class="rsummary">Ajusta um capítulo</span></header>
+          <div class="route-body">
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">titulo</td><td class="type">texto</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">ignorado</td><td class="type">booleano</td><td class="opt">opcional</td><td>Confirma ou desfaz a sugestão da importação</td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Capítulo inexistente</li></ul>
+          </div>
+        </article>
+      </details>
+
+      <details class="group" open id="ref-elementos">
+        <summary>Elementos &amp; Estados <span class="badge impl">implementado</span></summary>
+        <p class="group-desc">O coração da consistência visual — cadastro de personagens/ambientes/objetos/criaturas e o histórico de como cada um estava em cada ponto da narrativa.</p>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/livros/{livro_id}/elementos</span><span class="rsummary">Lista os elementos do livro</span></header>
+          <div class="route-body">
+            <h4>Query</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">tipo</td><td class="type">enum</td><td class="opt">opcional</td><td>PERSONAGEM · AMBIENTE · OBJETO · CRIATURA · GRUPO · VEICULO · EDIFICACAO</td></tr>
+            </table>
+            <h4>Resposta — 200</h4>
+            <p class="desc">Cada elemento com o estado mais recente em ordem narrativa (não por data de cadastro).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Livro inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/livros/{livro_id}/sugestoes-elemento</span><span class="rsummary">Busca sugestões de elemento por nome</span></header>
+          <div class="route-body">
+            <p class="desc">Item 3.4e. Cross-capítulo, no livro inteiro — acha todas as menções de um nome sem vasculhar capítulo por capítulo. Resolve o caso em que a IA sugere o mesmo personagem com nomes diferentes em capítulos diferentes ("Sextus Hospius" num, "Hospius" sozinho noutro).</p>
+            <h4>Query</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">nome</td><td class="type">texto</td><td class="req">obrigatório</td><td>Busca parcial, sem diferenciar caixa/acento</td></tr>
+            </table>
+            <h4>Resposta — 200</h4>
+            <p class="desc">Cada sugestão com <code>capitulo_id</code>/<code>capitulo_ordem</code>/<code>capitulo_titulo</code>, <code>tipo</code>, <code>nome</code>, <code>descricao</code>, <code>manter_estado_atual</code> e <code>elemento_id</code> (nulo se ainda não confirmada).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Livro inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/livros/{livro_id}/elementos</span><span class="rsummary">Cadastra um elemento</span></header>
+          <div class="route-body">
+            <p class="desc">Cria o elemento e, se vier, o(s) primeiro(s) estado(s) — num pedido só (passo 7 do fluxo).</p>
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">tipo</td><td class="type">enum</td><td class="req">obrigatório</td><td></td></tr>
+              <tr><td class="field">nome</td><td class="type">texto (200)</td><td class="req">obrigatório</td><td>Sempre o que o usuário escreveu — nunca inferido das sugestões</td></tr>
+              <tr><td class="field">descricao</td><td class="type">texto</td><td class="opt">opcional</td><td>Identidade: quem/o que é</td></tr>
+              <tr><td class="field">estado_inicial.capitulo_id</td><td class="type">inteiro</td><td class="opt">opcional*</td><td rowspan="2">*Se <code>estado_inicial</code> vier, os dois campos dele são obrigatórios</td></tr>
+              <tr><td class="field">estado_inicial.descricao</td><td class="type">texto</td><td class="opt">opcional*</td></tr>
+              <tr><td class="field">sugestoes_elemento_ids</td><td class="type">lista de inteiros</td><td class="opt">opcional</td><td>Item 3.4e. Um Estado por sugestão, cada uma do seu próprio capítulo — pode vir junto com <code>estado_inicial</code></td></tr>
+            </table>
+            <h4>Resposta — 201</h4>
+            <p class="desc">O elemento criado, com a lista de estados (um por <code>estado_inicial</code> + um por sugestão escolhida).</p>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Livro, capítulo (de <code>estado_inicial</code>) ou alguma sugestão inexistente</li>
+              <li><span class="status s4">409</span> Já existe elemento com mesmo tipo+nome neste livro — resposta traz o id existente</li>
+              <li><span class="status s4">422</span> Alguma sugestão é de outro livro</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/elementos/{elemento_id}</span><span class="rsummary">Abre um elemento</span></header>
+          <div class="route-body">
+            <p class="desc">O elemento com todos os seus estados, em ordem narrativa.</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Elemento inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/elementos/{elemento_id}</span><span class="rsummary">Ajusta um elemento</span></header>
+          <div class="route-body">
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">tipo</td><td class="type">enum</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">nome</td><td class="type">texto (200)</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">descricao</td><td class="type">texto</td><td class="opt">opcional</td><td></td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Elemento inexistente</li>
+              <li><span class="status s4">409</span> Novo tipo+nome colide com outro elemento do livro</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method delete">DELETE</span><span class="rpath">/elementos/{elemento_id}</span><span class="rsummary">Remove um elemento</span></header>
+          <div class="route-body">
+            <p class="desc">Remove o elemento e todos os seus estados (204).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Elemento inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/elementos/{elemento_id}/estados</span><span class="rsummary">Registra um novo estado</span></header>
+          <div class="route-body">
+            <p class="desc">Vários estados no mesmo capítulo são permitidos — ex.: personagem entra ferido, sai curado.</p>
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">capitulo_id</td><td class="type">inteiro</td><td class="req">obrigatório</td><td>Precisa ser do mesmo livro do elemento</td></tr>
+              <tr><td class="field">descricao</td><td class="type">texto</td><td class="req">obrigatório</td><td>A aparência em si</td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Elemento ou capítulo inexistente</li>
+              <li><span class="status s4">422</span> Capítulo pertence a outro livro</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/elementos/{elemento_id}/estados-de-sugestoes</span><span class="rsummary">Registra estados a partir de sugestões</span></header>
+          <div class="route-body">
+            <p class="desc">Item 3.4e. Rota separada de <code>POST /elementos/{id}/estados</code> porque aquela cria um estado e devolve um objeto; esta cria um por sugestão escolhida e devolve uma lista — num elemento <strong>já existente</strong>.</p>
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">sugestoes_elemento_ids</td><td class="type">lista de inteiros</td><td class="req">obrigatório</td><td>Mínimo 1</td></tr>
+            </table>
+            <h4>Resposta — 201</h4>
+            <p class="desc">Lista de <code>EstadoResumo</code>, um por sugestão.</p>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Elemento ou alguma sugestão inexistente</li>
+              <li><span class="status s4">422</span> Alguma sugestão é de outro livro</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/estados/{estado_id}</span><span class="rsummary">Ajusta um estado</span></header>
+          <div class="route-body">
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">descricao</td><td class="type">texto</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">imagem_ancora_id</td><td class="type">inteiro</td><td class="opt">opcional</td><td>Imagem já aprovada, referência visual para gerações futuras</td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Estado inexistente</li>
+              <li><span class="status s4">422</span> Imagem-âncora informada não existe</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method delete">DELETE</span><span class="rpath">/estados/{estado_id}</span><span class="rsummary">Remove um estado</span></header>
+          <div class="route-body">
+            <p class="desc">O elemento e os frames que citavam este estado permanecem (204).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Estado inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/capitulos/{capitulo_id}/estados-vigentes</span><span class="rsummary">Estado de cada elemento naquele ponto</span></header>
+          <div class="route-body">
+            <p class="desc">Todos os elementos do livro, cada um com o estado vigente até este capítulo — ou nulo, se ainda não tinha aparecido. É o contexto passado à IA no passo 6.</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Capítulo inexistente</li></ul>
+          </div>
+        </article>
+      </details>
+
+      <details class="group" open id="ref-frames">
+        <summary>Frames <span class="badge impl">implementado</span></summary>
+        <p class="group-desc">O recorte que vira imagem — retrato solo (<code>PERSONAGEM</code>) ou cena com vários elementos (<code>CENA</code>).</p>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/capitulos/{capitulo_id}/frames</span><span class="rsummary">Lista os frames de um capítulo</span></header>
+          <div class="route-body">
+            <p class="desc">Na ordem em que foram criados (não há campo <code>ordem</code> — a criação já segue a leitura).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Capítulo inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/capitulos/{capitulo_id}/frames</span><span class="rsummary">Cria um frame</span></header>
+          <div class="route-body">
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">tipo</td><td class="type">enum</td><td class="opt">opcional</td><td>PERSONAGEM · CENA — padrão CENA</td></tr>
+              <tr><td class="field">titulo</td><td class="type">texto (300)</td><td class="req">obrigatório*</td><td>*Opcional só quando <code>tipo=PERSONAGEM</code> — gerado como "Retrato de &lt;nome&gt;" se ausente</td></tr>
+              <tr><td class="field">descricao</td><td class="type">texto</td><td class="opt">opcional</td><td>Ignorado se <code>tipo=PERSONAGEM</code></td></tr>
+              <tr><td class="field">horario</td><td class="type">texto (100)</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">clima</td><td class="type">texto (100)</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">humor</td><td class="type">texto (100)</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">estados_ids</td><td class="type">lista de inteiros</td><td class="opt">opcional</td><td>Exatamente 1 se <code>tipo=PERSONAGEM</code>; qualquer quantidade (inclusive 0) se <code>CENA</code>. Se ausente e <code>sugestao_frame_id</code> vier, resolvido sozinho</td></tr>
+              <tr><td class="field">sugestao_frame_id</td><td class="type">inteiro</td><td class="opt">opcional</td><td>Item 3.4e. Pré-preenche titulo/descricao/horario/clima/humor da <code>SugestaoDeFrame</code> — campo explícito no pedido sempre vence</td></tr>
+            </table>
+            <h4>Resposta — 201</h4>
+            <p class="desc">O frame criado, com os elementos ligados (estado + identidade de cada um).</p>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Capítulo, sugestão de frame ou algum estado_id inexistente</li>
+              <li><span class="status s4">422</span> Contagem de estados errada para PERSONAGEM · título ausente para CENA · estado de outro livro · sugestão de outro capítulo · participante da sugestão ainda não confirmado como elemento</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/frames/{frame_id}</span><span class="rsummary">Abre um frame</span></header>
+          <div class="route-body">
+            <p class="desc">Traz cada estado com o nome/tipo do elemento a que pertence, e <code>contexto_do_livro</code> (fundamentação, só para CENA já processada).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Frame inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/frames/{frame_id}</span><span class="rsummary">Ajusta um frame</span></header>
+          <div class="route-body">
+            <p class="desc"><code>tipo</code> não é ajustável — muda a regra de quantos estados o frame aceita e como o prompt é montado; recriar é mais claro que migrar.</p>
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">titulo</td><td class="type">texto (300)</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">descricao</td><td class="type">texto</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">horario / clima / humor</td><td class="type">texto (100)</td><td class="opt">opcional</td><td></td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Frame inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method put">PUT</span><span class="rpath">/frames/{frame_id}/estados</span><span class="rsummary">Define quem aparece no frame</span></header>
+          <div class="route-body">
+            <p class="desc"><code>PUT</code> e não <code>PATCH</code>: o app manda a lista completa — o usuário marca/desmarca elementos e salva o conjunto inteiro.</p>
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">estados_ids</td><td class="type">lista de inteiros</td><td class="req">obrigatório</td><td>Mesma regra de contagem por <code>tipo</code> do POST</td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Frame ou algum estado_id inexistente</li>
+              <li><span class="status s4">422</span> Contagem errada para PERSONAGEM · estado de outro livro</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method delete">DELETE</span><span class="rpath">/frames/{frame_id}</span><span class="rsummary">Remove um frame</span></header>
+          <div class="route-body">
+            <p class="desc">Remove o frame e seus prompts em cascata — mas não os estados que ele citava (204).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Frame inexistente</li></ul>
+          </div>
+        </article>
+      </details>
+
+      <details class="group" open id="ref-perfis">
+        <summary>Perfis de Renderização <span class="badge impl">implementado</span></summary>
+        <p class="group-desc">Estilo visual reutilizável entre livros — não pertence a nenhum livro específico.</p>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/perfis-renderizacao</span><span class="rsummary">Lista os perfis</span></header>
+          <div class="route-body"><p class="desc">Todos, em ordem alfabética — compartilhados entre livros.</p></div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/perfis-renderizacao</span><span class="rsummary">Cria um perfil</span></header>
+          <div class="route-body">
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">nome</td><td class="type">texto (100)</td><td class="req">obrigatório</td><td>Único entre todos os perfis</td></tr>
+              <tr><td class="field">estilo</td><td class="type">texto</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">artista_referencia</td><td class="type">texto (200)</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">iluminacao</td><td class="type">texto (200)</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">paleta</td><td class="type">texto (200)</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">formato</td><td class="type">texto (50)</td><td class="opt">opcional</td><td></td></tr>
+              <tr><td class="field">modelo_alvo</td><td class="type">texto (100)</td><td class="opt">opcional</td><td>Ferramenta de imagem a que este perfil se adapta</td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">409</span> Já existe um perfil com este nome</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/perfis-renderizacao/{perfil_id}</span><span class="rsummary">Abre um perfil</span></header>
+          <div class="route-body"><h4>Erros</h4><ul class="errors"><li><span class="status s4">404</span> Perfil inexistente</li></ul></div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/perfis-renderizacao/{perfil_id}</span><span class="rsummary">Ajusta um perfil</span></header>
+          <div class="route-body">
+            <p class="desc">Todos os campos de <code>POST</code> acima, todos opcionais aqui — só o que vem é aplicado.</p>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Perfil inexistente</li>
+              <li><span class="status s4">409</span> Novo nome colide com outro perfil</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method delete">DELETE</span><span class="rpath">/perfis-renderizacao/{perfil_id}</span><span class="rsummary">Remove um perfil</span></header>
+          <div class="route-body">
+            <p class="desc">Livros que o usavam como padrão ficam com o campo nulo; prompts já gerados continuam no histórico (204).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Perfil inexistente</li></ul>
+          </div>
+        </article>
+      </details>
+
+      <details class="group" open id="ref-prompts">
+        <summary>Prompts &amp; Imagens <span class="badge impl">implementado</span></summary>
+        <p class="group-desc">Montar o prompt a partir de um frame, e trazer de volta a imagem gerada fora do sistema.</p>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/frames/{frame_id}/prompts</span><span class="rsummary">Histórico de prompts do frame</span></header>
+          <div class="route-body">
+            <p class="desc">Do mais antigo ao mais recente.</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Frame inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/frames/{frame_id}/prompts</span><span class="rsummary">Monta o prompt com a IA</span></header>
+          <div class="route-body">
+            <p class="desc">Antes de montar: leitura profunda de cada estado envolvido (sempre em QUALIDADE, só se necessário em ECONOMIA); se <code>tipo=CENA</code>, também fundamenta o frame contra o capítulo, sem sobrescrever o que o usuário escreveu.</p>
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">perfil_renderizacao_id</td><td class="type">inteiro</td><td class="opt">opcional</td><td>Sem ele, usa o padrão do livro</td></tr>
+              <tr><td class="field">modelo</td><td class="type">texto (200)</td><td class="opt">opcional</td><td>Sem ele, usa <code>modelo_prompt</code> da configuração</td></tr>
+              <tr><td class="field">comentario</td><td class="type">texto (2000)</td><td class="opt">opcional</td><td>Prioridade máxima na montagem — é como se "refina" o prompt</td></tr>
+            </table>
+            <h4>Resposta — 201</h4>
+            <p class="desc">O prompt montado (<code>texto</code>), o modelo usado, e <code>referencias_visuais</code> — imagens-âncora dos elementos envolvidos.</p>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Frame inexistente</li>
+              <li><span class="status s4">422</span> Sem perfil (nenhum no pedido nem padrão do livro) · sem modelo escolhido · sem chave de API</li>
+              <li><span class="status s5">502</span> Erro do provedor de IA (rede, resposta fora do formato)</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/prompts/{prompt_id}</span><span class="rsummary">Abre um prompt</span></header>
+          <div class="route-body">
+            <p class="desc">Com as imagens já importadas para ele.</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Prompt inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/prompts/{prompt_id}</span><span class="rsummary">Anota a avaliação do resultado</span></header>
+          <div class="route-body">
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">avaliacao</td><td class="type">texto</td><td class="req">obrigatório</td><td>Texto livre — o que ajuda a comparar modelos depois</td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Prompt inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method delete">DELETE</span><span class="rpath">/prompts/{prompt_id}</span><span class="rsummary">Remove o prompt e suas imagens</span></header>
+          <div class="route-body">
+            <p class="desc">Apaga as linhas de imagem e os arquivos no disco (204).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Prompt inexistente</li></ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/prompts/{prompt_id}/imagens</span><span class="rsummary">Importa o arquivo de imagem gerado</span></header>
+          <div class="route-body">
+            <h4>Corpo (multipart/form-data)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">arquivo</td><td class="type">imagem</td><td class="req">obrigatório</td><td>.png · .jpg/.jpeg · .webp · .gif — até 25 MB</td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Prompt inexistente</li>
+              <li><span class="status s4">422</span> Extensão não aceita, ou arquivo maior que o limite</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/imagens/{imagem_id}/arquivo</span><span class="rsummary">Devolve o arquivo da imagem</span></header>
+          <div class="route-body">
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Imagem inexistente, ou o arquivo não está mais no disco</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method delete">DELETE</span><span class="rpath">/imagens/{imagem_id}</span><span class="rsummary">Remove a imagem</span></header>
+          <div class="route-body">
+            <p class="desc">Apaga a linha do catálogo e o arquivo em disco (204).</p>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s4">404</span> Imagem inexistente</li></ul>
+          </div>
+        </article>
+      </details>
+
+      <details class="group" open id="ref-config">
+        <summary>Configuração <span class="badge impl">implementado</span></summary>
+        <p class="group-desc">A integração com IA — chave, modelos escolhidos, prioridade de custo vs. qualidade.</p>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/configuracao</span><span class="rsummary">A configuração atual</span></header>
+          <div class="route-body">
+            <p class="desc">Nunca devolve a chave em si — só <code>tem_chave_api</code> e <code>origem_da_chave</code> ("banco", "ambiente" ou "ausente").</p>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method put">PUT</span><span class="rpath">/configuracao</span><span class="rsummary">Grava a configuração</span></header>
+          <div class="route-body">
+            <h4>Corpo (JSON)</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">chave_api_openrouter</td><td class="type">texto (200)</td><td class="opt">opcional</td><td>String vazia apaga o cadastro, volta a valer a variável de ambiente</td></tr>
+              <tr><td class="field">modelo_extracao</td><td class="type">texto (200)</td><td class="opt">opcional</td><td>Usado no passo 6 (sugestões)</td></tr>
+              <tr><td class="field">modelo_prompt</td><td class="type">texto (200)</td><td class="opt">opcional</td><td>Usado no passo 8 (montar prompt)</td></tr>
+              <tr><td class="field">prioridade_ia</td><td class="type">enum</td><td class="opt">opcional</td><td>ECONOMIA (padrão) · QUALIDADE</td></tr>
+            </table>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/configuracao/modelos</span><span class="rsummary">Lista os modelos do OpenRouter</span></header>
+          <div class="route-body">
+            <p class="desc">Funciona sem chave cadastrada — o endpoint de modelos do OpenRouter é público.</p>
+            <h4>Query</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">somente_gratuitos</td><td class="type">booleano</td><td class="opt">opcional</td><td>Padrão falso</td></tr>
+              <tr><td class="field">contexto_minimo</td><td class="type">inteiro</td><td class="opt">opcional</td><td>Padrão 0 — 32000 cobre o maior capítulo do corpus de validação</td></tr>
+            </table>
+            <h4>Erros</h4>
+            <ul class="errors"><li><span class="status s5">502</span> Erro do provedor de IA</li></ul>
+          </div>
+        </article>
+      </details>
+
+      <details class="group" open id="ref-sugestoes">
+        <summary>Sugestões (IA) <span class="badge impl">implementado</span></summary>
+        <p class="group-desc">Fase 1 do item 4.4 — identificação de elementos e cenas candidatas, a partir do texto de um capítulo.</p>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/capitulos/{capitulo_id}/sugestoes</span><span class="rsummary">Os elementos e frames sugeridos do capítulo</span></header>
+          <div class="route-body">
+            <p class="desc">Não grava Elemento nem Frame — quem confirma é o usuário, pelas rotas de Elementos e Frames. A sugestão em si é persistida, em linhas próprias com <code>id</code> estável (item 3.4e): sem <code>forcar=true</code>, o que já está salvo é devolvido sem chamar a IA de novo (a IA não é determinística — evita respostas divergentes a cada leitura). O casamento com <code>elemento_id</code> é sempre recalculado, mesmo servindo do que já está salvo.</p>
+            <h4>Query</h4>
+            <table class="fields">
+              <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
+              <tr><td class="field">forcar</td><td class="type">booleano</td><td class="opt">opcional</td><td>Padrão falso. Só substitui sugestões ainda não confirmadas — as já viradas Elemento/Frame sobrevivem</td></tr>
+            </table>
+            <h4>Resposta — 200</h4>
+            <ul class="plain">
+              <li><code>gerado_em</code>: quando a última rodada de sugestão deste capítulo chamou a IA</li>
+              <li><code>elementos[]</code>: <code>id</code>, tipo, nome, descrição de identidade, <code>manter_estado_atual</code>, <code>modelo</code>, <code>elemento_id</code> (nulo = ainda não confirmado)</li>
+              <li><code>frames[]</code>: <code>id</code>, cenas candidatas — título, descrição, horário/clima/humor, <code>modelo</code>, <code>participantes[]</code> (cada um com <code>sugestao_elemento_id</code> e <code>elemento_id</code> quando casado)</li>
+            </ul>
+            <h4>Erros</h4>
+            <ul class="errors">
+              <li><span class="status s4">404</span> Capítulo inexistente</li>
+              <li><span class="status s4">422</span> Sem modelo de extração escolhido · sem chave · texto maior que a janela do modelo</li>
+              <li><span class="status s5">502</span> Erro do provedor de IA</li>
+            </ul>
+          </div>
+        </article>
+      </details>
+    </section>
+
+    <footer class="page">
+      Gerado a partir de <code>ESPECIFICACAO.md</code> e do código em <code>imagineer/rotas/</code> e <code>imagineer/esquemas/</code> — 27 de setembro de 2026, incluindo o item 3.4e (sugestões persistidas).
+    </footer>
+  </main>
+</div>
+
+<script>
+  (function () {
+    "use strict";
+
+    // Expand/collapse all route groups.
+    var expandBtn = document.getElementById("btn-expand");
+    var collapseBtn = document.getElementById("btn-collapse");
+    var groups = document.querySelectorAll("details.group");
+    if (expandBtn) {
+      expandBtn.addEventListener("click", function () {
+        groups.forEach(function (d) { d.open = true; });
+      });
+    }
+    if (collapseBtn) {
+      collapseBtn.addEventListener("click", function () {
+        groups.forEach(function (d) { d.open = false; });
+      });
+    }
+
+    // Highlight the active section in the sidebar while scrolling.
+    try {
+      var links = Array.prototype.slice.call(document.querySelectorAll("nav.toc a"));
+      var targets = links
+        .map(function (a) {
+          var id = a.getAttribute("href").slice(1);
+          var el = document.getElementById(id);
+          return el ? { link: a, el: el } : null;
+        })
+        .filter(Boolean);
+
+      var observer = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (entry) {
+            var match = targets.find(function (t) { return t.el === entry.target; });
+            if (!match) return;
+            if (entry.isIntersecting) {
+              links.forEach(function (a) { a.classList.remove("active"); });
+              match.link.classList.add("active");
+            }
+          });
+        },
+        { rootMargin: "-10% 0px -75% 0px" }
+      );
+      targets.forEach(function (t) { observer.observe(t.el); });
+    } catch (e) {
+      // IntersectionObserver ausente ou algo mudou de forma inesperada — a
+      // navegação por âncora continua funcionando sem o destaque.
+    }
+  })();
+</script>

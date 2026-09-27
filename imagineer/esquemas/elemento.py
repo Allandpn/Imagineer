@@ -1,4 +1,4 @@
-"""Contratos das rotas de elementos e estados (Etapa 6.3)."""
+"""Contratos das rotas de elementos e estados (Etapa 6.3 e 6.7)."""
 
 from datetime import datetime
 
@@ -36,6 +36,18 @@ class EstadoAjuste(BaseModel):
 
     descricao: str | None = Field(default=None, min_length=1)
     imagem_ancora_id: int | None = None
+
+
+class EstadosDeSugestoes(BaseModel):
+    """O que `POST /elementos/{id}/estados-de-sugestoes` recebe (item 3.4e).
+
+    Rota separada de `POST /elementos/{id}/estados`, e não o mesmo campo
+    ali: aquela cria **um** estado e devolve **um** `EstadoResumo`; esta cria
+    **um estado por sugestão** e devolve uma lista — misturar os dois na
+    mesma rota faria o formato da resposta depender do corpo do pedido.
+    """
+
+    sugestoes_elemento_ids: list[int] = Field(min_length=1)
 
 
 class ElementoResumo(BaseModel):
@@ -78,12 +90,25 @@ class ElementoNovo(BaseModel):
     fluxo, o usuário confirma que o personagem existe **e** como ele está naquele
     capítulo. Em dois pedidos separados, uma falha no meio deixaria um elemento
     sem estado nenhum.
+
+    ``tipo``/``nome`` são sempre o que o usuário escreveu aqui — nunca inferidos
+    de ``sugestoes_elemento_ids`` (item 3.4e), mesmo que as sugestões escolhidas
+    tragam um nome ligeiramente diferente entre si.
     """
 
     tipo: TipoElemento
     nome: str = Field(min_length=1, max_length=200)
     descricao: str | None = None
     estado_inicial: EstadoNovo | None = None
+    sugestoes_elemento_ids: list[int] = Field(
+        default_factory=list,
+        description=(
+            "Sugestões de elemento (de um ou mais capítulos) a incorporar como "
+            "Estados deste elemento, um por sugestão — resolve o caso em que a "
+            "IA sugeriu o mesmo personagem em capítulos diferentes sem casar "
+            "pelo nome (item 3.4e). Pode vir junto com estado_inicial."
+        ),
+    )
 
 
 class ElementoAjuste(BaseModel):
@@ -97,9 +122,12 @@ class ElementoAjuste(BaseModel):
 class ElementoSugerido(BaseModel):
     """Um elemento sugerido pela IA — só identificação (passo 6, item 4.4, fase 1).
 
-    Não é gravado no banco por esta rota — o app mostra a sugestão e o usuário
-    confirma pelas rotas de cadastro já existentes (`POST /elementos`,
-    `POST /elementos/{id}/estados`).
+    Não é gravado como Elemento por esta rota — o app mostra a sugestão e o
+    usuário confirma pelas rotas de cadastro já existentes (`POST /elementos`,
+    `POST /elementos/{id}/estados`). Mas a sugestão em si **é** persistida
+    (item 3.4e): tem `id` estável, buscável por nome em `GET
+    /livros/{id}/sugestoes-elemento`, e pode ser referenciada depois em
+    `sugestoes_elemento_ids` para confirmar sem digitar de novo.
 
     Não traz descrição de aparência: essa parte é a leitura profunda (fase 2),
     que acontece depois, dentro de `POST /frames/{id}/prompts` — pedir isso de
@@ -107,6 +135,9 @@ class ElementoSugerido(BaseModel):
     num teste com IA real.
     """
 
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description="Id estável desta sugestão, para referenciar depois.")
     tipo: TipoElemento
     nome: str
     descricao: str | None = Field(
@@ -119,19 +150,26 @@ class ElementoSugerido(BaseModel):
         default=None,
         description=(
             "O elemento já cadastrado a que esta sugestão corresponde, se algum "
-            "bateu por tipo e nome. Nulo significa elemento novo."
+            "bateu por tipo e nome (automaticamente) ou foi confirmado à mão. "
+            "Nulo significa elemento ainda não confirmado."
         ),
     )
+    modelo: str = Field(description="O modelo de IA que gerou esta sugestão.")
 
 
 class ParticipanteSugerido(BaseModel):
     """Um elemento que participa de uma cena sugerida.
 
-    Referenciado por nome, não por `elemento_id` diretamente — o app resolve
-    isso batendo `nome_participante` contra a lista de `elementos` da mesma
-    resposta (por `elemento_id`, se o nome bateu com um já cadastrado).
+    Aponta para a `SugestaoDeElemento` correspondente, sempre do mesmo
+    capítulo da cena sugerida — o app resolve isso batendo o nome do
+    participante contra a lista de `elementos` da mesma resposta.
     """
 
+    model_config = ConfigDict(from_attributes=True)
+
+    sugestao_elemento_id: int = Field(
+        description="A SugestaoDeElemento correspondente, do mesmo capítulo."
+    )
     tipo: TipoElemento
     nome: str
     elemento_id: int | None = Field(
@@ -144,23 +182,36 @@ class FrameSugerido(BaseModel):
     """Um frame do tipo CENA sugerido pela IA (item 4.4): elementos interagindo
     num momento.
 
-    Não é gravado no banco por esta rota — é um rascunho para o usuário usar ao
-    criar o frame de verdade (`POST /capitulos/{id}/frames`), pré-preenchendo
-    título, atributos situacionais e quais estados marcar.
+    Não é gravado como Frame por esta rota — é um rascunho persistido (item
+    3.4e) para o usuário usar ao criar o frame de verdade (`POST
+    /capitulos/{id}/frames`, com `sugestao_frame_id`), pré-preenchendo título,
+    atributos situacionais e quais estados marcar.
     """
 
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description="Id estável desta sugestão, para referenciar depois.")
     titulo: str
     descricao: str | None
     horario: str | None
     clima: str | None
     humor: str | None
     participantes: list[ParticipanteSugerido]
+    modelo: str = Field(description="O modelo de IA que gerou esta sugestão.")
 
 
 class SugestoesDeCapitulo(BaseModel):
-    """O que `POST /capitulos/{id}/sugestoes` devolve."""
+    """O que `POST /capitulos/{id}/sugestoes` devolve.
 
-    modelo: str
+    Sem `modelo` no topo: como `forcar=true` só substitui sugestões ainda não
+    confirmadas (item 3.4e), um mesmo capítulo pode ter sugestões geradas por
+    modelos diferentes ao longo do tempo — por isso `modelo` vive em cada
+    sugestão, não uma vez só para a resposta inteira.
+    """
+
+    gerado_em: datetime | None = Field(
+        description="Quando a última rodada de sugestão deste capítulo rodou a IA."
+    )
     elementos: list[ElementoSugerido]
     frames: list[FrameSugerido] = Field(
         default_factory=list,
@@ -170,3 +221,20 @@ class SugestoesDeCapitulo(BaseModel):
             "de quem existe no capítulo."
         ),
     )
+
+
+class SugestaoDeElementoBuscada(BaseModel):
+    """Uma linha de `GET /livros/{id}/sugestoes-elemento` — com o capítulo
+    de origem, porque a busca cruza capítulos diferentes do mesmo livro."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    capitulo_id: int
+    capitulo_ordem: int
+    capitulo_titulo: str | None
+    tipo: TipoElemento
+    nome: str
+    descricao: str | None
+    manter_estado_atual: bool
+    elemento_id: int | None

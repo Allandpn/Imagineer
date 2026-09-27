@@ -62,6 +62,8 @@ gratuitos às vezes respondem 429 (limite de uso) por estarem sobrecarregados �
 não é erro do sistema; troque de modelo na requisição de configuração e tente
 de novo.
 
+Modelo escolhido: `openai/gpt-4o-mini`
+
 ## Sobre a leitura profunda e a fundamentação (item 4.4, fases 2 e 3)
 
 `POST /frames/{id}/prompts` pode reler o capítulo em dois momentos diferentes,
@@ -83,3 +85,19 @@ estado/frame; rodar a mesma requisição de novo é rápido e barato, porque
 reaproveita a leitura anterior. Com `prioridade_ia: QUALIDADE`, relê toda vez
 — mais fiel, mais lento, mais caro. Um comentário no corpo (`comentario`) tem
 prioridade máxima sobre as duas fases.
+
+## Sobre sugestões persistidas (item 3.4e)
+
+Cada elemento/frame sugerido em `06-sugestoes.http` tem `id` próprio, salvo no
+banco — não é mais um rascunho que some depois da resposta. Isso habilita:
+`GET /livros/{id}/sugestoes-elemento?nome=...`, para achar todas as menções
+de um nome no livro inteiro, mesmo em capítulos diferentes; `sugestoes_elemento_ids`
+em `POST /livros/{id}/elementos` e a rota própria `POST
+/elementos/{id}/estados-de-sugestoes`, para confirmar várias sugestões de
+uma vez como o mesmo Elemento; e `sugestao_frame_id` em `POST
+/capitulos/{id}/frames`, para criar o frame direto da cena sugerida. Exemplos
+nos três arquivos (`03`, `04`, `06`).
+
+## Limpar Banco de Dados
+ `docker exec imagineer-api-1 alembic downgrade base`
+ `docker exec imagineer-api-1 alembic upgrade head`  

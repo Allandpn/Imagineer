@@ -15,6 +15,11 @@ from imagineer.modelos.frame import Frame, TipoDeFrame, frames_estados_elemento
 from imagineer.modelos.livro import Livro
 from imagineer.modelos.perfil_renderizacao import PerfilRenderizacao
 from imagineer.modelos.prompt import Imagem, Prompt
+from imagineer.modelos.sugestao import (
+    SugestaoDeElemento,
+    SugestaoDeFrame,
+    sugestoes_participante,
+)
 
 __all__ = [
     "Capitulo",
@@ -27,7 +32,10 @@ __all__ = [
     "PerfilRenderizacao",
     "PrioridadeIA",
     "Prompt",
+    "SugestaoDeElemento",
+    "SugestaoDeFrame",
     "TipoDeFrame",
     "TipoElemento",
     "frames_estados_elemento",
+    "sugestoes_participante",
 ]

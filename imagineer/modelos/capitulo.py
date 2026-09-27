@@ -1,10 +1,8 @@
 """Modelo do Capítulo — o texto extraído de uma parte do EPUB (item 3.4a)."""
 
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import (
-    JSON,
     Boolean,
     DateTime,
     ForeignKey,
@@ -70,22 +68,17 @@ class Capitulo(Base):
     decide.
     """
 
-    sugestoes_ia: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    """O que a IA respondeu na última vez que `POST /capitulos/{id}/sugestoes`
-    chamou o modelo — elementos e frames sugeridos, sem `elemento_id` (isso é
-    recalculado a cada leitura, contra os elementos já cadastrados no momento).
-
-    Existe para a rota não precisar rechamar a IA a cada consulta: sem isso, o
-    usuário via respostas divergentes a cada chamada, porque a IA não é
-    determinística (item 4.4, fase 1). Só é sobrescrito quando o pedido vem
-    com `forcar=true` — por padrão, a sugestão salva é a que vale.
-    """
-
-    sugestoes_modelo: Mapped[str | None] = mapped_column(String(200))
-    """O modelo que gerou `sugestoes_ia`, para o usuário saber a quem creditar."""
-
     sugestoes_geradas_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    """Quando `sugestoes_ia` foi gerado — para a tela mostrar "sugerido há X"."""
+    """Quando a última rodada de `POST /capitulos/{id}/sugestoes` chamou a IA
+    de verdade para este capítulo — o texto em si não fica mais aqui, fica em
+    linhas próprias (`SugestaoDeElemento`/`SugestaoDeFrame`, item 3.4e).
+
+    Controla se a rota pode servir o que já foi sugerido em vez de rechamar a
+    IA: sem isso, o usuário via respostas divergentes a cada chamada, porque a
+    IA não é determinística (item 4.4, fase 1). Nulo significa "nunca gerado
+    para este capítulo"; cada rodada nova (`forcar=true` ou primeira vez)
+    apenas atualiza este valor, nunca volta a nulo.
+    """
 
     livro: Mapped["Livro"] = relationship(back_populates="capitulos")  # noqa: F821
 

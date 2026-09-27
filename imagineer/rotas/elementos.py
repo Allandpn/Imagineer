@@ -9,7 +9,7 @@ import unicodedata
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -23,8 +23,10 @@ from imagineer.esquemas.elemento import (
     EstadoAjuste,
     EstadoNovo,
     EstadoResumo,
+    EstadosDeSugestoes,
     FrameSugerido as FrameSugeridoResposta,
     ParticipanteSugerido as ParticipanteSugeridoResposta,
+    SugestaoDeElementoBuscada,
     SugestoesDeCapitulo,
 )
 from imagineer.ia.openrouter import conferir_se_cabe
@@ -35,7 +37,16 @@ from imagineer.ia.provedor import (
     ProvedorIA,
     TextoLongoDemais,
 )
-from imagineer.modelos import Capitulo, Elemento, EstadoElemento, Imagem, Livro, TipoElemento
+from imagineer.modelos import (
+    Capitulo,
+    Elemento,
+    EstadoElemento,
+    Imagem,
+    Livro,
+    SugestaoDeElemento,
+    SugestaoDeFrame,
+    TipoElemento,
+)
 from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
@@ -83,30 +94,90 @@ def criar_elemento(
     novo: ElementoNovo,
     sessao: Session = Depends(obter_sessao),
 ) -> ElementoDetalhe:
-    """Cria o elemento e, se vier, o primeiro estado dele — num pedido só.
+    """Cria o elemento e, se vier, o(s) primeiro(s) estado(s) dele — num pedido só.
 
     O passo 7 do fluxo confirma as duas coisas ao mesmo tempo: que o personagem
     existe e como ele está naquele capítulo. Em dois pedidos, uma falha no meio
     deixaria um elemento sem estado nenhum.
+
+    ``sugestoes_elemento_ids`` (item 3.4e) acrescenta um Estado por sugestão
+    escolhida, cada uma do seu próprio capítulo — resolve o caso em que a IA
+    sugeriu o mesmo personagem em capítulos diferentes sem casar pelo nome.
+    Pode vir junto com ``estado_inicial``.
     """
     _buscar_livro(sessao, livro_id)
+    sugestoes = _sugestoes_de_elemento_do_livro(sessao, novo.sugestoes_elemento_ids, livro_id)
 
     elemento = Elemento(
         livro_id=livro_id, tipo=novo.tipo, nome=novo.nome, descricao=novo.descricao
     )
 
+    estados = []
     if novo.estado_inicial is not None:
         capitulo = _buscar_capitulo_do_livro(sessao, novo.estado_inicial.capitulo_id, livro_id)
-        elemento.estados = [
-            EstadoElemento(
-                capitulo_id=capitulo.id, descricao=novo.estado_inicial.descricao
-            )
-        ]
+        estados.append(
+            EstadoElemento(capitulo_id=capitulo.id, descricao=novo.estado_inicial.descricao)
+        )
+    for sugestao in sugestoes:
+        estados.append(
+            EstadoElemento(capitulo_id=sugestao.capitulo_id, descricao=sugestao.descricao or "")
+        )
+    elemento.estados = estados
 
     sessao.add(elemento)
     _gravar(sessao, _conflito_de_elemento(sessao, livro_id, novo.tipo, novo.nome))
     sessao.refresh(elemento)
+
+    if sugestoes:
+        for sugestao in sugestoes:
+            sugestao.elemento_id = elemento.id
+        sessao.commit()
+
     return _detalhe(sessao, elemento)
+
+
+@rotas_de_livro.get(
+    "/{livro_id}/sugestoes-elemento",
+    response_model=list[SugestaoDeElementoBuscada],
+    summary="Busca sugestões de elemento por nome, em todo o livro",
+)
+def buscar_sugestoes_de_elemento(
+    livro_id: int,
+    nome: str = Query(min_length=1, description="Busca parcial, sem diferenciar caixa/acento."),
+    sessao: Session = Depends(obter_sessao),
+) -> list[SugestaoDeElementoBuscada]:
+    """Acha todas as menções de um nome no livro inteiro, cruzando capítulos (item 3.4e).
+
+    Resolve o caso em que a IA sugere o mesmo personagem com nomes diferentes
+    demais para o casamento automático reconhecer — "Sextus Hospius" num
+    capítulo, "Hospius" sozinho capítulos depois — sem o usuário vasculhar
+    capítulo por capítulo à procura da menção anterior.
+    """
+    _buscar_livro(sessao, livro_id)
+
+    linhas = sessao.execute(
+        select(SugestaoDeElemento, Capitulo.ordem, Capitulo.titulo)
+        .join(Capitulo, Capitulo.id == SugestaoDeElemento.capitulo_id)
+        .where(Capitulo.livro_id == livro_id)
+        .order_by(Capitulo.ordem, SugestaoDeElemento.id)
+    ).all()
+
+    alvo = _texto_normalizado(nome)
+    return [
+        SugestaoDeElementoBuscada(
+            id=sugestao.id,
+            capitulo_id=sugestao.capitulo_id,
+            capitulo_ordem=ordem,
+            capitulo_titulo=titulo,
+            tipo=sugestao.tipo,
+            nome=sugestao.nome,
+            descricao=sugestao.descricao,
+            manter_estado_atual=sugestao.manter_estado_atual,
+            elemento_id=sugestao.elemento_id,
+        )
+        for sugestao, ordem, titulo in linhas
+        if alvo in _texto_normalizado(sugestao.nome)
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -195,6 +266,48 @@ def criar_estado(
     return EstadoResumo.model_validate(estado)
 
 
+@rotas.post(
+    "/{elemento_id}/estados-de-sugestoes",
+    response_model=list[EstadoResumo],
+    status_code=status.HTTP_201_CREATED,
+    summary="Registra estados a partir de sugestões de elemento (item 3.4e)",
+)
+def criar_estados_de_sugestoes(
+    elemento_id: int,
+    corpo: EstadosDeSugestoes,
+    sessao: Session = Depends(obter_sessao),
+) -> list[EstadoResumo]:
+    """Cria um Estado por sugestão escolhida, num elemento **já existente**.
+
+    Rota separada de `POST /elementos/{id}/estados` porque aquela cria um
+    estado e devolve um `EstadoResumo`; esta cria vários de uma vez —
+    resolve o caso em que a IA sugeriu o mesmo personagem em capítulos
+    diferentes sem casar pelo nome, sem o usuário copiar a descrição de cada
+    sugestão à mão, uma chamada por capítulo.
+    """
+    elemento = _buscar_elemento(sessao, elemento_id)
+    sugestoes = _sugestoes_de_elemento_do_livro(
+        sessao, corpo.sugestoes_elemento_ids, elemento.livro_id
+    )
+
+    estados = [
+        EstadoElemento(
+            elemento_id=elemento.id, capitulo_id=sugestao.capitulo_id, descricao=sugestao.descricao or ""
+        )
+        for sugestao in sugestoes
+    ]
+    sessao.add_all(estados)
+    sessao.commit()
+    for estado in estados:
+        sessao.refresh(estado)
+
+    for sugestao in sugestoes:
+        sugestao.elemento_id = elemento.id
+    sessao.commit()
+
+    return [EstadoResumo.model_validate(estado) for estado in estados]
+
+
 @rotas_de_estado.patch(
     "/{estado_id}", response_model=EstadoResumo, summary="Ajusta um estado"
 )
@@ -268,9 +381,10 @@ def sugerir_elementos(
     forcar: bool = Query(
         default=False,
         description=(
-            "Ignora a sugestão salva deste capítulo e pede uma nova à IA, "
-            "sobrescrevendo o cache. Sem isso, uma sugestão já salva é "
-            "devolvida sem chamar a IA de novo."
+            "Ignora a sugestão salva deste capítulo e pede uma nova à IA. Só "
+            "substitui sugestões ainda não confirmadas — as já viradas "
+            "Elemento ou Frame sobrevivem. Sem isso, o que já está salvo é "
+            "devolvido sem chamar a IA de novo."
         ),
     ),
     sessao: Session = Depends(obter_sessao),
@@ -278,98 +392,26 @@ def sugerir_elementos(
 ) -> SugestoesDeCapitulo:
     """Sugere elementos e frames a partir do texto do capítulo (passo 6).
 
-    **Não grava elementos nem frames no banco** — quem confirma é o usuário,
-    pelas rotas de cadastro da Etapa 6.3 e de frame da Etapa 6.4. Mas a
-    resposta da IA em si fica salva no capítulo (`Capitulo.sugestoes_ia`):
-    sem isso, cada chamada arriscava devolver algo diferente da anterior,
-    porque a IA não é determinística — e o usuário não tinha como saber qual
-    das respostas usar para criar o frame. `forcar=true` ignora o que está
-    salvo e força uma sugestão nova, por iniciativa do usuário.
+    **Não grava Elemento nem Frame** — quem confirma é o usuário, pelas rotas
+    de cadastro da Etapa 6.3 e de frame da Etapa 6.4. Mas a sugestão em si é
+    persistida, em linhas próprias (`SugestaoDeElemento`/`SugestaoDeFrame`,
+    item 3.4e): sem isso, cada chamada arriscava devolver algo diferente da
+    anterior, porque a IA não é determinística. `forcar=true` força uma
+    sugestão nova, por iniciativa do usuário.
 
-    O casamento com `elemento_id` é recalculado a cada leitura, mesmo vindo do
-    cache: só o texto da sugestão é salvo, não o casamento. Assim, cadastrar
-    um elemento novo entre uma chamada e outra já aparece casado na próxima
-    leitura, sem precisar de `forcar=true`.
+    O casamento com `elemento_id` é recalculado a cada leitura, mesmo servindo
+    do que já está salvo — só o texto da sugestão vem do cache. Assim,
+    cadastrar um elemento novo entre uma chamada e outra já aparece casado na
+    próxima leitura, sem precisar de `forcar=true`.
     """
     capitulo = _buscar_capitulo(sessao, capitulo_id)
 
-    if capitulo.sugestoes_ia is not None and not forcar:
-        bruto = capitulo.sugestoes_ia
-        modelo = capitulo.sugestoes_modelo or ""
-    else:
-        configuracao = obter_ou_criar(sessao)
-        modelo_extracao = configuracao.modelo_extracao
+    if capitulo.sugestoes_geradas_em is None or forcar:
+        _gerar_sugestoes(sessao, provedor, capitulo)
 
-        if not modelo_extracao:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Nenhum modelo de extração foi escolhido. Configure um em /configuracao.",
-            )
+    _casar_sugestoes_pendentes(sessao, capitulo_id, capitulo.livro_id)
 
-        estados_conhecidos = _formatar_estados_conhecidos(sessao, capitulo)
-
-        try:
-            contexto_do_modelo = next(
-                (m.contexto for m in provedor.listar_modelos() if m.id == modelo_extracao), 0
-            )
-            conferir_se_cabe(capitulo.texto, contexto_do_modelo)
-            extracao = provedor.extrair_elementos(
-                capitulo.texto, estados_conhecidos, modelo_extracao
-            )
-        except (ChaveDeApiAusente, ModeloNaoEscolhido, TextoLongoDemais) as erro:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
-            ) from erro
-        except ErroDoProvedorIA as erro:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
-            ) from erro
-
-        bruto = _serializar_extracao(extracao)
-        modelo = extracao.modelo
-
-        capitulo.sugestoes_ia = bruto
-        capitulo.sugestoes_modelo = modelo
-        capitulo.sugestoes_geradas_em = datetime.now(timezone.utc)
-        sessao.add(capitulo)
-        sessao.commit()
-
-    elementos_existentes = _elementos_por_chave_normalizada(sessao, capitulo.livro_id)
-
-    def _elemento_id_de(tipo: str, nome: str) -> int | None:
-        return elementos_existentes.get(_chave_normalizada(TipoElemento(tipo), nome))
-
-    return SugestoesDeCapitulo(
-        modelo=modelo,
-        elementos=[
-            ElementoSugeridoResposta(
-                tipo=item["tipo"],
-                nome=item["nome"],
-                descricao=item["descricao"],
-                manter_estado_atual=item["manter_estado_atual"],
-                elemento_id=_elemento_id_de(item["tipo"], item["nome"]),
-            )
-            for item in bruto["elementos"]
-        ],
-        frames=[
-            FrameSugeridoResposta(
-                titulo=frame["titulo"],
-                descricao=frame["descricao"],
-                horario=frame["horario"],
-                clima=frame["clima"],
-                humor=frame["humor"],
-                participantes=[
-                    ParticipanteSugeridoResposta(
-                        tipo=participante["tipo"],
-                        nome=participante["nome"],
-                        elemento_id=_elemento_id_de(participante["tipo"], participante["nome"]),
-                    )
-                    for participante in frame["participantes"]
-                ],
-            )
-            for frame in bruto["frames"]
-        ],
-    )
+    return _sugestoes_de_capitulo(sessao, capitulo)
 
 
 # --------------------------------------------------------------------------- #
@@ -577,37 +619,217 @@ def _exigir_imagem(sessao: Session, imagem_id: int) -> None:
         )
 
 
-def _serializar_extracao(extracao) -> dict:
-    """Converte o resultado da IA (dataclasses) num dict que o banco aceita como
-    JSON — sem `elemento_id`, que é recalculado a cada leitura de
-    `sugerir_elementos`, nunca guardado. Cadastrar um elemento novo depois de
-    gerar a sugestão não deveria exigir gerar de novo só para casar o nome.
+def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) -> None:
+    """Chama a IA e grava o resultado como linhas (item 3.4e).
+
+    Só substitui as sugestões deste capítulo que ainda não foram confirmadas
+    (`elemento_id`/`frame_id` nulos) — uma sugestão já virada Elemento ou
+    Frame de verdade sobrevive a uma rodada nova, mesmo com `forcar=true`.
     """
-    return {
-        "elementos": [
-            {
-                "tipo": item.tipo.value,
-                "nome": item.nome,
-                "descricao": item.descricao,
-                "manter_estado_atual": item.manter_estado_atual,
-            }
-            for item in extracao.elementos
+    configuracao = obter_ou_criar(sessao)
+    modelo_extracao = configuracao.modelo_extracao
+
+    if not modelo_extracao:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Nenhum modelo de extração foi escolhido. Configure um em /configuracao.",
+        )
+
+    estados_conhecidos = _formatar_estados_conhecidos(sessao, capitulo)
+
+    try:
+        contexto_do_modelo = next(
+            (m.contexto for m in provedor.listar_modelos() if m.id == modelo_extracao), 0
+        )
+        conferir_se_cabe(capitulo.texto, contexto_do_modelo)
+        extracao = provedor.extrair_elementos(capitulo.texto, estados_conhecidos, modelo_extracao)
+    except (ChaveDeApiAusente, ModeloNaoEscolhido, TextoLongoDemais) as erro:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
+        ) from erro
+    except ErroDoProvedorIA as erro:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
+        ) from erro
+
+    sessao.execute(
+        delete(SugestaoDeElemento).where(
+            SugestaoDeElemento.capitulo_id == capitulo.id,
+            SugestaoDeElemento.elemento_id.is_(None),
+        )
+    )
+    sessao.execute(
+        delete(SugestaoDeFrame).where(
+            SugestaoDeFrame.capitulo_id == capitulo.id,
+            SugestaoDeFrame.frame_id.is_(None),
+        )
+    )
+
+    elementos_desta_rodada: dict[tuple[TipoElemento, str], SugestaoDeElemento] = {}
+    for item in extracao.elementos:
+        linha = SugestaoDeElemento(
+            capitulo_id=capitulo.id,
+            tipo=item.tipo,
+            nome=item.nome,
+            descricao=item.descricao,
+            manter_estado_atual=item.manter_estado_atual,
+            modelo=extracao.modelo,
+        )
+        sessao.add(linha)
+        elementos_desta_rodada[_chave_normalizada(item.tipo, item.nome)] = linha
+
+    for frame in extracao.frames:
+        linha_frame = SugestaoDeFrame(
+            capitulo_id=capitulo.id,
+            titulo=frame.titulo,
+            descricao=frame.descricao,
+            horario=frame.horario,
+            clima=frame.clima,
+            humor=frame.humor,
+            modelo=extracao.modelo,
+        )
+        for participante in frame.participantes:
+            correspondente = elementos_desta_rodada.get(
+                _chave_normalizada(participante.tipo, participante.nome)
+            )
+            if correspondente is not None:
+                linha_frame.participantes.append(correspondente)
+        sessao.add(linha_frame)
+
+    capitulo.sugestoes_geradas_em = datetime.now(timezone.utc)
+    sessao.add(capitulo)
+    sessao.commit()
+
+
+def _casar_sugestoes_pendentes(sessao: Session, capitulo_id: int, livro_id: int) -> None:
+    """Tenta casar por nome as sugestões deste capítulo ainda sem `elemento_id`.
+
+    Roda a cada leitura, não só na geração: se o usuário cadastrar um elemento
+    entre uma chamada e outra, a próxima leitura já mostra o casamento novo,
+    sem precisar de `forcar=true` (item 3.4e).
+    """
+    pendentes = list(
+        sessao.scalars(
+            select(SugestaoDeElemento).where(
+                SugestaoDeElemento.capitulo_id == capitulo_id,
+                SugestaoDeElemento.elemento_id.is_(None),
+            )
+        )
+    )
+    if not pendentes:
+        return
+
+    elementos_existentes = _elementos_por_chave_normalizada(sessao, livro_id)
+    mudou = False
+    for sugestao in pendentes:
+        correspondente = elementos_existentes.get(
+            _chave_normalizada(sugestao.tipo, sugestao.nome)
+        )
+        if correspondente is not None:
+            sugestao.elemento_id = correspondente
+            mudou = True
+
+    if mudou:
+        sessao.commit()
+
+
+def _sugestoes_de_capitulo(sessao: Session, capitulo: Capitulo) -> SugestoesDeCapitulo:
+    """Monta a resposta a partir do que está salvo para este capítulo."""
+    elementos = list(
+        sessao.scalars(
+            select(SugestaoDeElemento)
+            .where(SugestaoDeElemento.capitulo_id == capitulo.id)
+            .order_by(SugestaoDeElemento.id)
+        )
+    )
+    frames = list(
+        sessao.scalars(
+            select(SugestaoDeFrame)
+            .where(SugestaoDeFrame.capitulo_id == capitulo.id)
+            .order_by(SugestaoDeFrame.id)
+        )
+    )
+
+    return SugestoesDeCapitulo(
+        gerado_em=capitulo.sugestoes_geradas_em,
+        elementos=[
+            ElementoSugeridoResposta(
+                id=elemento.id,
+                tipo=elemento.tipo,
+                nome=elemento.nome,
+                descricao=elemento.descricao,
+                manter_estado_atual=elemento.manter_estado_atual,
+                elemento_id=elemento.elemento_id,
+                modelo=elemento.modelo,
+            )
+            for elemento in elementos
         ],
-        "frames": [
-            {
-                "titulo": frame.titulo,
-                "descricao": frame.descricao,
-                "horario": frame.horario,
-                "clima": frame.clima,
-                "humor": frame.humor,
-                "participantes": [
-                    {"tipo": participante.tipo.value, "nome": participante.nome}
+        frames=[
+            FrameSugeridoResposta(
+                id=frame.id,
+                titulo=frame.titulo,
+                descricao=frame.descricao,
+                horario=frame.horario,
+                clima=frame.clima,
+                humor=frame.humor,
+                modelo=frame.modelo,
+                participantes=[
+                    ParticipanteSugeridoResposta(
+                        sugestao_elemento_id=participante.id,
+                        tipo=participante.tipo,
+                        nome=participante.nome,
+                        elemento_id=participante.elemento_id,
+                    )
                     for participante in frame.participantes
                 ],
-            }
-            for frame in extracao.frames
+            )
+            for frame in frames
         ],
-    }
+    )
+
+
+def _sugestoes_de_elemento_do_livro(
+    sessao: Session, ids: list[int], livro_id: int
+) -> list[SugestaoDeElemento]:
+    """Carrega as sugestões pedidas, exigindo que sejam todas do mesmo livro.
+
+    Mesmo padrão de `_estados_do_livro` (item 6.4): a sugestão aponta para um
+    capítulo, e nada impede pedir a sugestão de um capítulo de outro livro.
+    """
+    pedidos = list(dict.fromkeys(ids))
+    if not pedidos:
+        return []
+
+    encontradas = list(
+        sessao.scalars(select(SugestaoDeElemento).where(SugestaoDeElemento.id.in_(pedidos)))
+    )
+    ausentes = sorted(set(pedidos) - {sugestao.id for sugestao in encontradas})
+    if ausentes:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Não existem sugestões de elemento com os ids {ausentes}.",
+        )
+
+    livros_por_sugestao = dict(
+        sessao.execute(
+            select(SugestaoDeElemento.id, Capitulo.livro_id)
+            .join(Capitulo, Capitulo.id == SugestaoDeElemento.capitulo_id)
+            .where(SugestaoDeElemento.id.in_(pedidos))
+        ).all()
+    )
+    de_outro_livro = sorted(
+        identificador for identificador, dono in livros_por_sugestao.items() if dono != livro_id
+    )
+    if de_outro_livro:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"As sugestões {de_outro_livro} são de outro livro, não do livro {livro_id}."
+            ),
+        )
+
+    por_id = {sugestao.id: sugestao for sugestao in encontradas}
+    return [por_id[identificador] for identificador in pedidos]
 
 
 def _formatar_estados_conhecidos(sessao: Session, capitulo: Capitulo) -> list[str]:
@@ -632,6 +854,16 @@ def _formatar_estados_conhecidos(sessao: Session, capitulo: Capitulo) -> list[st
     ]
 
 
+def _texto_normalizado(texto: str) -> str:
+    """Sem caixa nem acentuação — a base de toda comparação de nome do módulo.
+
+    Usada tanto para casar sugestão com elemento (`_chave_normalizada`) quanto
+    para a busca por nome (`GET /livros/{id}/sugestoes-elemento`, item 3.4e).
+    """
+    sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    return sem_acento.strip().lower()
+
+
 def _chave_normalizada(tipo: TipoElemento, nome: str) -> tuple[TipoElemento, str]:
     """Normaliza tipo e nome para casar a sugestão da IA com um elemento existente.
 
@@ -640,8 +872,7 @@ def _chave_normalizada(tipo: TipoElemento, nome: str) -> tuple[TipoElemento, str
     suficiente para valer a pena tolerar, sem risco de casar elementos diferentes
     por engano — a comparação continua exigindo o mesmo tipo e (quase) o mesmo nome.
     """
-    sem_acento = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode()
-    return (tipo, sem_acento.strip().lower())
+    return (tipo, _texto_normalizado(nome))
 
 
 def _elementos_por_chave_normalizada(

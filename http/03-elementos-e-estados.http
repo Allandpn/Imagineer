@@ -49,6 +49,31 @@ Content-Type: application/json
   "descricao": "Novo estado, mesmo capítulo — mudança dentro do capítulo é permitida"
 }
 
+### Cadastra um elemento a partir de sugestões de capítulos diferentes (item 3.4e)
+# Resolve o caso em que a IA sugeriu o mesmo personagem em capítulos
+# diferentes sem casar pelo nome ("Sextus Hospius" num, "Hospius" noutro) —
+# ache os ids em 06-sugestoes.http (GET /livros/{id}/sugestoes-elemento).
+# tipo/nome continuam escolha sua, nunca vêm da sugestão; cada id na lista
+# vira um Estado, um por capítulo.
+# POST {{baseUrl}}/livros/{{livroId}}/elementos
+# Content-Type: application/json
+#
+# {
+#   "tipo": "PERSONAGEM",
+#   "nome": "Sextus Hospius",
+#   "sugestoes_elemento_ids": [3, 8]
+# }
+
+### O mesmo, mas para um elemento já cadastrado — rota separada (item 3.4e)
+# Separada de POST /elementos/{id}/estados porque aquela cria um estado só e
+# devolve um objeto; esta cria um por sugestão e devolve uma lista.
+# POST {{baseUrl}}/elementos/{{elementoId}}/estados-de-sugestoes
+# Content-Type: application/json
+#
+# {
+#   "sugestoes_elemento_ids": [3, 8]
+# }
+
 ### Ajusta a descrição de um estado, ou define a imagem-âncora
 PATCH {{baseUrl}}/estados/{{estadoId}}
 Content-Type: application/json

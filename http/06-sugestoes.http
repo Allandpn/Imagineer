@@ -1,11 +1,13 @@
 ### Pede à IA os elementos e frames sugeridos do capítulo (passo 6)
-# Não grava elementos nem frames no banco — é sugestão. Mas a resposta em si
-# fica salva no capítulo (Capitulo.sugestoes_ia): rodar de novo sem forcar=true
-# devolve o que já foi salvo, sem chamar a IA (rápido, e sem risco de vir
-# diferente da vez anterior). Precisa de chave e de modelo_extracao
+# Não grava Elemento nem Frame — é sugestão. Mas a sugestão em si fica salva
+# como linhas (SugestaoDeElemento/SugestaoDeFrame, item 3.4e): rodar de novo
+# sem forcar=true devolve o que já foi salvo, sem chamar a IA (rápido, e sem
+# risco de vir diferente da vez anterior). Cada elemento/frame sugerido tem
+# "id" próprio, usado depois para confirmar (ver 03-elementos-e-estados.http
+# e 04-frames-e-perfis.http). Precisa de chave e de modelo_extracao
 # configurados em 05-configuracao-ia.http, e de primeiroCapituloId (01-livros.http).
 # POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
-POST {{baseUrl}}/capitulos/3/sugestoes
+POST {{baseUrl}}/capitulos/7/sugestoes
 
 > {%
     client.test("Devolveu sugestões", function () {
@@ -20,11 +22,18 @@ POST {{baseUrl}}/capitulos/3/sugestoes
 POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
 
 ### Forçar uma sugestão nova, ignorando o que está salvo
-# Útil se o capítulo mudou (título/ignorado ajustado não conta, mas o texto
-# em si não muda pela API hoje) ou se a resposta salva não ficou boa e você
-# quer tentar de novo. Vale notar: a IA não é determinística, então isso pode
-# vir com elementos/frames diferentes da vez anterior.
+# Só substitui sugestões ainda não confirmadas (elemento_id/frame_id nulos) —
+# uma sugestão já virada Elemento ou Frame sobrevive (item 3.4e). Útil se a
+# resposta salva não ficou boa e você quer tentar de novo. Vale notar: a IA
+# não é determinística, então isso pode vir com elementos/frames diferentes
+# da vez anterior.
 POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes?forcar=true
+
+### Busca sugestões de elemento por nome, em todos os capítulos do livro (item 3.4e)
+# Resolve o caso em que a IA sugere o mesmo personagem com nomes diferentes
+# em capítulos diferentes ("Sextus Hospius" num, "Hospius" sozinho noutro) —
+# acha as duas sugestões para confirmar juntas em 03-elementos-e-estados.http.
+GET {{baseUrl}}/livros/{{livroId}}/sugestoes-elemento?nome=hospius
 
 ### Capítulo inexistente — confere o 404
 POST {{baseUrl}}/capitulos/999999/sugestoes
