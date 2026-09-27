@@ -25,6 +25,11 @@ GET {{baseUrl}}/livros
 ### Abre o livro importado (com a estrutura de capítulos, sem o texto)
 GET {{baseUrl}}/livros/{{livroId}}
 
+### Abre um livro por id manual — troque pelo id que quiser inspecionar
+# Útil pra conferir outro livro da biblioteca sem reimportar (veja os ids em
+# GET /livros acima).
+GET {{baseUrl}}/livros/1
+
 ### Corrige metadados e/ou define o perfil de renderização padrão
 # perfil_renderizacao_padrao_id vem de 04-frames-e-perfis.http, se já tiver criado um
 PATCH {{baseUrl}}/livros/{{livroId}}

@@ -35,5 +35,8 @@ POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes?forcar=true
 # acha as duas sugestões para confirmar juntas em 03-elementos-e-estados.http.
 GET {{baseUrl}}/livros/{{livroId}}/sugestoes-elemento?nome=hospius
 
+### O mesmo, por id de livro manual e outro nome — troque os dois pra testar
+GET {{baseUrl}}/livros/1/sugestoes-elemento?nome=vis
+
 ### Capítulo inexistente — confere o 404
 POST {{baseUrl}}/capitulos/999999/sugestoes

@@ -24,6 +24,10 @@ GET {{baseUrl}}/perfis-renderizacao
 ### Abre um perfil
 GET {{baseUrl}}/perfis-renderizacao/{{perfilId}}
 
+### Abre um perfil por id manual — troque pelo id que quiser inspecionar
+# Veja os ids em GET /perfis-renderizacao acima.
+GET {{baseUrl}}/perfis-renderizacao/1
+
 ### Ajusta um perfil
 PATCH {{baseUrl}}/perfis-renderizacao/{{perfilId}}
 Content-Type: application/json
@@ -109,8 +113,15 @@ Content-Type: application/json
 ### Lista os frames do capítulo
 GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}/frames
 
+### O mesmo, por id de capítulo manual — troque pra ver os frames de outro capítulo
+GET {{baseUrl}}/capitulos/3/frames
+
 ### Abre o frame, com os elementos, o estado de cada um e o contexto do livro
 GET {{baseUrl}}/frames/{{frameId}}
+
+### Abre um frame por id manual — troque pelo id que quiser inspecionar
+# Veja os ids em GET /capitulos/{{primeiroCapituloId}}/frames abaixo.
+GET {{baseUrl}}/frames/1
 
 ### Ajusta título, descrição ou atributos situacionais do frame
 PATCH {{baseUrl}}/frames/{{frameId}}

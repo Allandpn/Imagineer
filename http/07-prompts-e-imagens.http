@@ -56,6 +56,10 @@ GET {{baseUrl}}/frames/{{frameId}}/prompts
 ### Abre um prompt, com as imagens que saíram dele
 GET {{baseUrl}}/prompts/{{promptId}}
 
+### Abre um prompt por id manual — troque pelo id que quiser inspecionar
+# Veja os ids em GET /frames/{{frameId}}/prompts acima.
+GET {{baseUrl}}/prompts/1
+
 ### Anota a avaliação do resultado, depois de ver a imagem gerada
 PATCH {{baseUrl}}/prompts/{{promptId}}
 Content-Type: application/json
@@ -86,6 +90,10 @@ Content-Type: image/png
 
 ### Baixa o arquivo da imagem
 GET {{baseUrl}}/imagens/{{imagemId}}/arquivo
+
+### Baixa o arquivo de uma imagem por id manual — troque pelo id que quiser
+# Veja os ids em GET /prompts/{{promptId}} (campo imagens[].id) acima.
+GET {{baseUrl}}/imagens/1/arquivo
 
 ### Remove a imagem — apaga a linha do catálogo e o arquivo do disco
 # DELETE {{baseUrl}}/imagens/{{imagemId}}

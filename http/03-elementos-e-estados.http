@@ -26,11 +26,19 @@ Content-Type: application/json
 ### Lista os elementos do livro, cada um com o estado mais recente
 GET {{baseUrl}}/livros/{{livroId}}/elementos
 
+### O mesmo, por id de livro manual — troque pra ver os elementos de outro livro
+GET {{baseUrl}}/livros/1/elementos
+
 ### Filtra por tipo
 GET {{baseUrl}}/livros/{{livroId}}/elementos?tipo=PERSONAGEM
 
 ### Abre o elemento com todos os estados, em ordem narrativa
 GET {{baseUrl}}/elementos/{{elementoId}}
+
+### Abre um elemento por id manual — troque pelo id que quiser inspecionar
+# Útil pra testar outra linha da tabela sem depender da cadeia de ids desta
+# sessão (veja os ids em GET /livros/{{livroId}}/elementos acima).
+GET {{baseUrl}}/elementos/1
 
 ### Ajusta a identidade do elemento (nome, tipo ou descrição)
 PATCH {{baseUrl}}/elementos/{{elementoId}}
@@ -85,6 +93,11 @@ Content-Type: application/json
 ### O estado vigente de cada elemento do livro, até este capítulo (item 3.4b)
 # É o que dá contexto à IA no passo 6 — ver 06-sugestoes.http.
 GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}/estados-vigentes
+
+### O mesmo, mas por id de capítulo manual — troque pra comparar o estado
+# vigente em pontos diferentes da narrativa (capítulo 3 vs. capítulo 10, por
+# exemplo) sem trocar a variável global.
+GET {{baseUrl}}/capitulos/3/estados-vigentes
 
 ### Remove um estado — o elemento e os frames que o citavam permanecem
 # DELETE {{baseUrl}}/estados/{{estadoId}}
