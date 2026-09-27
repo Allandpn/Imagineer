@@ -10,7 +10,14 @@ Para subir em desenvolvimento:
 
 from fastapi import FastAPI
 
-from imagineer.rotas import capitulos, elementos, livros, saude
+from imagineer.rotas import (
+    capitulos,
+    cenas,
+    elementos,
+    livros,
+    perfis_renderizacao,
+    saude,
+)
 
 aplicacao = FastAPI(
     title="Imagineer",
@@ -28,3 +35,6 @@ aplicacao.include_router(elementos.rotas_de_livro)
 aplicacao.include_router(elementos.rotas_de_capitulo)
 aplicacao.include_router(elementos.rotas)
 aplicacao.include_router(elementos.rotas_de_estado)
+aplicacao.include_router(cenas.rotas_de_capitulo)
+aplicacao.include_router(cenas.rotas)
+aplicacao.include_router(perfis_renderizacao.rotas)

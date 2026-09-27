@@ -8,13 +8,14 @@ from sqlalchemy import Integer, case, func, select
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
+from imagineer.esquemas.cena import LivroAjuste
 from imagineer.esquemas.livro import (
     CapituloResumo,
     LivroDetalhe,
     LivroResumo,
     RespostaImportacao,
 )
-from imagineer.modelos import Capitulo, Livro
+from imagineer.modelos import Capitulo, Livro, PerfilRenderizacao
 from imagineer.servicos.importacao_epub import (
     ArquivoEpubInvalido,
     importar_epub,
@@ -110,6 +111,31 @@ def abrir_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Livro
     return _detalhe_do_livro(sessao, _buscar_livro(sessao, livro_id))
 
 
+@rotas.patch("/{livro_id}", response_model=LivroDetalhe, summary="Ajusta um livro")
+def ajustar_livro(
+    livro_id: int, ajuste: LivroAjuste, sessao: Session = Depends(obter_sessao)
+) -> LivroDetalhe:
+    """Corrige os metadados do livro e define o perfil de renderização padrão.
+
+    Corrigir metadados não é luxo: na validação da importação, um EPUB de
+    *Treasure Island* declarava-se *Death and the Afterlife in Ancient Egypt*, de
+    outro autor. A importação é fiel ao que o arquivo diz (item 2.2), então quem
+    conserta é o usuário.
+    """
+    livro = _buscar_livro(sessao, livro_id)
+    campos = ajuste.model_dump(exclude_unset=True)
+
+    if campos.get("perfil_renderizacao_padrao_id") is not None:
+        _exigir_perfil(sessao, campos["perfil_renderizacao_padrao_id"])
+
+    for campo, valor in campos.items():
+        setattr(livro, campo, valor)
+
+    sessao.commit()
+    sessao.refresh(livro)
+    return _detalhe_do_livro(sessao, livro)
+
+
 @rotas.delete(
     "/{livro_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -169,6 +195,19 @@ def _buscar_livro(sessao: Session, livro_id: int) -> Livro:
             detail=f"Não existe livro com id {livro_id}.",
         )
     return livro
+
+
+def _exigir_perfil(sessao: Session, perfil_id: int) -> None:
+    """Confere que o perfil existe, para o erro sair claro.
+
+    Sem isto, a chave estrangeira falharia no commit e o app receberia um 500 em
+    vez de uma mensagem que dá para mostrar na tela.
+    """
+    if sessao.get(PerfilRenderizacao, perfil_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Não existe perfil de renderização com id {perfil_id}.",
+        )
 
 
 def _um_se_ignorado():

@@ -113,6 +113,18 @@ O modelo do MVP está completo.
 | `PATCH /estados/{id}` | Ajusta a descrição ou define a imagem-âncora |
 | `DELETE /estados/{id}` | Remove um estado |
 | `GET /capitulos/{id}/estados-vigentes` | Como estava cada elemento neste ponto da narrativa |
+| `PATCH /livros/{id}` | Corrige metadados e define o perfil de renderização padrão |
+| `GET /capitulos/{id}/cenas` | As cenas de um capítulo |
+| `POST /capitulos/{id}/cenas` | Cria uma cena |
+| `GET /cenas/{id}` | A cena com quem aparece nela, em seus estados |
+| `PATCH /cenas/{id}` | Ajusta título, descrição e atributos situacionais |
+| `PUT /cenas/{id}/estados` | Define a lista completa de quem aparece na cena |
+| `DELETE /cenas/{id}` | Remove a cena, sem apagar os estados |
+| `GET /perfis-renderizacao` | Lista os perfis de estilo, compartilhados entre livros |
+| `POST /perfis-renderizacao` | Cria um perfil |
+| `GET /perfis-renderizacao/{id}` | Abre um perfil |
+| `PATCH /perfis-renderizacao/{id}` | Ajusta um perfil |
+| `DELETE /perfis-renderizacao/{id}` | Remove um perfil, sem apagar livros nem prompts |
 
 O desenho completo da API, incluindo as rotas ainda não implementadas, está na Etapa 6 da especificação.
 

@@ -804,24 +804,39 @@ estado, aparece nos três com `estado_vigente` nulo.
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `GET /capitulos/{id}/cenas` | As cenas de um capítulo | a implementar |
-| `POST /capitulos/{id}/cenas` | Cria uma cena | a implementar |
-| `GET /cenas/{id}` | A cena com os elementos e estados que ela referencia | a implementar |
-| `PATCH /cenas/{id}` | Ajusta título, descrição e atributos situacionais | a implementar |
-| `DELETE /cenas/{id}` | Remove a cena, sem apagar os estados que ela citava | a implementar |
-| `PUT /cenas/{id}/estados` | Define a lista completa de estados da cena | a implementar |
+| `GET /capitulos/{id}/cenas` | As cenas de um capítulo | **implementado** |
+| `POST /capitulos/{id}/cenas` | Cria uma cena | **implementado** |
+| `GET /cenas/{id}` | A cena com os elementos e estados que ela referencia | **implementado** |
+| `PATCH /cenas/{id}` | Ajusta título, descrição e atributos situacionais | **implementado** |
+| `DELETE /cenas/{id}` | Remove a cena, sem apagar os estados que ela citava | **implementado** |
+| `PUT /cenas/{id}/estados` | Define a lista completa de estados da cena | **implementado** |
 
-`PUT` e não `PATCH` em `/cenas/{id}/estados`: aqui o app manda a lista inteira de quem está na cena, que é como a tela funciona — o usuário marca e desmarca elementos e salva o conjunto.
+`PUT` e não `PATCH` em `/cenas/{id}/estados`: aqui o app manda a lista inteira de quem está na cena, que é como a tela funciona — o usuário marca e desmarca elementos e salva o conjunto. Ids repetidos na lista são aceitos e contados uma vez: a chave primária da tabela de associação já impediria o repetido, e devolver um erro por isso só criaria trabalho para o app.
+
+**A cena devolve o estado *com* o elemento.** `GET /cenas/{id}` traz, para cada estado, o nome e o tipo do elemento a que ele pertence — porque a tela mostra "Ned Stark: capa de pele, barba grisalha", e não o id de um estado solto. É a diferença entre a API servir a tela e a tela ter que remontar tudo.
+
+**Os estados de uma cena precisam ser do mesmo livro.** Mesmo problema do item 6.3: nada no banco impede associar a uma cena o estado de um personagem de outro livro. A rota verifica e responde 422, listando os ids recusados.
 
 ### 6.5 Perfis de renderização
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `GET /perfis-renderizacao` | Lista os perfis, que são compartilhados entre livros | a implementar |
-| `POST /perfis-renderizacao` | Cria um perfil | a implementar |
-| `PATCH /perfis-renderizacao/{id}` | Ajusta o perfil | a implementar |
-| `DELETE /perfis-renderizacao/{id}` | Remove o perfil, sem apagar livros nem prompts | a implementar |
-| `PATCH /livros/{id}` | Define o perfil padrão do livro | a implementar |
+| `GET /perfis-renderizacao` | Lista os perfis, que são compartilhados entre livros | **implementado** |
+| `POST /perfis-renderizacao` | Cria um perfil | **implementado** |
+| `GET /perfis-renderizacao/{id}` | Abre um perfil | **implementado** |
+| `PATCH /perfis-renderizacao/{id}` | Ajusta o perfil | **implementado** |
+| `DELETE /perfis-renderizacao/{id}` | Remove o perfil, sem apagar livros nem prompts | **implementado** |
+| `PATCH /livros/{id}` | Corrige metadados e define o perfil padrão do livro | **implementado** |
+
+**Nome de perfil repetido responde 409.** A unicidade do item 3.4c existe porque dois perfis com o mesmo nome seriam indistinguíveis na tela de escolha.
+
+**`PATCH /livros/{id}` também corrige metadados** — título, autor e idioma — e não só o perfil padrão. O motivo veio da validação: um dos dezoito livros declara os metadados de **outro livro** (*Treasure Island* se apresenta como *Death and the Afterlife in Ancient Egypt*). A importação é fiel ao que o arquivo diz, então quem corrige é o usuário.
+
+#### O que foi implementado
+
+As onze rotas das Etapas 6.4 e 6.5, com 30 testes.
+
+Verificado contra o servidor rodando, com *O Alienista*: criei um perfil "Aquarela sombria", apontei o livro para ele, montei uma cena com dois elementos em estados específicos, e confirmei que apagar o perfil deixa o livro de pé com `perfil_renderizacao_padrao_id` nulo — o `ON DELETE SET NULL` do item 3.4c valendo pela API. Apagar a cena também não levou os estados: eles pertencem ao elemento e à narrativa, não à cena que os citou.
 
 ### 6.6 Prompts e catálogo de imagens
 
