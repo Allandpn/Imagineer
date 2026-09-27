@@ -408,23 +408,24 @@ def teste_epub_realista_com_indice_aninhado_subpastas_e_ancoras() -> None:
 
     extraido = extrair_epub(buffer.getvalue(), "guerra-dos-tronos.epub")
 
-    # Capa, folha de rosto, créditos e o documento de navegação ficaram de fora;
-    # sobraram os três capítulos de verdade, numerados sem lacunas.
+    # Capa, folha de rosto, créditos e o documento de navegação ficaram de fora.
+    # O arquivo cap01.xhtml aparece DUAS vezes no índice — uma para o começo e
+    # uma para a âncora "#meio" — então ele é dividido em dois capítulos.
     assert [(c.ordem, c.titulo) for c in extraido.capitulos] == [
         (1, "Prólogo"),
         (2, "Bran"),
-        (3, "Catelyn"),
+        (3, "Bran — parte 2"),
+        (4, "Catelyn"),
     ]
 
     # O índice aninhado foi achatado e os títulos casaram apesar do prefixo de
     # pasta usado no href.
     assert extraido.capitulos[0].titulo == "Prólogo"
 
-    # A entrada de âncora NÃO virou um capítulo à parte nem trocou o título do
-    # capítulo: "Bran — parte 2" aponta para dentro do mesmo arquivo.
-    assert "Bran — parte 2" not in [c.titulo for c in extraido.capitulos]
-    assert extraido.capitulos[1].texto.count("Bran") == 1
-    assert "Parte 2" in extraido.capitulos[1].texto
+    # A divisão corta no ponto certo: o texto antes da âncora fica no primeiro
+    # pedaço, e o de depois no segundo. Nada é duplicado nem perdido.
+    assert "Parte 2" not in extraido.capitulos[1].texto
+    assert extraido.capitulos[2].texto.startswith("Parte 2")
 
 
 # --------------------------------------------------------------------------- #
@@ -513,3 +514,307 @@ def teste_texto_nao_deixa_retorno_de_carro_sobrando() -> None:
     extraido = extrair_epub(_montar_epub(capitulos=[(html, "Cap")]), "crlf.epub")
 
     assert "\r" not in extraido.capitulos[0].texto
+
+
+# --------------------------------------------------------------------------- #
+# Divisao por ancoras do indice
+# --------------------------------------------------------------------------- #
+
+
+def _montar_epub_com_ancoras(
+    *, documentos: list[tuple[str, str]], indice: list[tuple[str, str]]
+) -> bytes:
+    """Gera um EPUB com controle total sobre índice e âncoras.
+
+    ``documentos`` é uma lista de (nome do arquivo, HTML). ``indice`` é uma lista
+    de (título, href) — o href pode conter âncora, como ``c1.xhtml#meio``.
+    """
+    livro = epub.EpubBook()
+    livro.set_identifier("urn:teste:ancoras")
+    livro.set_title("Livro com âncoras")
+    livro.set_language("pt-BR")
+
+    itens = []
+    for nome, html in documentos:
+        item = epub.EpubHtml(title="", file_name=nome, lang="pt-BR")
+        item.content = html
+        livro.add_item(item)
+        itens.append(item)
+
+    livro.toc = tuple(
+        epub.Link(href, titulo, f"id{i}") for i, (titulo, href) in enumerate(indice)
+    )
+    livro.add_item(epub.EpubNcx())
+    livro.add_item(epub.EpubNav())
+    livro.spine = ["nav", *itens]
+
+    buffer = io.BytesIO()
+    epub.write_epub(buffer, livro)
+    return buffer.getvalue()
+
+
+def teste_arquivo_unico_com_varias_ancoras_vira_varios_capitulos() -> None:
+    """Quando o índice é mais fino que os arquivos, ele manda nas fronteiras.
+
+    Caso real: em *Flores para Algernon* um único arquivo continha 11 relatórios
+    de progresso, e importá-lo inteiro produzia um capítulo de 131 mil
+    caracteres em vez de 11 capítulos.
+    """
+    html = (
+        f'<p id="r1">Primeiro relatório. {TEXTO_LONGO}</p>'
+        f'<p id="r2">Segundo relatório. {TEXTO_LONGO}</p>'
+        f'<p id="r3">Terceiro relatório. {TEXTO_LONGO}</p>'
+    )
+    dados = _montar_epub_com_ancoras(
+        documentos=[("tudo.xhtml", html)],
+        indice=[
+            ("Relatório 1", "tudo.xhtml#r1"),
+            ("Relatório 2", "tudo.xhtml#r2"),
+            ("Relatório 3", "tudo.xhtml#r3"),
+        ],
+    )
+
+    extraido = extrair_epub(dados, "algernon.epub")
+
+    assert [c.titulo for c in extraido.capitulos] == [
+        "Relatório 1",
+        "Relatório 2",
+        "Relatório 3",
+    ]
+    # Cada capítulo ficou com o seu próprio texto, sem vazar para o vizinho.
+    assert extraido.capitulos[0].texto.startswith("Primeiro relatório")
+    assert "Segundo relatório" not in extraido.capitulos[0].texto
+    assert extraido.capitulos[1].texto.startswith("Segundo relatório")
+
+
+def teste_texto_antes_da_primeira_ancora_volta_para_o_capitulo_anterior() -> None:
+    """O Calibre parte arquivos grandes no meio de um capítulo.
+
+    Caso real: em *Flores para Algernon* o arquivo ``..._split_001`` começava com
+    42 mil caracteres do relatório anterior, e só depois vinha a primeira
+    âncora. Sem juntar, aquele texto viraria um capítulo sem título e o relatório
+    apareceria partido em dois.
+    """
+    dados = _montar_epub_com_ancoras(
+        documentos=[
+            ("parte0.xhtml", f'<p id="c1">Começo do capítulo um. {TEXTO_LONGO}</p>'),
+            (
+                "parte1.xhtml",
+                f"<p>Fim do capítulo um. {TEXTO_LONGO}</p>"
+                f'<p id="c2">Começo do capítulo dois. {TEXTO_LONGO}</p>',
+            ),
+        ],
+        indice=[
+            ("Capítulo 1", "parte0.xhtml#c1"),
+            ("Capítulo 2", "parte1.xhtml#c2"),
+        ],
+    )
+
+    extraido = extrair_epub(dados, "partido.epub")
+
+    assert [c.titulo for c in extraido.capitulos] == ["Capítulo 1", "Capítulo 2"]
+    # As duas metades do capítulo um ficaram juntas, na ordem certa.
+    primeiro = extraido.capitulos[0].texto
+    assert primeiro.startswith("Começo do capítulo um")
+    assert "Fim do capítulo um" in primeiro
+    assert primeiro.index("Começo do capítulo um") < primeiro.index("Fim do capítulo um")
+
+
+def teste_ancora_declarada_mas_ausente_do_documento_e_ignorada() -> None:
+    """Um índice pode apontar para um id que não existe no arquivo.
+
+    Melhor ignorar a entrada do que inventar um corte no lugar errado.
+    """
+    dados = _montar_epub_com_ancoras(
+        documentos=[("doc.xhtml", f'<p id="existe">Texto real. {TEXTO_LONGO}</p>')],
+        indice=[
+            ("Existe", "doc.xhtml#existe"),
+            ("Fantasma", "doc.xhtml#nao-existe"),
+        ],
+    )
+
+    extraido = extrair_epub(dados, "fantasma.epub")
+
+    assert [c.titulo for c in extraido.capitulos] == ["Existe"]
+    assert "Texto real" in extraido.capitulos[0].texto
+
+
+# --------------------------------------------------------------------------- #
+# Sugestao de capitulo ignorado
+# --------------------------------------------------------------------------- #
+
+
+def teste_sugere_ignorar_titulos_de_material_nao_narrativo() -> None:
+    """Créditos, glossário e notas do tradutor não são narrativa."""
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Capítulo 1"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Capítulo 2"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Notas ao Canto 1"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Glossário"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Créditos"),
+            ]
+        ),
+        "livro.epub",
+    )
+
+    sugeridos = {c.titulo for c in extraido.capitulos if c.ignorado}
+    assert sugeridos == {"Notas ao Canto 1", "Glossário", "Créditos"}
+
+
+def teste_titulo_narrativo_protege_capitulo_curto() -> None:
+    """Um capítulo curto de verdade não pode ser sugerido como ignorado.
+
+    Esconder narrativa é o pior dos dois erros: listar um glossário é um
+    incômodo, perder um prólogo é perder parte do livro.
+    """
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO * 20}</p>", "Capítulo 1"),
+                (f"<p>{TEXTO_LONGO * 20}</p>", "Capítulo 2"),
+                # Bem abaixo do limite de tamanho, mas claramente narrativa.
+                (f"<p>{TEXTO_LONGO}</p>", "Capítulo 3"),
+                (f"<p>{TEXTO_LONGO}</p>", "PRÓLOGO"),
+                (f"<p>{TEXTO_LONGO}</p>", "15"),
+            ]
+        ),
+        "livro.epub",
+    )
+
+    por_titulo = {c.titulo: c.ignorado for c in extraido.capitulos}
+    assert por_titulo["Capítulo 3"] is False
+    assert por_titulo["PRÓLOGO"] is False
+    assert por_titulo["15"] is False
+
+
+def teste_sugere_ignorar_o_que_e_muito_curto_para_o_livro() -> None:
+    """O critério é relativo à mediana do próprio livro, não absoluto.
+
+    A mediana variou de 17 mil a 44 mil caracteres entre os cinco livros reais —
+    um limite fixo serviria para um e falharia nos outros.
+    """
+    extraido = extrair_epub(
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO * 20}</p>", "Capítulo 1"),
+                (f"<p>{TEXTO_LONGO * 20}</p>", "Capítulo 2"),
+                (f"<p>{TEXTO_LONGO * 20}</p>", "Capítulo 3"),
+                (f"<p>{TEXTO_LONGO}</p>", "Alguma coisa curta"),
+            ]
+        ),
+        "livro.epub",
+    )
+
+    por_titulo = {c.titulo: c.ignorado for c in extraido.capitulos}
+    assert por_titulo["Alguma coisa curta"] is True
+    assert por_titulo["Capítulo 1"] is False
+
+
+def teste_em_indice_de_dois_niveis_a_raiz_e_sugerida_como_ignorada() -> None:
+    """Num índice aninhado, o corpo do livro fica nas seções e o resto na raiz.
+
+    Caso real: em *A Vontade de Muitos* os 74 capítulos estavam aninhados em três
+    partes, e capa, créditos, glossário e personagens ficavam na raiz.
+    """
+    livro = epub.EpubBook()
+    livro.set_identifier("urn:teste:niveis")
+    livro.set_title("Livro com partes")
+    livro.set_language("pt-BR")
+
+    def documento(nome: str) -> epub.EpubHtml:
+        item = epub.EpubHtml(title="", file_name=nome, lang="pt-BR")
+        item.content = f"<p>{TEXTO_LONGO * 6}</p>"
+        livro.add_item(item)
+        return item
+
+    apresentacao = documento("apres.xhtml")
+    cap1 = documento("c1.xhtml")
+    cap2 = documento("c2.xhtml")
+
+    livro.toc = (
+        epub.Link("apres.xhtml", "O funcionamento do verso homérico", "ap"),
+        (
+            epub.Section("PARTE I"),
+            (
+                epub.Link("c1.xhtml", "Canto 1", "c1"),
+                epub.Link("c2.xhtml", "Canto 2", "c2"),
+            ),
+        ),
+    )
+    livro.add_item(epub.EpubNcx())
+    livro.add_item(epub.EpubNav())
+    livro.spine = ["nav", apresentacao, cap1, cap2]
+
+    buffer = io.BytesIO()
+    epub.write_epub(buffer, livro)
+    extraido = extrair_epub(buffer.getvalue(), "niveis.epub")
+
+    por_titulo = {c.titulo: c.ignorado for c in extraido.capitulos}
+    # Está na raiz do índice e o título não está na lista de rótulos conhecidos —
+    # só a posição no índice o denuncia.
+    assert por_titulo["O funcionamento do verso homérico"] is True
+    assert por_titulo["Canto 1"] is False
+    assert por_titulo["Canto 2"] is False
+
+
+def teste_documento_sem_entrada_no_indice_nao_e_sugerido_pela_posicao() -> None:
+    """Não ter entrada no índice não é sinal de que não seja narrativa.
+
+    Caso real: em *A Vontade de Muitos*, duas versões alternativas da cena final
+    não tinham entrada no índice — e são narrativa.
+    """
+    livro = epub.EpubBook()
+    livro.set_identifier("urn:teste:sem-entrada")
+    livro.set_title("Livro")
+    livro.set_language("pt-BR")
+
+    def documento(nome: str) -> epub.EpubHtml:
+        item = epub.EpubHtml(title="", file_name=nome, lang="pt-BR")
+        item.content = f"<p>{TEXTO_LONGO * 6}</p>"
+        livro.add_item(item)
+        return item
+
+    cap1 = documento("c1.xhtml")
+    cap2 = documento("c2.xhtml")
+    orfao = documento("orfao.xhtml")
+
+    livro.toc = (
+        (
+            epub.Section("PARTE I"),
+            (
+                epub.Link("c1.xhtml", "Capítulo 1", "c1"),
+                epub.Link("c2.xhtml", "Capítulo 2", "c2"),
+            ),
+        ),
+    )
+    livro.add_item(epub.EpubNcx())
+    livro.add_item(epub.EpubNav())
+    livro.spine = ["nav", cap1, cap2, orfao]
+
+    buffer = io.BytesIO()
+    epub.write_epub(buffer, livro)
+    extraido = extrair_epub(buffer.getvalue(), "orfao.epub")
+
+    sem_titulo = [c for c in extraido.capitulos if c.titulo is None]
+    assert len(sem_titulo) == 1
+    assert sem_titulo[0].ignorado is False
+
+
+def teste_sugestao_chega_ao_banco(sessao_com_tabelas: Session) -> None:
+    """A sugestão é gravada no capítulo, para o app mostrar já marcada."""
+    livro = importar_epub(
+        sessao_com_tabelas,
+        _montar_epub(
+            capitulos=[
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Capítulo 1"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Capítulo 2"),
+                (f"<p>{TEXTO_LONGO * 10}</p>", "Créditos"),
+            ]
+        ),
+        "livro.epub",
+    )
+
+    por_titulo = {c.titulo: c.ignorado for c in livro.capitulos}
+    assert por_titulo == {"Capítulo 1": False, "Capítulo 2": False, "Créditos": True}

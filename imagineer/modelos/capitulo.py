@@ -1,6 +1,6 @@
 """Modelo do Capítulo — o texto extraído de uma parte do EPUB (item 3.4a)."""
 
-from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -41,6 +41,21 @@ class Capitulo(Base):
     texto: Mapped[str] = mapped_column(Text)
     """Conteúdo textual. ``Text`` em vez de ``String(n)``: não há limite útil
     para o tamanho de um capítulo."""
+
+    ignorado: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    """Se este "capítulo" deve ficar de fora do trabalho de catalogação.
+
+    Todo EPUB traz, misturado aos capítulos, material que não é narrativa:
+    créditos, glossário, agradecimentos, lista de personagens, notas do
+    tradutor, anúncios da editora. Nenhum critério automático separa isso de um
+    capítulo legítimo sem arriscar descartar narrativa — e perder um prólogo é
+    um erro muito pior que listar um glossário.
+
+    Por isso nada é descartado na importação: ela apenas **sugere**, marcando
+    este campo, e o usuário confirma ou desmarca. É o mesmo padrão do item 4.4
+    da especificação, onde a IA sugere o estado de um elemento e o usuário
+    decide.
+    """
 
     livro: Mapped["Livro"] = relationship(back_populates="capitulos")  # noqa: F821
 

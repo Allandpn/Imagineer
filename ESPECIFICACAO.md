@@ -177,7 +177,54 @@ Os três viraram testes de regressão, reproduzidos com EPUBs sintéticos equiva
 
 O que funcionou de primeira: os 74 capítulos numerados com os títulos corretos, o índice aninhado em três partes achatado sem duplicar nada, e o descarte certeiro de capa, folha de rosto, dedicatória e das quatro páginas divisoras de parte (que são só imagem, zero caractere de texto). O texto de um capítulo saiu com 245 parágrafos, diálogos preservados e nenhum resíduo de HTML.
 
-**Limitação conhecida, ainda aberta:** sobraram 8 documentos importados como capítulos que não são narrativa — créditos, uma tabela de classificações, agradecimentos, lista de personagens, glossário, lugares, uma página de "mande sua opinião" e um anúncio de outro livro da editora. Todos têm texto de verdade e tamanho de capítulo curto, então nenhum critério automático os separa de um capítulo legítimo sem risco de descartar conteúdo. A solução não é no parsing: o app precisa permitir marcar um capítulo como ignorado. Ver Etapa 6.
+#### Validação contra cinco livros
+
+A validação foi ampliada para cinco livros publicados, de formatos e origens diferentes: *A Vontade de Muitos*, a *Odisseia* (tradução de Frederico Lourenço), *Mistborn: O Império Final*, *Flores para Algernon* e *Devoradores de Estrelas*. Dois são EPUB 3, três são EPUB 2, dois passaram por conversão no Calibre.
+
+**Um defeito grave apareceu:** em *Flores para Algernon*, as fronteiras de capítulo são **âncoras dentro dos arquivos**, não os arquivos. O livro tem 13 documentos mas 23 entradas de índice, e um único arquivo continha 11 relatórios de progresso. A importação produzia 4 capítulos gigantes — um deles com 131 mil caracteres — em vez dos 17 relatórios que o livro declara. Ver "Divisão por âncoras" abaixo.
+
+**Três sinais foram medidos para separar narrativa de material pré/pós-textual, e nenhum resolve sozinho:**
+
+| Sinal | Por que falha |
+|---|---|
+| Tamanho relativo à mediana | As faixas se sobrepõem: o menor capítulo narrativo é 33% da mediana (Devoradores), e o maior item indesejado é 303% (`Notas ao Canto 1`, na Odisseia — são 24 documentos de notas, cada um do tamanho de um canto) |
+| Marcadores padrão do formato (`guide`, `landmarks`) | Em dois dos cinco livros o marcador `type=text`, que significa "o corpo do livro começa aqui", aponta para a **própria capa** |
+| Aninhamento do índice | Funciona muito bem em três livros (em *A Vontade de Muitos* os 74 aninhados são exatamente os 74 capítulos), mas em Mistborn o `PRÓLOGO` fica na raiz junto dos créditos — filtrar por aninhamento **descartaria narrativa** |
+
+A conclusão é que não existe critério automático simultaneamente seguro e eficaz. Daí a decisão de **sugerir em vez de descartar**: os três sinais somam para marcar `Capitulo.ignorado`, um quarto critério protege títulos claramente narrativos, e o usuário confirma. É o mesmo padrão do item 4.4.
+
+#### Divisão por âncoras
+
+Quando o índice aponta para **várias âncoras do mesmo arquivo**, o arquivo é cortado nesses pontos: para cada âncora, sobe-se da tag que tem o `id` até o ancestral que é filho direto do corpo do documento, e é aí que o capítulo começa.
+
+Duas situações de borda, resolvidas no sentido de nunca perder texto:
+
+- **Texto antes da primeira âncora.** O Calibre parte arquivos grandes em pedaços numerados, e o corte cai no meio de um capítulo — o arquivo seguinte começa com o resto do capítulo anterior. Em *Flores para Algernon* eram 42 mil caracteres. Esse trecho é marcado como continuação e **colado de volta** no capítulo anterior, em vez de virar um capítulo sem título.
+- **Duas âncoras no mesmo filho do corpo.** Não há onde cortar, então as duas entradas viram um pedaço só, com o título da primeira. Juntar é preferível a arriscar perder texto.
+
+#### Sugestão de capítulo ignorado
+
+Um capítulo é **sugerido** como ignorado quando qualquer um destes vale:
+
+1. O título começa com um rótulo conhecido de material não-narrativo (`Créditos`, `Glossário`, `Notas`, `Sobre o autor`, `Apêndice`, `Índice`…), comparado sem acento e em minúsculas.
+2. O texto tem menos de 25% da mediana do próprio livro. O critério é relativo porque a mediana variou de 17 mil a 44 mil caracteres entre os cinco livros — um limite fixo serviria para um e falharia nos outros.
+3. O índice tem dois níveis e a entrada deste documento está na raiz. Vale só para documentos que **têm** entrada no índice: em *A Vontade de Muitos* duas versões alternativas da cena final não têm entrada nenhuma, e são narrativa.
+
+E um critério **protege**, vencendo os três: um título claramente narrativo (`Capítulo`, `Canto`, `Prólogo`, `Epílogo`, `Parte`, `Relatório de Progresso`, ou um número/numeral romano isolado). É o que impede de esconder o `PRÓLOGO` do Mistborn ou um capítulo legitimamente curto.
+
+#### Resultado nos cinco livros
+
+| Livro | Capítulos | Mantidos | Sugeridos | Narrativa escondida |
+|---|---|---|---|---|
+| A Vontade de Muitos | 84 | 76 | 8 | **0** |
+| Odisseia | 56 | 24 | 32 | **0** |
+| Mistborn | 48 | 40 | 8 | **0** |
+| Flores para Algernon | 21 | 17 | 4 | **0** |
+| Devoradores de Estrelas | 38 | 30 | 8 | **0** |
+
+Nenhum capítulo narrativo foi escondido em nenhum dos cinco. No Algernon, os 17 mantidos são exatamente os 17 relatórios de progresso. Na Odisseia, os 24 mantidos são exatamente os 24 cantos, com os 24 documentos de notas sugeridos como ignorados.
+
+Sobrou **um** falso negativo em cinco livros: um anúncio de outro título da editora, no fim de *A Vontade de Muitos*, sem título no índice e com 7 mil caracteres. Fica para o usuário desmarcar.
 
 ---
 
@@ -255,12 +302,15 @@ Um capítulo de um Livro, com o texto extraído do EPUB.
 | `ordem` | inteiro | não | posição no livro, começando em 1 |
 | `titulo` | texto (500) | **sim** | o índice do EPUB nem sempre nomeia o capítulo |
 | `texto` | texto longo | não | conteúdo textual, sem limite de tamanho |
+| `ignorado` | booleano | não | se este "capítulo" fica de fora do trabalho de catalogação; padrão falso |
 
 Restrição de unicidade em (`livro_id`, `ordem`): dois capítulos não podem ocupar a mesma posição no mesmo livro. É o banco garantindo uma regra que um erro no parsing poderia violar silenciosamente.
 
 `ordem` existe porque a sequência de leitura é definida pelo índice (TOC) do EPUB, e não pelo `id` — reprocessar um livro pode gerar ids em outra ordem. Toda listagem de capítulos ordena por este campo.
 
 Apagar um Livro apaga seus Capítulos (`ON DELETE CASCADE`), em dois níveis: no banco e no ORM. Um capítulo não existe sozinho, sem o livro a que pertence.
+
+`ignorado` existe porque todo EPUB traz, misturado aos capítulos, material que não é narrativa: créditos, glossário, agradecimentos, notas do tradutor, anúncios da editora. A importação **sugere** marcando este campo (ver item 2.2) e o usuário confirma — nada é descartado no parsing. Acrescentado depois da validação contra cinco livros reais, que mostrou que nenhum critério automático separa os dois com segurança.
 
 #### (b) Elemento
 
@@ -497,6 +547,10 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 | Exceção própria `ArquivoEpubInvalido` | Um arquivo corrompido viraria erro 500 sem explicação, com traço de pilha do `zipfile` no log, em vez de uma mensagem que o app possa mostrar |
 | Identificador do livro vindo do `unique-identifier` declarado, não do primeiro `dc:identifier` | Um EPUB real listava cinco identificadores e o declarado era o último. Usar o primeiro faria a detecção de livro repetido depender da ordem em que o arquivo foi escrito |
 | Página de navegação detectada pela proporção de texto dentro de links | Um "Sumário" em XHTML comum não é marcado como navegação pelo formato. Medido num livro real: 99,3% em 86 links na página de sumário, contra 20,5% no segundo colocado e nenhum link em 81 dos 85 documentos |
+| Capítulos divididos pelas âncoras do índice quando ele é mais fino que os arquivos | Em *Flores para Algernon*, um arquivo continha 11 relatórios de progresso e a importação produzia um capítulo de 131 mil caracteres. As fronteiras que valem são as que o livro declara |
+| Texto antes da primeira âncora colado no capítulo anterior | O Calibre parte arquivos grandes no meio de um capítulo; sem isso, 42 mil caracteres do relatório anterior virariam um capítulo sem título e o relatório apareceria partido em dois |
+| Material não-narrativo **sugerido** como ignorado, não descartado | Medição em cinco livros: o menor capítulo narrativo é 33% da mediana e o maior apêndice é 303%; o marcador padrão do formato aponta para a capa em dois deles; e filtrar pelo aninhamento do índice descartaria o `PRÓLOGO` do Mistborn. Esconder narrativa é muito pior que listar um glossário |
+| Limite de tamanho **relativo à mediana do livro**, não absoluto | A mediana de tamanho de capítulo variou de 17 mil a 44 mil caracteres entre os cinco livros; um limite fixo serviria para um e falharia nos outros |
 
 ---
 
@@ -506,5 +560,5 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 - [x] ~~Definir estrutura de pastas/módulos do projeto Python (FastAPI).~~ Concluído — ver item **1.5**.
 - [ ] Desenhar as rotas da API (endpoints, contratos de request/response).
 - [ ] Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).
-- [ ] Permitir marcar um capítulo como ignorado. Descoberto ao importar um EPUB real: créditos, glossário, agradecimentos e anúncios da editora têm texto de capítulo curto e nenhum critério automático os separa de narrativa legítima (ver item 2.2).
+- [x] ~~Permitir marcar um capítulo como ignorado.~~ Concluído — campo `Capitulo.ignorado`, pré-sugerido pela importação e confirmado pelo usuário (itens 2.2 e 3.4a). Falta expor o ajuste na API e no app.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).

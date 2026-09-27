@@ -7,13 +7,22 @@ O módulo tem duas metades, de propósito:
 
 - ``extrair_epub`` lê os bytes e devolve o que encontrou, **sem tocar no banco**.
   É onde mora toda a complexidade do parsing, e onde os testes precisam variar
-  muito (arquivo sem índice, sem autor, com capítulo vazio) — testar isso não
+  muito (arquivo sem índice, sem autor, capítulo vazio) — testar isso não
   deveria exigir um banco no ar.
 - ``importar_epub`` chama a extração e grava.
+
+Um princípio orienta as decisões daqui: **nunca descartar narrativa em
+silêncio**. Listar um glossário como capítulo é um incômodo; perder um prólogo é
+perder parte do livro. Então o que é claramente mecânica do formato é descartado,
+e o que é duvidoso entra marcado como sugestão de ignorar, para o usuário
+confirmar.
 """
 
+import copy
 import io
 import re
+import statistics
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
@@ -27,9 +36,9 @@ from imagineer.modelos import Capitulo, Livro
 MINIMO_DE_CARACTERES = 100
 """Abaixo disso, o documento é descartado como página sem conteúdo.
 
-O limite é baixo de propósito: pega capas, folhas de rosto e páginas de créditos
-— que todo EPUB tem em quantidade — sem risco de descartar um capítulo curto de
-verdade.
+O limite é baixo de propósito: pega capas e páginas praticamente vazias sem
+risco de descartar um capítulo curto de verdade. Material pré e pós-textual com
+texto real **não** é descartado aqui — é apenas sugerido como ignorado.
 """
 
 PROPORCAO_DE_LINKS_PARA_NAVEGACAO = 0.6
@@ -48,7 +57,52 @@ meio dessa distância, e a exigência de pelo menos 5 links evita descartar um
 capítulo curto que por acaso contenha uma nota de rodapé.
 """
 
+PROPORCAO_MINIMA_DA_MEDIANA = 0.25
+"""Abaixo desta fração da mediana, o capítulo é **sugerido** como ignorado.
+
+Medido em cinco livros reais, comparando o menor capítulo narrativo de cada um
+com a mediana do próprio livro: 78% (Odisseia), 46% (A Vontade de Muitos), 40%
+(Mistborn) e 33% (Devoradores de Estrelas). O limite de 25% fica abaixo do menor
+deles, com margem — então nenhum capítulo narrativo desses livros é sugerido só
+por ser curto.
+
+Note que o critério é **relativo à mediana do próprio livro**, não absoluto: a
+mediana variou de 17 mil a 44 mil caracteres entre os cinco. Um limite fixo
+serviria para um livro e falharia nos outros.
+"""
+
 _TAGS_DE_BLOCO = ("p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "tr", "pre")
+
+_ROTULOS_NAO_NARRATIVOS = (
+    "abreviatura", "agradecimento", "anexo", "apendice", "apresentacao",
+    "bibliografia", "citacao", "colofao", "copyright", "credito", "dedicatoria",
+    "epigrafe", "errata", "ficha tecnica", "glossario", "indice", "introducao",
+    "lugares", "mapa", "nota", "personagens", "posfacio", "prefacio",
+    "publicidade", "sobre a autora", "sobre o autor", "sumario",
+)
+"""Títulos que costumam nomear material não-narrativo.
+
+Comparados **sem acento e em minúsculas**, e só no começo do título — "Notas ao
+Canto 1" casa com ``nota``, mas um capítulo chamado "A nota final" não casaria.
+A lista vem dos cinco livros reais usados na validação; é uma heurística de
+sugestão, não uma regra: o usuário confirma.
+"""
+
+_PADROES_NARRATIVOS = re.compile(
+    r"^(capitulo|canto|prologo|epilogo|interludio|parte|livro)\b"
+    # Sem \b no fim: o índice de "Flores para Algernon" escreve "Relatorio de
+    # Progreso", com um "s" só, e o prefixo truncado precisa casar com as duas
+    # grafias. Um \b aqui nunca casaria, porque entre "s" e "o" de "progreso"
+    # não existe fronteira de palavra.
+    r"|^relatorio de progres"
+    r"|^[\divxlcIVXLC]+$"
+)
+"""Títulos que são narrativa com certeza suficiente para **proteger** o capítulo.
+
+Vence qualquer sugestão de ignorar. É o que impede de esconder o ``PRÓLOGO`` do
+Mistborn, que fica no primeiro nível do índice junto dos créditos, ou um
+capítulo curto que ficou abaixo do limite de tamanho.
+"""
 
 
 class ArquivoEpubInvalido(Exception):
@@ -61,12 +115,45 @@ class ArquivoEpubInvalido(Exception):
 
 
 @dataclass
+class EntradaIndice:
+    """Uma entrada do índice do EPUB, já achatada."""
+
+    arquivo: str
+    """Nome do arquivo, sem pasta e sem âncora."""
+
+    ancora: str | None
+    """O ``id`` dentro do arquivo, quando a entrada aponta para um ponto dele."""
+
+    titulo: str | None
+    nivel: int
+    """0 para entradas na raiz do índice, 1+ para as aninhadas em seções."""
+
+
+@dataclass
+class _Pedaco:
+    """Um trecho de texto encontrado no EPUB, antes de virar capítulo."""
+
+    titulo: str | None
+    texto: str
+    nivel: int | None
+    continuacao: bool = False
+    """Este trecho é a continuação do capítulo anterior, não um capítulo novo.
+
+    Acontece quando uma ferramenta de conversão (o Calibre faz isso) parte um
+    arquivo grande no meio de um capítulo: o arquivo seguinte começa com o resto
+    do capítulo anterior, e só depois vem a âncora do próximo.
+    """
+
+
+@dataclass
 class CapituloExtraido:
     """Um capítulo encontrado no EPUB, antes de ir para o banco."""
 
     ordem: int
     titulo: str | None
     texto: str
+    ignorado: bool = False
+    """Sugestão da importação de que isto não é narrativa. O usuário confirma."""
 
 
 @dataclass
@@ -131,7 +218,7 @@ def importar_epub(sessao: Session, conteudo: bytes, nome_arquivo: str) -> Livro:
         nome_arquivo=extraido.nome_arquivo,
     )
     livro.capitulos = [
-        Capitulo(ordem=c.ordem, titulo=c.titulo, texto=c.texto)
+        Capitulo(ordem=c.ordem, titulo=c.titulo, texto=c.texto, ignorado=c.ignorado)
         for c in extraido.capitulos
     ]
 
@@ -160,21 +247,33 @@ def livros_com_mesmo_identificador(
 
 
 # --------------------------------------------------------------------------- #
-# Funções internas
+# Extração dos capítulos
 # --------------------------------------------------------------------------- #
 
 
 def _extrair_capitulos(epub_lido: epub.EpubBook) -> list[CapituloExtraido]:
     """Percorre o spine montando a lista de capítulos com texto.
 
-    A ordem e o conteúdo vêm do **spine**; os títulos vêm do **índice (TOC)**.
-    Cada fonte resolve metade do problema: o spine é a ordem de leitura e está
-    sempre presente, mas não traz títulos; o TOC traz títulos, mas é opcional,
-    pode ser aninhado e pode apontar para uma âncora dentro de um arquivo.
-    """
-    titulos_por_arquivo = _titulos_do_indice(epub_lido)
+    A ordem e o conteúdo vêm do **spine**; os títulos e as fronteiras de capítulo
+    vêm do **índice (TOC)**. Cada fonte resolve metade do problema: o spine é a
+    ordem de leitura e está sempre presente, mas não traz títulos; o TOC traz
+    títulos, mas é opcional e pode ser aninhado.
 
-    capitulos: list[CapituloExtraido] = []
+    Quando o índice aponta para **várias âncoras do mesmo arquivo**, o arquivo é
+    dividido nesses pontos — porque aí as fronteiras de capítulo são as âncoras,
+    não os arquivos (ver ``_dividir_por_ancoras``).
+    """
+    entradas = _entradas_do_indice(epub_lido)
+    por_arquivo: dict[str, list[EntradaIndice]] = {}
+    for entrada in entradas:
+        por_arquivo.setdefault(entrada.arquivo, []).append(entrada)
+
+    indice_tem_niveis = any(entrada.nivel > 0 for entrada in entradas)
+
+    # Primeira passada: junta os pedaços de texto com o título e o nível de cada
+    # um. A sugestão de ignorar só pode ser calculada depois, quando a mediana
+    # de tamanho do livro inteiro for conhecida.
+    pedacos: list[_Pedaco] = []
     for idref, _linear in epub_lido.spine:
         item = epub_lido.get_item_with_id(idref)
         if item is None or item.get_type() != ITEM_DOCUMENT:
@@ -192,69 +291,272 @@ def _extrair_capitulos(epub_lido: epub.EpubBook) -> list[CapituloExtraido]:
         if _parece_pagina_de_navegacao(conteudo):
             continue
 
-        texto = _extrair_texto(conteudo)
-        if len(texto) < MINIMO_DE_CARACTERES:
+        deste_arquivo = por_arquivo.get(_caminho_sem_ancora(item.file_name), [])
+        pedacos.extend(_dividir_documento(conteudo, deste_arquivo))
+
+    pedacos = _juntar_continuacoes(pedacos)
+    pedacos = [p for p in pedacos if len(p.texto) >= MINIMO_DE_CARACTERES]
+    if not pedacos:
+        return []
+
+    mediana = statistics.median([len(p.texto) for p in pedacos])
+
+    return [
+        CapituloExtraido(
+            # A ordem é atribuída depois dos descartes: começa em 1 e não tem
+            # lacunas. O que importa é a sequência de leitura do conteúdo, não a
+            # posição original no arquivo.
+            ordem=posicao,
+            titulo=pedaco.titulo,
+            texto=pedaco.texto,
+            ignorado=_sugerir_ignorar(
+                titulo=pedaco.titulo,
+                tamanho=len(pedaco.texto),
+                mediana=mediana,
+                nivel=pedaco.nivel,
+                indice_tem_niveis=indice_tem_niveis,
+            ),
+        )
+        for posicao, pedaco in enumerate(pedacos, start=1)
+    ]
+
+
+def _juntar_continuacoes(pedacos: list[_Pedaco]) -> list[_Pedaco]:
+    """Cola no capítulo anterior os trechos que são continuação dele.
+
+    O Calibre parte arquivos grandes em pedaços numerados (``..._split_000``,
+    ``_split_001``), e o corte cai no meio de um capítulo. Em *Flores para
+    Algernon*, o arquivo seguinte começava com 42 mil caracteres do relatório
+    anterior antes da primeira âncora — que sem isto viraria um capítulo sem
+    título, e o relatório apareceria partido em dois.
+    """
+    juntados: list[_Pedaco] = []
+    for pedaco in pedacos:
+        if pedaco.continuacao and juntados:
+            anterior = juntados[-1]
+            anterior.texto = f"{anterior.texto}\n\n{pedaco.texto}".strip()
+            continue
+        juntados.append(pedaco)
+    return juntados
+
+
+def _dividir_documento(conteudo: bytes, entradas: list[EntradaIndice]) -> list[_Pedaco]:
+    """Transforma um documento do EPUB em um ou mais pedaços de capítulo.
+
+    Na maioria dos livros há no máximo uma entrada de índice por arquivo, e o
+    documento inteiro é um capítulo. Mas quando o índice aponta para **várias
+    âncoras do mesmo arquivo**, as fronteiras de capítulo são as âncoras: em
+    *Flores para Algernon*, um único arquivo continha 11 relatórios de progresso,
+    e importá-lo inteiro produzia um capítulo de 131 mil caracteres em vez de 11.
+    """
+    # Basta UMA entrada com âncora para valer a pena examinar as posições: se a
+    # âncora não estiver no começo do documento, o texto antes dela é resto do
+    # capítulo anterior e precisa ser marcado como continuação. Atalhar quando há
+    # só uma entrada faria esse texto ser atribuído ao capítulo errado.
+    com_ancora = [entrada for entrada in entradas if entrada.ancora]
+    if not com_ancora:
+        primeira = entradas[0] if entradas else None
+        return [
+            _Pedaco(
+                titulo=primeira.titulo if primeira else None,
+                texto=_extrair_texto(conteudo),
+                nivel=primeira.nivel if primeira else None,
+            )
+        ]
+
+    return _dividir_por_ancoras(conteudo, entradas)
+
+
+def _dividir_por_ancoras(
+    conteudo: bytes, entradas: list[EntradaIndice]
+) -> list[_Pedaco]:
+    """Corta o documento nos pontos apontados pelas âncoras do índice.
+
+    O corte é feito entre os **filhos diretos do corpo** do documento: para cada
+    âncora, subimos da tag que tem o ``id`` até o ancestral que é filho do corpo,
+    e é aí que o capítulo começa.
+
+    Se duas âncoras caírem no mesmo filho do corpo, não há como separá-las e as
+    duas entradas viram um pedaço só, com o título da primeira. Preferir juntar a
+    arriscar perder texto é a mesma escolha que orienta o resto do módulo.
+    """
+    try:
+        arvore = lxml.html.fromstring(conteudo)
+    except Exception:  # noqa: BLE001 - HTML irrecuperável
+        return [_Pedaco(titulo=entradas[0].titulo, texto="", nivel=entradas[0].nivel)]
+
+    for elemento in arvore.xpath("//script|//style"):
+        elemento.drop_tree()
+
+    corpo = arvore.find("body")
+    if corpo is None:
+        corpo = arvore
+    filhos = list(corpo)
+
+    # Para cada entrada, em que posição dos filhos do corpo ela começa.
+    inicios: list[tuple[int, EntradaIndice]] = []
+    for entrada in entradas:
+        if not entrada.ancora:
+            inicios.append((0, entrada))
+            continue
+        encontrados = corpo.xpath(".//*[@id=$identificador]", identificador=entrada.ancora)
+        if not encontrados:
+            # Âncora declarada no índice mas ausente do documento: ignora a
+            # entrada em vez de inventar um corte.
+            continue
+        ancestral = encontrados[0]
+        while ancestral.getparent() is not None and ancestral.getparent() is not corpo:
+            ancestral = ancestral.getparent()
+        try:
+            inicios.append((filhos.index(ancestral), entrada))
+        except ValueError:
             continue
 
-        capitulos.append(
-            CapituloExtraido(
-                # A ordem é atribuída depois dos descartes: começa em 1 e não
-                # tem lacunas. O que importa é a sequência de leitura do
-                # conteúdo, não a posição original no arquivo.
-                ordem=len(capitulos) + 1,
-                titulo=titulos_por_arquivo.get(_caminho_sem_ancora(item.file_name)),
-                texto=texto,
+    if not inicios:
+        return [
+            _Pedaco(
+                titulo=entradas[0].titulo,
+                texto=_extrair_texto(conteudo),
+                nivel=entradas[0].nivel,
+            )
+        ]
+
+    # Ordena pela posição no documento — a ordem do índice não é garantia — e
+    # descarta cortes repetidos, mantendo o primeiro título de cada posição.
+    inicios.sort(key=lambda par: par[0])
+    unicos: list[tuple[int, EntradaIndice]] = []
+    for posicao, entrada in inicios:
+        if unicos and unicos[-1][0] == posicao:
+            continue
+        unicos.append((posicao, entrada))
+
+    pedacos: list[_Pedaco] = []
+
+    # Texto antes do primeiro corte. Sem isso ele desapareceria — e ele não é um
+    # capítulo novo, é o resto do capítulo do arquivo anterior, partido ao meio
+    # por uma ferramenta de conversão. Marcado como continuação para ser colado
+    # de volta em ``_juntar_continuacoes``.
+    if unicos[0][0] > 0:
+        pedacos.append(
+            _Pedaco(
+                titulo=None,
+                texto=_texto_de(filhos[: unicos[0][0]]),
+                nivel=unicos[0][1].nivel,
+                continuacao=True,
             )
         )
 
-    return capitulos
+    for indice, (posicao, entrada) in enumerate(unicos):
+        fim = unicos[indice + 1][0] if indice + 1 < len(unicos) else len(filhos)
+        pedacos.append(
+            _Pedaco(
+                titulo=entrada.titulo,
+                texto=_texto_de(filhos[posicao:fim]),
+                nivel=entrada.nivel,
+            )
+        )
+
+    return pedacos
 
 
-def _titulos_do_indice(epub_lido: epub.EpubBook) -> dict[str, str]:
-    """Achata o índice do EPUB num mapa de caminho do arquivo para título.
+def _sugerir_ignorar(
+    *,
+    titulo: str | None,
+    tamanho: int,
+    mediana: float,
+    nivel: int | None,
+    indice_tem_niveis: bool,
+) -> bool:
+    """Diz se este capítulo **parece** não ser narrativa.
 
-    O TOC pode ser aninhado em seções, então a função é recursiva. Só o primeiro
-    título de cada arquivo é guardado: quando várias entradas apontam para
-    âncoras do mesmo arquivo, a primeira é a do começo dele.
+    É só uma sugestão: nada é descartado, e o usuário confirma ou desmarca. A
+    validação em cinco livros reais mostrou que nenhum critério automático separa
+    narrativa de apêndice com segurança, então a decisão fica com quem lê.
+
+    Três sinais somam, e um protege:
+
+    - **Título conhecido** de material não-narrativo ("Créditos", "Glossário",
+      "Notas ao Canto 1").
+    - **Tamanho** muito abaixo da mediana do próprio livro.
+    - **Posição no índice**: num índice de dois níveis, o corpo do livro fica
+      aninhado nas seções e o material pré/pós-textual fica na raiz. Só vale
+      para documentos que *têm* entrada no índice — um documento sem entrada
+      nenhuma pode muito bem ser narrativa, como as duas versões alternativas da
+      cena final de *A Vontade de Muitos*.
+    - **Proteção**: um título claramente narrativo vence todos os outros sinais.
     """
-    titulos: dict[str, str] = {}
+    normalizado = _normalizar(titulo)
 
-    def percorrer(itens) -> None:
+    if normalizado and _PADROES_NARRATIVOS.match(normalizado):
+        return False
+
+    if normalizado.startswith(_ROTULOS_NAO_NARRATIVOS):
+        return True
+
+    if mediana > 0 and tamanho < mediana * PROPORCAO_MINIMA_DA_MEDIANA:
+        return True
+
+    return indice_tem_niveis and nivel == 0
+
+
+# --------------------------------------------------------------------------- #
+# Leitura do índice
+# --------------------------------------------------------------------------- #
+
+
+def _entradas_do_indice(epub_lido: epub.EpubBook) -> list[EntradaIndice]:
+    """Achata o índice do EPUB numa lista ordenada de entradas.
+
+    O TOC pode ser aninhado em seções, então a função é recursiva. O nível é
+    preservado porque é um sinal útil: num índice de dois níveis, o corpo do
+    livro fica aninhado e o material pré/pós-textual fica na raiz.
+    """
+    entradas: list[EntradaIndice] = []
+
+    def percorrer(itens, nivel: int) -> None:
         for item in itens:
             # Uma seção do índice vem como (objeto da seção, lista de filhos).
             if isinstance(item, (tuple, list)):
-                secao, filhos = item[0], item[1]
-                percorrer([secao])
-                percorrer(filhos)
+                percorrer([item[0]], nivel)
+                percorrer(item[1], nivel + 1)
                 continue
 
             href = getattr(item, "href", None)
-            titulo = getattr(item, "title", None)
-            if not href or not titulo:
+            if not href:
                 continue
-            titulos.setdefault(_caminho_sem_ancora(href), titulo.strip())
+            titulo = getattr(item, "title", None)
+            arquivo, _, ancora = href.partition("#")
+            entradas.append(
+                EntradaIndice(
+                    arquivo=_caminho_sem_ancora(arquivo),
+                    ancora=ancora or None,
+                    titulo=titulo.strip() if titulo else None,
+                    nivel=nivel,
+                )
+            )
 
-    percorrer(epub_lido.toc)
-    return titulos
+    percorrer(epub_lido.toc, 0)
+    return entradas
 
 
 def _caminho_sem_ancora(href: str) -> str:
     """Normaliza um caminho do EPUB para servir de chave de comparação.
 
     Descarta a âncora, porque o TOC costuma apontar para um ponto dentro do
-    arquivo: ``capitulo3.xhtml#inicio`` precisa casar com ``capitulo3.xhtml``.
-    Descarta também a pasta, porque o TOC e o manifesto podem escrever o mesmo
-    arquivo com prefixos diferentes (``Text/cap3.xhtml`` e ``cap3.xhtml``).
+    arquivo. Descarta também a pasta, porque o TOC e o manifesto podem escrever
+    o mesmo arquivo com prefixos diferentes (``Text/cap3.xhtml`` e
+    ``cap3.xhtml``).
     """
     return PurePosixPath(href.split("#")[0]).name
 
 
-def _extrair_texto(conteudo: bytes) -> str:
-    """Converte o HTML de um documento do EPUB em texto simples.
+# --------------------------------------------------------------------------- #
+# Conversão de HTML em texto
+# --------------------------------------------------------------------------- #
 
-    Preserva as quebras de parágrafo, porque é este texto que a IA vai ler: um
-    capítulo inteiro numa única linha contínua perde a estrutura da narrativa.
-    """
+
+def _extrair_texto(conteudo: bytes) -> str:
+    """Converte o HTML de um documento do EPUB em texto simples."""
     try:
         arvore = lxml.html.fromstring(conteudo)
     except Exception:  # noqa: BLE001 - documento vazio ou HTML irrecuperável
@@ -263,6 +565,28 @@ def _extrair_texto(conteudo: bytes) -> str:
     for elemento in arvore.xpath("//script|//style"):
         elemento.drop_tree()
 
+    return _texto_da_arvore(arvore)
+
+
+def _texto_de(elementos: list) -> str:
+    """Extrai o texto de um recorte de elementos, usado ao dividir por âncoras.
+
+    Os elementos são copiados para um contêiner temporário porque a extração
+    marca as quebras de parágrafo alterando a árvore — e alterar a original
+    estragaria os recortes seguintes.
+    """
+    container = lxml.html.Element("div")
+    for elemento in elementos:
+        container.append(copy.deepcopy(elemento))
+    return _texto_da_arvore(container)
+
+
+def _texto_da_arvore(arvore) -> str:
+    """Converte uma árvore HTML em texto simples, preservando parágrafos.
+
+    Preservar as quebras importa porque é este texto que a IA vai ler: um
+    capítulo inteiro numa única linha contínua perde a estrutura da narrativa.
+    """
     # Insere as quebras no "tail" de cada elemento (o texto que vem depois do
     # fechamento da tag). É o que mantém a separação entre parágrafos quando o
     # texto de toda a árvore é concatenado.
@@ -313,6 +637,11 @@ def _parece_pagina_de_navegacao(conteudo: bytes) -> bool:
     return dentro_de_links / total >= PROPORCAO_DE_LINKS_PARA_NAVEGACAO
 
 
+# --------------------------------------------------------------------------- #
+# Metadados
+# --------------------------------------------------------------------------- #
+
+
 def _identificador_unico(epub_lido: epub.EpubBook) -> str | None:
     """Devolve o identificador que o EPUB declara como sendo o do livro.
 
@@ -356,3 +685,16 @@ def _titulo_do_nome(nome_arquivo: str) -> str:
     um livro sem autor, não.
     """
     return PurePosixPath(nome_arquivo).stem or nome_arquivo
+
+
+def _normalizar(texto: str | None) -> str:
+    """Põe o texto em minúsculas e sem acentos, para comparar títulos.
+
+    Necessário porque os rótulos de comparação são escritos sem acento: assim
+    "Prefácio", "PREFACIO" e "prefacio" casam todos com ``prefacio``.
+    """
+    if not texto:
+        return ""
+    sem_acento = unicodedata.normalize("NFKD", texto)
+    sem_acento = "".join(c for c in sem_acento if not unicodedata.combining(c))
+    return sem_acento.strip().lower()
