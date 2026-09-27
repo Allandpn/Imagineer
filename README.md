@@ -92,6 +92,9 @@ O modelo do MVP está completo.
 |---|---|---|
 | `servicos/importacao_epub.py` | 2.2 | Lê um EPUB e o estrutura em Livro + Capítulos, sugerindo o que não é narrativa. Validado contra dezoito livros publicados, sem esconder nenhum capítulo |
 | `servicos/estados_de_elemento.py` | 3.4b, 6.3 | Descobre o estado vigente de cada elemento num ponto da narrativa |
+| `servicos/configuracao_ia.py` | 4.3 | Resolve de onde vem a chave de API e monta o provedor de IA |
+| `ia/openrouter.py` | 4.1, 4.2 | Conversa com o OpenRouter: lista modelos, extrai elementos, monta prompt |
+| `ia/falso.py` | 4.2 | Provedor falso, para testes e para usar o sistema sem chave |
 
 ### Rotas disponíveis
 
@@ -125,6 +128,9 @@ O modelo do MVP está completo.
 | `GET /perfis-renderizacao/{id}` | Abre um perfil |
 | `PATCH /perfis-renderizacao/{id}` | Ajusta um perfil |
 | `DELETE /perfis-renderizacao/{id}` | Remove um perfil, sem apagar livros nem prompts |
+| `GET /configuracao` | Modelos escolhidos e se há chave cadastrada (nunca a chave) |
+| `PUT /configuracao` | Cadastra a chave do OpenRouter e escolhe os modelos |
+| `GET /configuracao/modelos` | Modelos disponíveis, com filtros `somente_gratuitos` e `contexto_minimo` |
 
 O desenho completo da API, incluindo as rotas ainda não implementadas, está na Etapa 6 da especificação.
 

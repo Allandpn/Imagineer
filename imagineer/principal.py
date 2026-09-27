@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from imagineer.rotas import (
     capitulos,
     cenas,
+    configuracao,
     elementos,
     livros,
     perfis_renderizacao,
@@ -38,3 +39,4 @@ aplicacao.include_router(elementos.rotas_de_estado)
 aplicacao.include_router(cenas.rotas_de_capitulo)
 aplicacao.include_router(cenas.rotas)
 aplicacao.include_router(perfis_renderizacao.rotas)
+aplicacao.include_router(configuracao.rotas)

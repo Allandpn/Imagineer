@@ -10,6 +10,7 @@ disco, mas nunca no mapa de tabelas.
 
 from imagineer.modelos.capitulo import Capitulo
 from imagineer.modelos.cena import Cena, cenas_estados_elemento
+from imagineer.modelos.configuracao import Configuracao
 from imagineer.modelos.elemento import Elemento, EstadoElemento, TipoElemento
 from imagineer.modelos.livro import Livro
 from imagineer.modelos.perfil_renderizacao import PerfilRenderizacao
@@ -18,6 +19,7 @@ from imagineer.modelos.prompt import Imagem, Prompt
 __all__ = [
     "Capitulo",
     "Cena",
+    "Configuracao",
     "Elemento",
     "EstadoElemento",
     "Imagem",

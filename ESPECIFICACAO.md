@@ -593,6 +593,21 @@ O caminho é **relativo**, não absoluto: mover a pasta de imagens ou trocar o R
 
 > **Divergência do item 3.2:** ele diz que "um Prompt está associado a uma Imagem". Aqui a relação é de **um prompt para várias imagens**, sem restrição de unicidade em `prompt_id`. O motivo é prático: o mesmo prompt costuma ser gerado mais de uma vez, ou em duas ferramentas diferentes, e faz sentido guardar mais de um resultado no catálogo. Remover uma restrição de unicidade depois é fácil; acrescentá-la quando já existem dados duplicados é que dá trabalho.
 
+#### (d) Configuracao
+
+Uma linha única, com a configuração da integração com IA (item 4.3).
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária; sempre 1 |
+| `chave_api_openrouter` | texto (200) | sim | cadastrada pelo app; sobrepõe a variável de ambiente |
+| `modelo_extracao` | texto (200) | sim | modelo usado no passo 6 do fluxo |
+| `modelo_prompt` | texto (200) | sim | modelo usado no passo 8 |
+
+**Uma linha só, com `id` fixo em 1.** Não é a modelagem mais elegante, mas é a mais honesta para o que é: não existem "duas configurações" num sistema pessoal de um usuário. A alternativa — uma tabela de pares chave/valor — perderia a tipagem de cada campo e ganharia só flexibilidade que não vai ser usada. Uma restrição `CHECK (id = 1)` impede uma segunda linha aparecer por acidente.
+
+Os três campos aceitam nulo porque o sistema precisa subir sem configuração nenhuma: a chave pode estar só na variável de ambiente, e os modelos podem ainda não ter sido escolhidos.
+
 #### (c) As duas chaves estrangeiras pendentes
 
 Com as tabelas acima criadas, os dois campos deixados de lado nas partes (a) e (b) passam a ser possíveis:
@@ -620,16 +635,68 @@ Camada de abstração `ProvedorIA` com dois métodos:
 - `extrair_elementos(texto_capitulo, estados_conhecidos) -> lista estruturada`
 - `montar_prompt(elementos_selecionados, estados, perfil_renderizacao) -> texto do prompt`
 
-Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_modelo`. Provedores nativos adicionais (Groq, Gemini) podem ser adicionados depois seguindo a mesma interface, se necessário.
+Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_modelo`. Os dois métodos devolvem objetos tipados, não texto cru, para que a rota não tenha que adivinhar o formato da resposta. Provedores nativos adicionais (Groq, Gemini) podem ser adicionados depois seguindo a mesma interface, se necessário.
 
 > **Divergência registrada (item 1.5):** a primeira versão desta seção nomeava a interface como `AIProvider`, a implementação como `OpenRouterProvider` e o parâmetro como `render_profile`. Os nomes foram traduzidos para `ProvedorIA`, `ProvedorOpenRouter` e `perfil_renderizacao` por coerência com a regra de idioma: existe tradução natural, então o português prevalece. Definido antes de a pasta `ia/` ser preenchida, para não renomear código depois.
 
 ### 4.3 Configuração de modelos
 
 Tela de configuração permitindo:
-- Cadastro da API key do OpenRouter (armazenada em variável de ambiente/config segura, nunca hardcoded).
+- Cadastro da API key do OpenRouter, nunca hardcoded.
 - Seleção de modelo para extração de elementos (passo 6) e para montagem de prompt (passo 8), com opção "usar o mesmo modelo para os dois" marcada por padrão.
 - Lista de modelos obtida dinamicamente do endpoint `/models` do OpenRouter (com filtro opcional para mostrar só os gratuitos).
+
+#### De onde vem a chave
+
+**Da variável de ambiente `CHAVE_API_OPENROUTER`, ou do banco — e o banco tem precedência.**
+
+A variável de ambiente faz o sistema subir já configurado e nunca põe a chave num backup de banco. O cadastro pelo app existe porque o servidor roda num Raspberry Pi: trocar de chave ou de modelo não deveria exigir SSH, editar o `.env` e reiniciar o container.
+
+Quem preferir só a variável de ambiente simplesmente nunca usa a tela, e nada muda.
+
+**`GET /configuracao` nunca devolve a chave**, só informa se existe e de onde veio. Uma chave que sai do servidor é uma chave que vaza em log, em cache de app ou numa captura de tela.
+
+#### Sobre o tamanho do capítulo caber no modelo
+
+Medido nos dezoito livros de validação, em tokens estimados (a 4 caracteres por token):
+
+| | Tokens |
+|---|---|
+| Mediana dos 747 capítulos úteis | 3.442 |
+| Percentil 90 | 8.704 |
+| Maior capítulo | 27.839 |
+
+Quantos capítulos **não** caberiam, deixando 2.000 tokens de folga para instrução e resposta:
+
+| Janela do modelo | Capítulos que não cabem |
+|---|---|
+| 8 mil | 203 de 747 — **27%** |
+| 16 mil | 12 — 1,6% |
+| 32 mil | **0** |
+
+Conferido contra o endpoint `/models`: dos 21 modelos gratuitos disponíveis, **todos têm 32 mil de contexto ou mais**, vários com um milhão. Então **não há divisão de capítulo em partes** neste sistema: o texto vai inteiro, e a rota verifica o `context_length` do modelo escolhido antes de chamar — se não couber, a resposta diz qual é o problema em vez de deixar a API do modelo recusar com uma mensagem genérica.
+
+Essa checagem prévia é o que evita o pior caso: descobrir que o capítulo não cabe **depois** de gastar a chamada.
+
+#### O que foi implementado
+
+A camada de IA inteira, com 33 testes e **nenhuma chamada de rede nos testes**:
+
+| Arquivo | Papel |
+|---|---|
+| `ia/provedor.py` | O contrato `ProvedorIA` e os tipos que ele devolve |
+| `ia/openrouter.py` | `ProvedorOpenRouter`: lista modelos e faz as duas chamadas |
+| `ia/falso.py` | `ProvedorFalso`, para testes e para percorrer o sistema sem chave |
+| `servicos/configuracao_ia.py` | Resolve de onde vem a chave e monta o provedor |
+| `rotas/configuracao.py` | `GET`/`PUT /configuracao` e `GET /configuracao/modelos` |
+
+O `ProvedorOpenRouter` é testado com um transporte falso do `httpx`, que responde o que o teste combinar. É o que permite testar o que uma chamada real raramente produziria na hora certa: resposta sem JSON, JSON embrulhado em cerca de markdown, frase de conversa antes do JSON, entrada com tipo inexistente, chave recusada, 429 de limite de uso e timeout.
+
+**A leitura do JSON é tolerante de propósito.** Modelos põem cerca de markdown e escrevem "Claro! Aqui está:" mesmo quando a instrução pede o contrário — recusar por isso desperdiçaria uma chamada que na verdade deu certo. E uma entrada malformada é descartada em silêncio em vez de derrubar as outras vinte: é sugestão, e o usuário confirma tudo de qualquer forma.
+
+**Um defeito achado numa chamada real.** O filtro de modelos de texto checava se `text` estava entre as saídas do modelo — e `google/lyria-3-pro-preview`, que é um modelo de **música**, declara `output_modalities: ["text", "audio"]`. Ele passava. O critério passou a ser "a saída é só texto", e a lista de gratuitos com 32 mil de contexto caiu de 21 para 19 modelos. A entrada pode incluir imagem ou vídeo sem problema: um modelo multimodal continua sabendo ler um capítulo.
+
+Também descobri, na mesma chamada, que **os 458 modelos declaram modalidades** — então o caminho de reserva do filtro ("sem a informação, assume texto") não é exercitado hoje. Ficou como proteção contra o campo desaparecer da API: nesse caso é melhor a lista vir completa demais do que vazia, que deixaria o usuário sem como configurar.
 
 ### 4.4 Regra de decisão de novo Estado
 

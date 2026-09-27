@@ -97,6 +97,26 @@ def sessao_de_teste() -> Session:
 
 
 @pytest.fixture
+def usar_provedor_falso():
+    """Substitui o provedor de IA da aplicação por um falso, e desfaz no fim.
+
+    A troca é feita por ``dependency_overrides`` do FastAPI, o mesmo mecanismo que
+    troca o banco. É o que permite exercitar as rotas que usam IA sem rede, sem
+    chave de API e sem um modelo remoto que pode estar em fila.
+    """
+    from imagineer.rotas.configuracao import obter_provedor
+
+    def trocar(provedor):
+        aplicacao.dependency_overrides[obter_provedor] = lambda: provedor
+        return provedor
+
+    try:
+        yield trocar
+    finally:
+        aplicacao.dependency_overrides.pop(obter_provedor, None)
+
+
+@pytest.fixture
 def cliente(sessao_com_tabelas: Session) -> TestClient:
     """Cliente HTTP de teste, com o banco real substituído pelo SQLite.
 
