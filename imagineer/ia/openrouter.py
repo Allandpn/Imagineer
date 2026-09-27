@@ -14,6 +14,7 @@ from imagineer.ia.provedor import (
     ChaveDeApiAusente,
     ElementoSugerido,
     ErroDoProvedorIA,
+    EstadoSugerido,
     ExtracaoDeElementos,
     ModeloDisponivel,
     ModeloNaoEscolhido,
@@ -49,7 +50,8 @@ tokens leva tempo. Um limite curto transformaria lentidão em erro.
 
 _INSTRUCAO_DE_EXTRACAO = """\
 Você analisa um capítulo de livro e identifica os elementos visuais que aparecem \
-nele, para que alguém possa depois gerar imagens das cenas.
+nele, para que alguém possa depois gerar imagens das cenas. Nesta etapa você só \
+IDENTIFICA — não descreva a aparência de ninguém ainda.
 
 Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 
@@ -59,7 +61,6 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
       "tipo": "PERSONAGEM",
       "nome": "como o elemento é chamado no texto",
       "descricao": "quem ou o que é: papel na história, natureza, função",
-      "estado_sugerido": "como aparenta estar NESTE capítulo: roupas, ferimentos, condição",
       "manter_estado_atual": false
     }
   ]
@@ -70,13 +71,33 @@ EDIFICACAO.
 
 Regras:
 - Inclua apenas o que tem presença visual no capítulo. Ignore conceitos abstratos.
-- Se um elemento da lista de estados conhecidos aparece no capítulo SEM mudança \
-visível, repita o nome dele e marque "manter_estado_atual": true, deixando \
-"estado_sugerido" nulo.
-- Se houver mudança visível, marque "manter_estado_atual": false e descreva o \
-estado novo.
+- "descricao" é a identidade do elemento (quem ou o que é), não a aparência dele \
+neste capítulo — a aparência é analisada depois, um elemento por vez.
+- Se um elemento da lista de estados conhecidos aparece no capítulo sem indício \
+de mudança visível, marque "manter_estado_atual": true. Se parece ter mudado, \
+marque false. Elementos novos (fora da lista) sempre são false.
 - Use exatamente o nome que já está na lista de estados conhecidos, quando o \
 elemento já for conhecido.
+- Escreva em português.
+"""
+
+_INSTRUCAO_DE_ESTADO = """\
+Você lê um capítulo de livro inteiro, mas quer descrever a aparência de UM SÓ \
+elemento — ignore todos os outros, mesmo que apareçam no texto.
+
+Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
+
+{
+  "descricao": "como o elemento aparenta estar neste capítulo: roupas, ferimentos, condição, feições — só o que o texto realmente diz ou implica com segurança"
+}
+
+Regras:
+- Descreva só o que está no texto. Não invente detalhes que o texto não sustenta.
+- Não confunda com outro elemento — releia com cuidado a quem cada detalhe \
+pertence antes de escrever.
+- Se o elemento pedido não aparecer de forma clara neste capítulo, ou se o texto \
+não descrever sua aparência, devolva a descrição de estado já registrada, sem \
+inventar nada novo.
 - Escreva em português.
 """
 
@@ -94,6 +115,9 @@ Regras:
 - Mantenha fielmente a aparência de cada elemento como foi descrita.
 - Incorpore o estilo, a iluminação e a paleta indicados.
 - Não invente elementos que não estão na lista.
+- Se houver um comentário do usuário, ele tem PRIORIDADE sobre as descrições \
+acima em caso de conflito — é uma correção de quem já viu o resultado anterior \
+ou leu o capítulo com atenção.
 """
 
 
@@ -140,13 +164,13 @@ class ProvedorOpenRouter(ProvedorIA):
         return sorted(modelos, key=lambda m: (not m.gratuito, m.nome.lower()))
 
     # ----------------------------------------------------------------------- #
-    # As duas operações do item 4.2
+    # As três operações do item 4.2
     # ----------------------------------------------------------------------- #
 
     def extrair_elementos(
         self, texto_capitulo: str, estados_conhecidos: list[str], modelo: str
     ) -> ExtracaoDeElementos:
-        """Pede ao modelo os elementos visuais do capítulo (passo 6)."""
+        """Pede ao modelo os elementos visuais do capítulo — fase 1 (passo 6)."""
         conhecidos = (
             "\n".join(f"- {estado}" for estado in estados_conhecidos)
             if estados_conhecidos
@@ -162,12 +186,34 @@ class ProvedorOpenRouter(ProvedorIA):
             elementos=_interpretar_elementos(resposta), modelo=modelo
         )
 
+    def sugerir_estado(
+        self,
+        texto_capitulo: str,
+        tipo: TipoElemento,
+        nome: str,
+        descricao_do_elemento: str | None,
+        estado_atual: str | None,
+        modelo: str,
+    ) -> EstadoSugerido:
+        """Pede ao modelo a aparência de UM elemento — fase 2 (item 4.4)."""
+        pedido = (
+            f"ELEMENTO A DESCREVER: {nome} ({tipo.name})\n"
+            f"IDENTIDADE JÁ CONHECIDA: {descricao_do_elemento or '(nenhuma)'}\n"
+            f"ESTADO JÁ REGISTRADO (pode estar desatualizado): "
+            f"{estado_atual or '(nenhum ainda)'}\n\n"
+            f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
+        )
+
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_ESTADO, pedido)
+        return EstadoSugerido(descricao=_interpretar_estado(resposta), modelo=modelo)
+
     def montar_prompt(
         self,
         descricao_da_cena: str,
         elementos: list[str],
         perfil_renderizacao: str,
         modelo: str,
+        comentario_do_usuario: str | None = None,
     ) -> PromptMontado:
         """Pede ao modelo o prompt de imagem (passo 8)."""
         lista = "\n".join(f"- {elemento}" for elemento in elementos) or "(nenhum)"
@@ -176,6 +222,8 @@ class ProvedorOpenRouter(ProvedorIA):
             f"ELEMENTOS QUE APARECEM, COM A APARÊNCIA DE CADA UM:\n{lista}\n\n"
             f"ESTILO VISUAL:\n{perfil_renderizacao}"
         )
+        if comentario_do_usuario:
+            pedido += f"\n\nCOMENTÁRIO DO USUÁRIO (prioridade sobre o resto):\n{comentario_do_usuario}"
 
         resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido)
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
@@ -377,12 +425,32 @@ def _interpretar_elementos(resposta: str) -> list[ElementoSugerido]:
                 tipo=tipo,
                 nome=nome,
                 descricao=_texto_ou_nulo(entrada.get("descricao")),
-                estado_sugerido=_texto_ou_nulo(entrada.get("estado_sugerido")),
                 manter_estado_atual=bool(entrada.get("manter_estado_atual")),
             )
         )
 
     return sugeridos
+
+
+def _interpretar_estado(resposta: str) -> str:
+    """Lê o JSON da leitura profunda de um elemento (fase 2, item 4.4).
+
+    Mesma leitura tolerante de ``_interpretar_elementos``: tira cerca de
+    markdown e procura o primeiro objeto JSON do texto.
+    """
+    bruto = _extrair_json(resposta)
+    if bruto is None:
+        raise ErroDoProvedorIA(
+            "O modelo não devolveu JSON. Tente outro modelo: alguns modelos "
+            "pequenos não seguem bem instruções de formato."
+        )
+
+    descricao = _texto_ou_nulo(bruto.get("descricao"))
+    if descricao is None:
+        raise ErroDoProvedorIA(
+            "O modelo devolveu um JSON sem o campo 'descricao'."
+        )
+    return descricao
 
 
 def _extrair_json(resposta: str) -> dict | None:

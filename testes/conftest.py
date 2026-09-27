@@ -1,11 +1,16 @@
 """Preparação compartilhada pelos testes.
 
-Duas coisas acontecem aqui, e a ordem importa:
+Três coisas acontecem aqui, e a ordem importa:
 
 1. Definimos as variáveis de ambiente **antes** de importar a aplicação. O
    módulo ``imagineer.banco.sessao`` cria o motor de conexão no momento em que
    é importado, então ele precisa encontrar a ``URL_BANCO`` já definida.
-2. Trocamos o banco real por um SQLite em memória. Assim os testes rodam sem
+2. Zeramos as duas variáveis da chave do OpenRouter (item 4.3), também antes de
+   qualquer import. Sem isso, os testes que esperam "nenhuma chave configurada"
+   quebrariam sempre que o `.env` do projeto tivesse uma chave de verdade — o
+   que acontece ao testar a integração de ponta a ponta manualmente. Os testes
+   não deveriam depender do que está no ambiente de quem os roda.
+3. Trocamos o banco real por um SQLite em memória. Assim os testes rodam sem
    depender do Docker nem de um PostgreSQL no ar — e cada teste começa com o
    banco limpo, porque o "em memória" deixa de existir quando o teste termina.
 
@@ -19,6 +24,13 @@ import os
 # Precisa vir antes de qualquer "import imagineer..." — ver explicação acima.
 # O endereço é fictício: nos testes ninguém abre conexão com ele.
 os.environ.setdefault("URL_BANCO", "postgresql+psycopg://teste:teste@localhost:5432/teste")
+
+# Sobrescreve (não só "setdefault"): o `.env` do projeto tem prioridade sobre
+# uma variável de ambiente ausente, então só zerar não bastaria se o arquivo
+# tiver uma chave de verdade. Os testes que precisam de uma chave a definem
+# explicitamente via `monkeypatch`.
+os.environ["CHAVE_API_OPENROUTER"] = ""
+os.environ["IMAGINEER_KEY_OPEN_ROUTER"] = ""
 
 import pytest
 from fastapi.testclient import TestClient

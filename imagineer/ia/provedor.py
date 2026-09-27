@@ -53,25 +53,32 @@ class ModeloDisponivel:
 
 @dataclass
 class ElementoSugerido:
-    """Um elemento que a IA acha que aparece no capítulo.
+    """Um elemento que a IA acha que aparece no capítulo — só identificação.
 
     É **sugestão**: nada disso vai para o banco antes do usuário confirmar
-    (item 4.4). O campo ``elemento_id`` vem preenchido quando a sugestão casa com
-    um elemento já cadastrado, e é o que permite à tela oferecer "manter o estado
-    atual" em vez de criar um elemento repetido.
+    (item 4.4, fase 1). O campo ``elemento_id`` vem preenchido quando a sugestão
+    casa com um elemento já cadastrado, e é o que permite à tela oferecer "manter
+    o estado atual" em vez de criar um elemento repetido.
+
+    Não traz descrição de aparência: pedir isso de vários elementos na mesma
+    resposta misturou atributos entre personagens num teste com IA real (item
+    4.2). Essa parte é a leitura profunda (fase 2, ``sugerir_estado``), que
+    processa um elemento por vez.
     """
 
     tipo: TipoElemento
     nome: str
     descricao: str | None = None
-    estado_sugerido: str | None = None
-    """Como o elemento parece estar neste capítulo."""
+    """Identidade do elemento: quem ou o que é, papel na história. Não muda."""
 
     elemento_id: int | None = None
     """O elemento já cadastrado a que esta sugestão corresponde, se houver."""
 
     manter_estado_atual: bool = False
-    """A IA acha que o estado conhecido continua valendo (item 4.4)."""
+    """A IA acha que o estado conhecido continua valendo (item 4.4, fase 1).
+
+    É um julgamento leve — comparação com o contexto de estados conhecidos — e
+    não descreve a aparência nova; isso fica para a fase 2."""
 
 
 @dataclass
@@ -85,6 +92,19 @@ class ExtracaoDeElementos:
 
 
 @dataclass
+class EstadoSugerido:
+    """O resultado da leitura profunda de um elemento (item 4.4, fase 2).
+
+    Ao contrário de ``ElementoSugerido``, esta é a descrição de aparência —
+    obtida relendo o capítulo de origem do estado, focado num elemento só. É o
+    que sobrescreve ``EstadoElemento.descricao`` antes de montar um prompt.
+    """
+
+    descricao: str
+    modelo: str = ""
+
+
+@dataclass
 class PromptMontado:
     """O prompt de imagem pronto para o usuário copiar."""
 
@@ -95,7 +115,8 @@ class PromptMontado:
 class ProvedorIA(ABC):
     """O que a aplicação espera de um provedor de IA de texto.
 
-    Duas operações, que correspondem aos passos 6 e 8 do fluxo da Etapa 2.
+    Três operações: identificação e montagem de prompt (passos 6 e 8 do fluxo
+    da Etapa 2), e a leitura profunda entre elas (item 4.4, fase 2).
     """
 
     @abstractmethod
@@ -109,14 +130,45 @@ class ProvedorIA(ABC):
         estados_conhecidos: list[str],
         modelo: str,
     ) -> ExtracaoDeElementos:
-        """Sugere os elementos do capítulo (passo 6).
+        """Identifica os elementos do capítulo — fase 1 do item 4.4 (passo 6).
 
         Args:
             texto_capitulo: o texto a ler.
             estados_conhecidos: o último estado conhecido de cada elemento já
                 cadastrado, em texto. É o contexto que permite à IA responder
                 "manter estado atual" em vez de inventar um estado novo a cada
-                capítulo (item 4.4).
+                capítulo.
+            modelo: o identificador do modelo a usar.
+
+        Não pede descrição de aparência — só identificação. Ver
+        ``sugerir_estado`` para a leitura profunda de um elemento específico.
+        """
+
+    @abstractmethod
+    def sugerir_estado(
+        self,
+        texto_capitulo: str,
+        tipo: TipoElemento,
+        nome: str,
+        descricao_do_elemento: str | None,
+        estado_atual: str | None,
+        modelo: str,
+    ) -> EstadoSugerido:
+        """A leitura profunda de UM elemento num capítulo — fase 2 do item 4.4.
+
+        Relê o capítulo inteiro, mas focado só neste elemento — é essa
+        concentração que evita a mistura de atributos entre elementos que a
+        fase 1 antiga produzia. Chamado dentro de ``POST /cenas/{id}/prompts``,
+        antes de montar o prompt (item 6.6).
+
+        Args:
+            texto_capitulo: o capítulo onde este estado foi registrado — não
+                necessariamente o capítulo da cena que está sendo montada.
+            tipo, nome: identificam o elemento no texto.
+            descricao_do_elemento: a identidade do elemento (``Elemento.descricao``),
+                de contexto.
+            estado_atual: a descrição de aparência já registrada, se houver —
+                de contexto; o texto do capítulo tem precedência sobre ela.
             modelo: o identificador do modelo a usar.
         """
 
@@ -127,5 +179,11 @@ class ProvedorIA(ABC):
         elementos: list[str],
         perfil_renderizacao: str,
         modelo: str,
+        comentario_do_usuario: str | None = None,
     ) -> PromptMontado:
-        """Monta o prompt de imagem a partir do que foi escolhido (passo 8)."""
+        """Monta o prompt de imagem a partir do que foi escolhido (passo 8).
+
+        Args:
+            comentario_do_usuario: uma correção pontual do usuário, com
+                prioridade sobre a leitura automática do capítulo (item 4.4).
+        """

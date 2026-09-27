@@ -1,12 +1,31 @@
 """Modelo da Configuracao — a integração com IA (item 3.4d)."""
 
-from sqlalchemy import CheckConstraint, String
+import enum
+
+from sqlalchemy import CheckConstraint, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
 
 ID_UNICO = 1
 """O único id que a tabela de configuração aceita."""
+
+
+class PrioridadeIA(enum.Enum):
+    """Custo vs. qualidade nas decisões que usam IA (item 4.3).
+
+    Hoje controla só a releitura da fase 2 do item 4.4, mas o campo é pensado
+    para valer também em futuras decisões parecidas no sistema — por isso mora
+    na configuração geral, e não como um parâmetro isolado daquela rota.
+    """
+
+    ECONOMIA = "ECONOMIA"
+    """Reaproveita o resultado já obtido; só gasta uma chamada de IA nova
+    quando ainda não há um resultado salvo."""
+
+    QUALIDADE = "QUALIDADE"
+    """Sempre gasta uma chamada de IA nova, mesmo que já exista um resultado
+    salvo — prioriza a leitura mais recente do texto sobre o custo."""
 
 
 class Configuracao(Base):
@@ -40,6 +59,21 @@ class Configuracao(Base):
 
     modelo_prompt: Mapped[str | None] = mapped_column(String(200))
     """Modelo usado para montar o prompt de imagem (passo 8 do fluxo)."""
+
+    prioridade_ia: Mapped[PrioridadeIA] = mapped_column(
+        Enum(
+            PrioridadeIA,
+            native_enum=False,
+            length=20,
+            create_constraint=True,
+            name="prioridade_ia",
+            values_callable=lambda tipo: [membro.value for membro in tipo],
+        ),
+        default=PrioridadeIA.ECONOMIA,
+        server_default=PrioridadeIA.ECONOMIA.value,
+    )
+    """Custo vs. qualidade nas chamadas de IA que podem ser reaproveitadas
+    (item 4.4). ``ECONOMIA`` por padrão — não gasta chamada de IA à toa."""
 
     def __repr__(self) -> str:
         return (

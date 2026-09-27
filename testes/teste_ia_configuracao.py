@@ -154,7 +154,6 @@ def teste_extrair_elementos_interpreta_o_json() -> None:
                     "tipo": "PERSONAGEM",
                     "nome": "Ned Stark",
                     "descricao": "Senhor de Winterfell.",
-                    "estado_sugerido": "Capa de pele, barba grisalha.",
                     "manter_estado_atual": False,
                 },
                 {
@@ -172,9 +171,8 @@ def teste_extrair_elementos_interpreta_o_json() -> None:
     assert extracao.modelo == "algum/modelo"
     assert [e.nome for e in extracao.elementos] == ["Ned Stark", "Winterfell"]
     assert extracao.elementos[0].tipo is TipoElemento.PERSONAGEM
-    assert extracao.elementos[0].estado_sugerido == "Capa de pele, barba grisalha."
+    assert extracao.elementos[0].descricao == "Senhor de Winterfell."
     assert extracao.elementos[1].manter_estado_atual is True
-    assert extracao.elementos[1].estado_sugerido is None
 
 
 def teste_extrair_elementos_aceita_json_embrulhado_em_markdown() -> None:
@@ -322,6 +320,123 @@ def teste_montar_prompt_manda_cena_elementos_e_estilo() -> None:
     assert "aquarela sombria" in enviado
 
 
+def teste_montar_prompt_inclui_comentario_do_usuario_com_prioridade() -> None:
+    """O comentário tem prioridade sobre a leitura automática (item 4.4)."""
+    capturado = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado["corpo"] = json.loads(pedido.content)
+        return httpx.Response(200, json=_resposta_de_conversa("prompt"))
+
+    provedor = ProvedorOpenRouter(
+        chave_api="k",
+        cliente=httpx.Client(
+            base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder)
+        ),
+    )
+
+    provedor.montar_prompt(
+        "O pátio ao anoitecer",
+        ["Ned Stark: capa de pele"],
+        "aquarela sombria",
+        "m",
+        comentario_do_usuario="A barba dele é rala, não cheia.",
+    )
+
+    enviado = capturado["corpo"]["messages"][1]["content"]
+    assert "A barba dele é rala, não cheia." in enviado
+
+
+def teste_montar_prompt_sem_comentario_nao_menciona_prioridade() -> None:
+    """Sem comentário, não sobra rastro de um campo vazio na mensagem."""
+    capturado = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado["corpo"] = json.loads(pedido.content)
+        return httpx.Response(200, json=_resposta_de_conversa("prompt"))
+
+    provedor = ProvedorOpenRouter(
+        chave_api="k",
+        cliente=httpx.Client(
+            base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder)
+        ),
+    )
+
+    provedor.montar_prompt("cena", ["e: x"], "estilo", "m")
+
+    enviado = capturado["corpo"]["messages"][1]["content"]
+    assert "COMENTÁRIO" not in enviado
+
+
+# --------------------------------------------------------------------------- #
+# Leitura profunda de um elemento (item 4.4, fase 2)
+# --------------------------------------------------------------------------- #
+
+
+def teste_sugerir_estado_interpreta_o_json() -> None:
+    resposta = json.dumps({"descricao": "Capa de pele, barba grisalha."})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_estado(
+        texto_capitulo="texto do capítulo",
+        tipo=TipoElemento.PERSONAGEM,
+        nome="Ned Stark",
+        descricao_do_elemento="Senhor de Winterfell.",
+        estado_atual=None,
+        modelo="algum/modelo",
+    )
+
+    assert sugestao.descricao == "Capa de pele, barba grisalha."
+    assert sugestao.modelo == "algum/modelo"
+
+
+def teste_sugerir_estado_manda_so_o_elemento_pedido() -> None:
+    """A rota manda o nome do elemento e o texto do capítulo — nada mais."""
+    capturado = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado["corpo"] = json.loads(pedido.content)
+        return httpx.Response(
+            200, json=_resposta_de_conversa('{"descricao": "x"}')
+        )
+
+    provedor = ProvedorOpenRouter(
+        chave_api="k",
+        cliente=httpx.Client(
+            base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder)
+        ),
+    )
+
+    provedor.sugerir_estado(
+        texto_capitulo="Ned estava ferido. Robb estava são.",
+        tipo=TipoElemento.PERSONAGEM,
+        nome="Ned Stark",
+        descricao_do_elemento="Senhor de Winterfell.",
+        estado_atual="Capa de pele.",
+        modelo="m",
+    )
+
+    enviado = capturado["corpo"]["messages"][1]["content"]
+    assert "Ned Stark" in enviado
+    assert "Senhor de Winterfell." in enviado
+    assert "Capa de pele." in enviado
+    assert "Ned estava ferido. Robb estava são." in enviado
+
+
+def teste_sugerir_estado_sem_json_levanta_erro() -> None:
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa("não é json")})
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.sugerir_estado(
+            texto_capitulo="t",
+            tipo=TipoElemento.PERSONAGEM,
+            nome="Ned",
+            descricao_do_elemento=None,
+            estado_atual=None,
+            modelo="m",
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Erros e pré-checagens
 # --------------------------------------------------------------------------- #
@@ -421,6 +536,16 @@ def teste_configuracao_comeca_vazia(cliente: TestClient) -> None:
     assert corpo["tem_chave_api"] is False
     assert corpo["origem_da_chave"] == "ausente"
     assert corpo["modelo_extracao"] is None
+    assert corpo["prioridade_ia"] == "ECONOMIA"
+
+
+def teste_gravar_prioridade_ia(cliente: TestClient) -> None:
+    """Item 4.3 — controla a releitura da leitura profunda (item 4.4)."""
+    resposta = cliente.put("/configuracao", json={"prioridade_ia": "QUALIDADE"})
+
+    assert resposta.status_code == 200
+    assert resposta.json()["prioridade_ia"] == "QUALIDADE"
+    assert cliente.get("/configuracao").json()["prioridade_ia"] == "QUALIDADE"
 
 
 def teste_gravar_chave_e_modelos(cliente: TestClient) -> None:
@@ -517,6 +642,11 @@ def teste_chave_aceita_o_nome_alternativo_de_variavel_de_ambiente(
 
     obter = modulo_de_configuracao.obter_configuracoes
     obter.cache_clear()
+    # O conftest deixa CHAVE_API_OPENROUTER presente (vazia), para isolar os
+    # testes do .env real — mas isso faria essa variável "ganhar" da alternativa
+    # mesmo vazia, já que as duas passam a existir no ambiente. Removida aqui
+    # para simular o caso real: só a variável de conta está definida.
+    monkeypatch.delenv("CHAVE_API_OPENROUTER", raising=False)
     monkeypatch.setenv("IMAGINEER_KEY_OPEN_ROUTER", "sk-da-conta")
     try:
         resposta = cliente.get("/configuracao")

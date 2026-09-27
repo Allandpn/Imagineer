@@ -631,13 +631,16 @@ Ambas aceitam nulo, e ambas usam `SET NULL`: apagar um perfil de estilo não pod
 
 ### 4.2 Interface abstrata
 
-Camada de abstração `ProvedorIA` com dois métodos:
-- `extrair_elementos(texto_capitulo, estados_conhecidos) -> lista estruturada`
-- `montar_prompt(elementos_selecionados, estados, perfil_renderizacao) -> texto do prompt`
+Camada de abstração `ProvedorIA` com três métodos:
+- `extrair_elementos(texto_capitulo, estados_conhecidos, modelo) -> lista estruturada` — identifica **quem/o que aparece** no capítulo (passo 6, fase 1 — ver item 4.4).
+- `sugerir_estado(texto_capitulo, elemento, estado_atual, modelo) -> descrição de aparência` — a **leitura profunda** de um elemento específico (fase 2 — ver item 4.4).
+- `montar_prompt(descricao_da_cena, elementos, perfil_renderizacao, modelo, comentario_do_usuario) -> texto do prompt` — passo 8, agora aceitando um comentário opcional do usuário com prioridade sobre a leitura automática.
 
-Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_modelo`. Os dois métodos devolvem objetos tipados, não texto cru, para que a rota não tenha que adivinhar o formato da resposta. Provedores nativos adicionais (Groq, Gemini) podem ser adicionados depois seguindo a mesma interface, se necessário.
+Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_modelo`. Os três métodos devolvem objetos tipados, não texto cru, para que a rota não tenha que adivinhar o formato da resposta. Provedores nativos adicionais (Groq, Gemini) podem ser adicionados depois seguindo a mesma interface, se necessário.
 
 > **Divergência registrada (item 1.5):** a primeira versão desta seção nomeava a interface como `AIProvider`, a implementação como `OpenRouterProvider` e o parâmetro como `render_profile`. Os nomes foram traduzidos para `ProvedorIA`, `ProvedorOpenRouter` e `perfil_renderizacao` por coerência com a regra de idioma: existe tradução natural, então o português prevalece. Definido antes de a pasta `ia/` ser preenchida, para não renomear código depois.
+
+> **Divergência registrada, pós-validação com IA real (itens 4.4 e 6.6):** a versão original de `extrair_elementos` devolvia, numa passada só, tanto a identificação de cada elemento quanto uma descrição livre de aparência (`estado_sugerido`) e um veredito de continuidade (`manter_estado_atual`). Testado com `openai/gpt-4o-mini` num capítulo real de *A Vontade de Muitos*, esse desenho misturou atributos entre personagens (atribuiu o "joelho machucado" de um coadjuvante ao protagonista) — o modelo estava tentando descrever a aparência de nove elementos ao mesmo tempo na mesma resposta. Um teste com `google/gemini-2.5-flash` no mesmo capítulo, embora tenha corrigido esses erros, **inventou um elemento que não existe no texto** ("carroça de suprimentos"). O desenho passou a separar identificação (barata, ampla, sem descrição de aparência) de leitura profunda (focada, um elemento por vez, sempre lendo o capítulo de origem do estado) — ver item 4.4.
 
 ### 4.3 Configuração de modelos
 
@@ -645,6 +648,7 @@ Tela de configuração permitindo:
 - Cadastro da API key do OpenRouter, nunca hardcoded.
 - Seleção de modelo para extração de elementos (passo 6) e para montagem de prompt (passo 8), com opção "usar o mesmo modelo para os dois" marcada por padrão.
 - Lista de modelos obtida dinamicamente do endpoint `/models` do OpenRouter (com filtro opcional para mostrar só os gratuitos).
+- **Prioridade de IA** (`prioridade_ia`): `ECONOMIA` (padrão) ou `QUALIDADE` — controla se a leitura profunda do item 4.4 relê o capítulo toda vez que um prompt é montado, ou só da primeira vez por estado. Ver item 4.4 para o efeito exato. É um campo pensado para valer também em futuras decisões de custo-vs-qualidade no sistema, não só nesta.
 
 #### De onde vem a chave
 
@@ -700,12 +704,29 @@ Também descobri, na mesma chamada, que **os 458 modelos declaram modalidades** 
 
 ### 4.4 Regra de decisão de novo Estado
 
-A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evita depender de uma regra algorítmica perfeita para decidir sozinha se um capítulo representa mudança de estado:
+A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evita depender de uma regra algorítmica perfeita para decidir sozinha se um capítulo representa mudança de estado. Depois de testar com IA real (ver a divergência registrada no item 4.2), o processo virou **duas fases**, para o texto do livro — e não um resumo apressado de vários elementos numa resposta só — ser sempre a fonte da descrição de aparência que chega ao prompt de imagem.
 
-1. Ao processar um capítulo, o backend busca o último `EstadoElemento` conhecido de cada elemento relevante.
-2. Esse estado é enviado como contexto à IA junto do texto do capítulo.
-3. A IA retorna uma sugestão: "manter estado atual" ou "possível novo estado: [detalhes]".
-4. O app mostra a sugestão ao usuário, que confirma ou edita antes de qualquer gravação no banco.
+#### Fase 1 — Identificação (passo 6)
+
+`POST /capitulos/{id}/sugestoes` continua chamando `extrair_elementos` com o texto do capítulo inteiro e o último estado conhecido de cada elemento já cadastrado. Devolve, para cada elemento encontrado: `tipo`, `nome`, `descricao` (identidade — quem ou o que é, não muda) e `manter_estado_atual` (um julgamento leve, comparando com o contexto de estados conhecidos). **Não devolve mais uma descrição de aparência** (`estado_sugerido` foi removido) — é exatamente essa parte que, tentando descrever vários elementos ao mesmo tempo, misturou atributos entre personagens num teste real.
+
+O usuário revisa a lista (passo 7): confirma, ajusta ou descarta cada elemento, e cadastra o `Elemento` com um primeiro `EstadoElemento` — a descrição desse primeiro estado pode ser digitada à mão, ou ficar vaga/curta por enquanto, porque a fase 2 é quem vai efetivamente derivá-la do livro antes de qualquer prompt ser montado.
+
+#### Fase 2 — Leitura profunda (passo 8, dentro de `POST /cenas/{id}/prompts`)
+
+Antes de montar o prompt, para **cada** estado ligado à cena, o servidor relê o texto do **capítulo onde aquele estado foi originalmente registrado** (não necessariamente o capítulo da cena) e chama `sugerir_estado`, focando num elemento por vez — é essa concentração, um elemento por chamada, que evita a mistura de atributos da fase 1 antiga. O texto que volta:
+
+- **Sobrescreve** `EstadoElemento.descricao` no banco — o livro é a fonte de verdade, mesmo que substitua o que foi digitado à mão no passo 7. Chapters futuros que usam "o último estado conhecido" como contexto (fase 1) também passam a se beneficiar da versão mais fiel.
+- É o que entra na montagem do prompt.
+
+Repetir essa releitura toda vez que um prompt é montado para a mesma cena tem custo: cada chamada de `sugerir_estado` é uma chamada de IA a mais, em cima da chamada que monta o prompt em si. Por isso existe `prioridade_ia` (item 4.3):
+
+- **`QUALIDADE`**: relê o capítulo de origem toda vez que `POST /cenas/{id}/prompts` é chamado para aquela cena.
+- **`ECONOMIA`** (padrão): relê só a primeira vez por estado. O campo `EstadoElemento.confirmado_pela_leitura_profunda` marca se aquele estado já passou pela fase 2; enquanto marcado, chamadas seguintes reaproveitam a descrição já salva, sem gastar outra chamada de IA.
+
+#### Comentário do usuário tem prioridade sobre tudo
+
+`POST /cenas/{id}/prompts` aceita um campo opcional `comentario`: depois de ler o capítulo (ou ver a imagem gerada), o usuário pode escrever uma correção pontual ("a barba dele é mais rala", "esqueceram a cicatriz no braço"). Esse texto entra na chamada de `montar_prompt` com prioridade explícita sobre a leitura do capítulo (modo `QUALIDADE`) e sobre a descrição já salva (modo `ECONOMIA`) — é o único canal onde a palavra do usuário depois de ler o texto pesa mais que a leitura automática. Não existe rota separada de "refinar": gerar de novo com um comentário é a mesma rota, chamada de novo — o histórico de tentativas já fica em `GET /cenas/{id}/prompts`.
 
 ---
 
@@ -757,6 +778,10 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 | Material não-narrativo **sugerido** como ignorado, não descartado | Medição em dezoito livros: nenhum dos quatro sinais testados separa narrativa de apêndice com segurança. Esconder narrativa é muito pior que listar um glossário, então nada é descartado — a importação sugere e o usuário confirma |
 | Limite de tamanho **relativo à mediana do livro**, não absoluto, e fixado em 10% | A mediana variou de **mil** caracteres numa coletânea de poemas a **89 mil** num livro que é um capítulo só, então um limite fixo serviria para um e falharia nos outros. Os 10% saíram de uma varredura: acima disso começa a esconder narrativa |
 | Chave do OpenRouter aceita duas variáveis de ambiente: `CHAVE_API_OPENROUTER` e `IMAGINEER_KEY_OPEN_ROUTER` | Allan já mantém `IMAGINEER_KEY_OPEN_ROUTER` como variável de conta, fora deste projeto. Aceitar as duas (via `AliasChoices` do Pydantic) evita obrigá-lo a renomear algo que já existe no ambiente dele, sem abrir mão do nome em português como principal — é uma exceção pontual à regra de idioma do `CLAUDE.md`, feita conscientemente e só no nome da variável de ambiente, não no código |
+| Extração de elementos dividida em identificação (fase 1) e leitura profunda (fase 2), em vez de uma chamada só | Testado com IA real (`gpt-4o-mini` e `gemini-2.5-flash`) num capítulo de *A Vontade de Muitos*: pedir a descrição de aparência de vários elementos na mesma resposta produziu mistura de atributos entre personagens e, num dos modelos, um elemento inventado. Descrever um elemento por vez, relendo o capítulo de origem, é o que reduz isso — ver item 4.4 |
+| Leitura profunda sobrescreve `EstadoElemento.descricao`, em vez de só alimentar o prompt daquela vez | O livro é a fonte de verdade, e o usuário pode gerar uma cena antes de ter lido o capítulo pessoalmente — não dá para depender da revisão dele como garantia de qualidade. Sobrescrever também beneficia capítulos futuros, que usam "o último estado conhecido" como contexto da fase 1 |
+| `prioridade_ia` (`ECONOMIA`/`QUALIDADE`) como campo de configuração, não parâmetro por chamada | Decisão de custo-vs-qualidade que o usuário quer controlar uma vez, na tela de configuração, e que deve valer para outras decisões parecidas no futuro — não é específica da leitura profunda |
+| Comentário do usuário no corpo de `POST /cenas/{id}/prompts`, sem rota separada de "refinar" | Gerar de novo com uma correção é a mesma operação de gerar um prompt, só com mais um dado de entrada; o histórico de tentativas já existe via `GET /cenas/{id}/prompts`, então uma rota dedicada não acrescentaria nada que a existente não faça |
 
 ---
 
@@ -919,13 +944,15 @@ Verificado contra o servidor rodando, com *O Alienista*: criei um perfil "Aquare
 | `GET /imagens/{id}/arquivo` | Devolve o arquivo da imagem | **implementado** |
 | `DELETE /imagens/{id}` | Remove a imagem do catálogo, e o arquivo do disco | **implementado** |
 
-**`POST /cenas/{id}/prompts` monta a descrição da cena e chama `provedor.montar_prompt`:**
+**`POST /cenas/{id}/prompts` faz a leitura profunda (item 4.4, fase 2) e depois chama `provedor.montar_prompt`:**
 
-- A lista de elementos vem dos estados ligados à cena (`Cena.estados_elemento`), formatados como `"Nome: descrição do estado"` — a mesma fonte que a tela de revisão da cena já usa (item 6.4).
+- **Antes de montar o prompt**, para cada estado ligado à cena (`Cena.estados_elemento`), a rota decide se relê o capítulo de origem daquele estado: sempre, se `prioridade_ia == QUALIDADE`; só se `EstadoElemento.confirmado_pela_leitura_profunda` ainda for falso, se `== ECONOMIA`. Quando relê, chama `sugerir_estado`, grava o texto de volta em `EstadoElemento.descricao` e marca o campo como confirmado.
+- A lista de elementos que vai para `montar_prompt` vem desses estados (já atualizados, se foi o caso), formatados como `"Nome: descrição do estado"`.
 - O perfil de renderização é o informado no pedido (`perfil_renderizacao_id`) ou, na ausência dele, o padrão do livro (`Livro.perfil_renderizacao_padrao_id`). Sem nenhum dos dois, a rota responde 422 — não há estilo para aplicar.
 - O modelo é o informado no pedido ou o `modelo_prompt` da configuração. Sem nenhum dos dois, 422 (mesmo padrão do item 6.7).
+- O pedido aceita um campo opcional `comentario`: uma correção do usuário, com prioridade sobre a leitura automática do capítulo e sobre a descrição já salva (item 4.4). Passa direto para `provedor.montar_prompt`.
 - O prompt monta um texto único a partir dos campos do perfil (`estilo`, `artista_referencia`, `iluminacao`, `paleta`, `formato`) — os únicos preenchidos entram no texto, porque cada ferramenta de imagem usa um subconjunto diferente (item 3.4c).
-- Erros do provedor seguem o mesmo mapeamento do item 6.7: `ChaveDeApiAusente`/`ModeloNaoEscolhido` → 422, qualquer outro `ErroDoProvedorIA` → 502.
+- Erros do provedor seguem o mesmo mapeamento do item 6.7: `ChaveDeApiAusente`/`ModeloNaoEscolhido` → 422, qualquer outro `ErroDoProvedorIA` → 502. Isso vale tanto para a chamada de `sugerir_estado` quanto para a de `montar_prompt` — qualquer uma pode falhar.
 
 **O upload de imagem é multipart**, no mesmo padrão de `POST /livros` com o EPUB (item 6.2): o app manda os bytes da imagem no corpo do pedido, e o servidor grava o arquivo em `DIRETORIO_IMAGENS/prompts/{prompt_id}/{nome-gerado}` — um nome gerado (não o nome original) evita colisão entre duas imagens de nomes iguais vindas de ferramentas diferentes. Só o caminho relativo entra no banco (item 3.4c). Extensões aceitas: `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif` — o que cobre as ferramentas de geração de imagem em uso; outra extensão responde 422. O limite de tamanho é 25 MB por imagem, lido em blocos como no EPUB, para não estourar a memória do Raspberry Pi com um arquivo grande demais.
 
@@ -940,6 +967,8 @@ As oito rotas, com 16 testes. O `ler_com_limite` que já protegia o upload do EP
 O texto do perfil que vai para a IA é montado só com os campos preenchidos (`estilo`, `artista_referencia`, `iluminacao`, `paleta`, `formato`) — confirmado com um perfil só com `estilo` definido e outro com todos os campos, verificando que o texto muda de tamanho de acordo, sem campos vazios aparecendo como "None" ou string vazia no meio do prompt.
 
 `DELETE /prompts/{id}` apaga os arquivos das imagens **depois** do commit que remove as linhas do banco, não antes: se a remoção de um arquivo falhasse no meio, o banco já estaria consistente (prompt e imagens removidos), e sobraria só um arquivo órfão no disco — o mesmo tipo de custo aceitável registrado na limitação conhecida acima, e não uma inconsistência de dados.
+
+**Divergência registrada, pós-validação com IA real.** A versão inicial de `criar_prompt` só lia os estados já salvos no banco, sem tocar na IA antes de montar o prompt. Um teste de ponta a ponta com `openai/gpt-4o-mini` e `google/gemini-2.5-flash` no mesmo capítulo real mostrou erros de atribuição e um elemento inventado quando a descrição de aparência de vários elementos era gerada numa única chamada (item 4.2). A rota passou a fazer a leitura profunda (fase 2 do item 4.4) elemento por elemento, imediatamente antes de montar o prompt, e a aceitar um `comentario` do usuário com prioridade sobre essa leitura.
 
 ### 6.7 Extração e configuração
 
@@ -956,7 +985,7 @@ O texto do perfil que vai para a IA é montado só com os campos preenchidos (`e
 
 1. Busca o texto do capítulo e o estado vigente de cada elemento do livro **até aquele capítulo** (mesma consulta do item 6.3, `estado_vigente_por_elemento`, limitada por `Capitulo.ordem`) — é o contexto que permite à IA responder "manter estado atual" em vez de inventar um estado novo.
 2. Confere se o texto cabe na janela do modelo escolhido (`modelo_extracao` da configuração) **antes** de chamar a IA — gastar a chamada para descobrir que não cabia seria o pior caso (item 4.3).
-3. Chama `provedor.extrair_elementos`.
+3. Chama `provedor.extrair_elementos` — só identificação (fase 1 do item 4.4): tipo, nome, descrição de identidade e `manter_estado_atual`. **Não** devolve mais uma descrição de aparência; essa parte é a leitura profunda (fase 2), que só acontece mais tarde, dentro de `POST /cenas/{id}/prompts` (item 6.6).
 4. Tenta casar cada sugestão com um elemento já cadastrado do livro, comparando tipo e nome **sem diferenciar maiúsculas/minúsculas nem acentuação** — a IA foi instruída a repetir o nome exato de um elemento conhecido, mas variações de caixa e acento apareceram como algo razoável de tolerar sem risco de casar elementos diferentes por engano. Quando casa, preenche `elemento_id` na resposta.
 
 Erros do provedor viram HTTP assim: `ChaveDeApiAusente` e `ModeloNaoEscolhido` e `TextoLongoDemais` → 422 (o problema é a configuração, o usuário resolve pela tela de configuração); qualquer outro `ErroDoProvedorIA` (rede, resposta fora do formato) → 502.
@@ -964,6 +993,8 @@ Erros do provedor viram HTTP assim: `ChaveDeApiAusente` e `ModeloNaoEscolhido` e
 #### O que foi implementado
 
 As três rotas de `/configuracao` foram implementadas junto com a camada de IA (Etapa 4.3), antes desta tabela ser atualizada — o código já existia, só faltava marcar. `POST /capitulos/{id}/sugestoes` é o item novo desta rodada, com 9 testes.
+
+**Divergência registrada, pós-validação com IA real:** o campo `estado_sugerido` foi removido da resposta depois de um teste de ponta a ponta expor mistura de atributos entre elementos (ver a divergência do item 4.2 e a nova fase 2 do item 4.4).
 
 A checagem de "cabe no modelo" (`conferir_se_cabe`) saiu de método de `ProvedorOpenRouter` para função livre em `ia/openrouter.py`: a rota precisa da mesma checagem antes de chamar **qualquer** provedor, inclusive o `ProvedorFalso` dos testes, e a estimativa de tokens não depende de nenhum detalhe de um fornecedor específico. O método antigo continua existindo, agora só delegando para a função — o que evitou reescrever os testes que já cobriam esse comportamento.
 

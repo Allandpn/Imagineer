@@ -79,7 +79,6 @@ def teste_sugestoes_devolve_o_que_o_provedor_deu(
             "tipo": "PERSONAGEM",
             "nome": "Jon",
             "descricao": "Um bastardo do norte.",
-            "estado_sugerido": None,
             "manter_estado_atual": False,
             "elemento_id": None,
         }

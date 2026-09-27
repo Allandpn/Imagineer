@@ -95,18 +95,22 @@ class ElementoAjuste(BaseModel):
 
 
 class ElementoSugerido(BaseModel):
-    """Um elemento sugerido pela IA (passo 6, item 4.4).
+    """Um elemento sugerido pela IA — só identificação (passo 6, item 4.4, fase 1).
 
     Não é gravado no banco por esta rota — o app mostra a sugestão e o usuário
     confirma pelas rotas de cadastro já existentes (`POST /elementos`,
     `POST /elementos/{id}/estados`).
+
+    Não traz descrição de aparência: essa parte é a leitura profunda (fase 2),
+    que acontece depois, dentro de `POST /cenas/{id}/prompts` — pedir isso de
+    vários elementos na mesma resposta misturou atributos entre personagens
+    num teste com IA real.
     """
 
     tipo: TipoElemento
     nome: str
-    descricao: str | None
-    estado_sugerido: str | None = Field(
-        description="Como o elemento parece estar neste capítulo, segundo a IA."
+    descricao: str | None = Field(
+        description="Identidade do elemento: quem ou o que é. Não muda."
     )
     manter_estado_atual: bool = Field(
         description="A IA acha que o estado conhecido continua valendo (item 4.4)."

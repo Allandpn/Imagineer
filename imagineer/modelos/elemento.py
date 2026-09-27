@@ -14,12 +14,14 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Enum,
     ForeignKey,
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -160,6 +162,17 @@ class EstadoElemento(Base):
     É a "âncora visual" do item 3.1: nas gerações seguintes do mesmo personagem,
     esta imagem serve de referência — o mecanismo que mantém a aparência
     consistente entre capítulos distantes.
+    """
+
+    confirmado_pela_leitura_profunda: Mapped[bool] = mapped_column(
+        Boolean, server_default=false()
+    )
+    """Se ``descricao`` já veio da leitura profunda do capítulo de origem
+    (item 4.4, fase 2), em vez de só do que o usuário digitou no passo 7.
+
+    Controla o modo ``ECONOMIA`` de ``prioridade_ia``: enquanto verdadeiro, a
+    montagem de um novo prompt reaproveita esta descrição em vez de relê-la —
+    só volta a ``False`` se o estado for apagado e recriado.
     """
 
     elemento: Mapped["Elemento"] = relationship(back_populates="estados")

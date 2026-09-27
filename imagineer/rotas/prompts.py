@@ -26,7 +26,16 @@ from imagineer.ia.provedor import (
     ModeloNaoEscolhido,
     ProvedorIA,
 )
-from imagineer.modelos import Cena, Imagem, Livro, PerfilRenderizacao, Prompt
+from imagineer.modelos import (
+    Capitulo,
+    Cena,
+    Configuracao,
+    Imagem,
+    Livro,
+    PerfilRenderizacao,
+    PrioridadeIA,
+    Prompt,
+)
 from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.catalogo_imagens import (
     TAMANHO_MAXIMO_DA_IMAGEM,
@@ -78,27 +87,33 @@ def criar_prompt(
 ) -> PromptDetalhe:
     """Monta o prompt de imagem a partir da cena (passo 8).
 
-    Os elementos vêm dos estados ligados à cena, o perfil vem do pedido ou do
-    padrão do livro, e o modelo vem do pedido ou da configuração — sempre nessa
-    ordem de preferência.
+    Antes de montar o prompt, faz a leitura profunda (item 4.4, fase 2) de cada
+    estado da cena que ainda precisa dela — sempre, em modo `QUALIDADE`; só se
+    nunca lido, em modo `ECONOMIA`. O texto do capítulo de origem sobrescreve a
+    descrição salva, porque o livro é a fonte de verdade, não o que foi digitado
+    à mão no passo 7. O perfil vem do pedido ou do padrão do livro, e os modelos
+    vêm do pedido ou da configuração — sempre nessa ordem de preferência.
     """
     cena = _buscar_cena(sessao, cena_id)
     livro = cena.capitulo.livro
+    configuracao = obter_ou_criar(sessao)
 
     perfil = _resolver_perfil(sessao, corpo.perfil_renderizacao_id, livro)
-    modelo = corpo.modelo or obter_ou_criar(sessao).modelo_prompt
-    if not modelo:
+    modelo_prompt = corpo.modelo or configuracao.modelo_prompt
+    if not modelo_prompt:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Nenhum modelo de prompt foi escolhido. Configure um em /configuracao.",
         )
 
     try:
+        _fazer_leitura_profunda(sessao, provedor, cena, configuracao)
         resultado = provedor.montar_prompt(
             descricao_da_cena=_descricao_da_cena(cena),
             elementos=_elementos_da_cena(cena),
             perfil_renderizacao=_descricao_do_perfil(perfil),
-            modelo=modelo,
+            modelo=modelo_prompt,
+            comentario_do_usuario=corpo.comentario,
         )
     except (ChaveDeApiAusente, ModeloNaoEscolhido) as erro:
         raise HTTPException(
@@ -245,6 +260,56 @@ def remover_imagem(imagem_id: int, sessao: Session = Depends(obter_sessao)) -> N
 # --------------------------------------------------------------------------- #
 # Funções internas
 # --------------------------------------------------------------------------- #
+
+
+def _fazer_leitura_profunda(
+    sessao: Session,
+    provedor: ProvedorIA,
+    cena: Cena,
+    configuracao: Configuracao,
+) -> None:
+    """Relê o capítulo de origem de cada estado que precisa (item 4.4, fase 2).
+
+    Em modo ``QUALIDADE``, relê todos os estados da cena. Em modo ``ECONOMIA``
+    (padrão), só os que ainda não passaram pela leitura profunda — o campo
+    ``confirmado_pela_leitura_profunda`` é quem marca isso. Sobrescreve
+    ``EstadoElemento.descricao`` no lugar: o livro é a fonte de verdade, mesmo
+    que substitua o que foi digitado à mão no passo 7.
+
+    Usa o modelo de **extração** (``modelo_extracao``), não o de prompt: ler e
+    entender o capítulo é a mesma tarefa da fase 1, não a de escrever texto
+    criativo que ``montar_prompt`` faz.
+    """
+    estados = list(cena.estados_elemento)
+    a_reler = [
+        estado
+        for estado in estados
+        if configuracao.prioridade_ia == PrioridadeIA.QUALIDADE
+        or not estado.confirmado_pela_leitura_profunda
+    ]
+    if not a_reler:
+        return
+
+    modelo = configuracao.modelo_extracao
+    if not modelo:
+        raise ModeloNaoEscolhido(
+            "Nenhum modelo de extração foi escolhido — ele também é usado na "
+            "leitura profunda dos estados da cena. Configure um em /configuracao."
+        )
+
+    for estado in a_reler:
+        capitulo_de_origem = sessao.get(Capitulo, estado.capitulo_id)
+        sugestao = provedor.sugerir_estado(
+            texto_capitulo=capitulo_de_origem.texto,
+            tipo=estado.elemento.tipo,
+            nome=estado.elemento.nome,
+            descricao_do_elemento=estado.elemento.descricao,
+            estado_atual=estado.descricao,
+            modelo=modelo,
+        )
+        estado.descricao = sugestao.descricao
+        estado.confirmado_pela_leitura_profunda = True
+        sessao.add(estado)
 
 
 def _resolver_perfil(

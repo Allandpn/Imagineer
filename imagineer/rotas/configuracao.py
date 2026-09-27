@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.ia.provedor import ErroDoProvedorIA, ProvedorIA
+from imagineer.modelos import PrioridadeIA
 from imagineer.servicos.configuracao_ia import (
     construir_provedor,
     obter_ou_criar,
@@ -39,6 +40,12 @@ class ConfiguracaoAtual(BaseModel):
     )
     modelo_extracao: str | None
     modelo_prompt: str | None
+    prioridade_ia: PrioridadeIA = Field(
+        description=(
+            "ECONOMIA (padrão) reaproveita leituras já feitas; QUALIDADE relê "
+            "o capítulo toda vez que um prompt é montado (item 4.4)."
+        )
+    )
 
 
 class ConfiguracaoNova(BaseModel):
@@ -52,6 +59,7 @@ class ConfiguracaoNova(BaseModel):
     chave_api_openrouter: str | None = Field(default=None, max_length=200)
     modelo_extracao: str | None = Field(default=None, max_length=200)
     modelo_prompt: str | None = Field(default=None, max_length=200)
+    prioridade_ia: PrioridadeIA | None = None
 
 
 class ModeloDaLista(BaseModel):
@@ -74,6 +82,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         origem_da_chave=chave.origem,
         modelo_extracao=configuracao.modelo_extracao,
         modelo_prompt=configuracao.modelo_prompt,
+        prioridade_ia=configuracao.prioridade_ia,
     )
 
 
@@ -88,6 +97,11 @@ def gravar_configuracao(
     configuracao = obter_ou_criar(sessao)
 
     for campo, valor in nova.model_dump(exclude_unset=True).items():
+        if campo == "prioridade_ia":
+            # Não é campo de texto livre — não faz sentido "apagar" com string
+            # vazia, então segue direto, sem a normalização abaixo.
+            setattr(configuracao, campo, valor)
+            continue
         # String vazia e nulo significam a mesma coisa aqui: "não tenho isto".
         setattr(configuracao, campo, (valor or "").strip() or None)
 

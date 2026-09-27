@@ -43,13 +43,22 @@ class PromptDetalhe(PromptResumo):
 class PromptNovo(BaseModel):
     """O que o app manda para montar um prompt a partir de uma cena (passo 8).
 
-    Os dois campos são opcionais: na ausência de ``perfil_renderizacao_id``, vale
+    Os três campos são opcionais: na ausência de ``perfil_renderizacao_id``, vale
     o perfil padrão do livro; na ausência de ``modelo``, vale o ``modelo_prompt``
     da configuração (item 6.6).
     """
 
     perfil_renderizacao_id: int | None = None
     modelo: str | None = Field(default=None, max_length=200)
+    comentario: str | None = Field(
+        default=None,
+        max_length=2000,
+        description=(
+            "Uma correção pontual do usuário, com prioridade sobre a leitura "
+            "automática do capítulo (item 4.4). Gerar de novo com um comentário "
+            "é como se pede um refinamento — não existe rota separada para isso."
+        ),
+    )
 
 
 class PromptAjuste(BaseModel):

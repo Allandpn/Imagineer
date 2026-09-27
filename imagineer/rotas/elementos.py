@@ -306,7 +306,6 @@ def sugerir_elementos(
                 tipo=sugestao.tipo,
                 nome=sugestao.nome,
                 descricao=sugestao.descricao,
-                estado_sugerido=sugestao.estado_sugerido,
                 manter_estado_atual=sugestao.manter_estado_atual,
                 elemento_id=elementos_existentes.get(
                     _chave_normalizada(sugestao.tipo, sugestao.nome)

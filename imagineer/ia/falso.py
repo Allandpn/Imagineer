@@ -14,11 +14,13 @@ erros.
 
 from imagineer.ia.provedor import (
     ElementoSugerido,
+    EstadoSugerido,
     ExtracaoDeElementos,
     ModeloDisponivel,
     PromptMontado,
     ProvedorIA,
 )
+from imagineer.modelos import TipoElemento
 
 MODELO_FALSO = "falso/modelo-de-teste"
 
@@ -46,13 +48,16 @@ class ProvedorFalso(ProvedorIA):
     def __init__(
         self,
         elementos: list[ElementoSugerido] | None = None,
+        estado: str = "watercolor-ready appearance description",
         prompt: str = "watercolor painting of a snowy courtyard at dusk",
         erro: Exception | None = None,
     ):
         self._elementos = elementos if elementos is not None else []
+        self._estado = estado
         self._prompt = prompt
         self._erro = erro
         self.chamadas_de_extracao: list[dict] = []
+        self.chamadas_de_estado: list[dict] = []
         self.chamadas_de_prompt: list[dict] = []
 
     def listar_modelos(self) -> list[ModeloDisponivel]:
@@ -74,12 +79,36 @@ class ProvedorFalso(ProvedorIA):
             raise self._erro
         return ExtracaoDeElementos(elementos=list(self._elementos), modelo=modelo)
 
+    def sugerir_estado(
+        self,
+        texto_capitulo: str,
+        tipo: TipoElemento,
+        nome: str,
+        descricao_do_elemento: str | None,
+        estado_atual: str | None,
+        modelo: str,
+    ) -> EstadoSugerido:
+        self.chamadas_de_estado.append(
+            {
+                "texto_capitulo": texto_capitulo,
+                "tipo": tipo,
+                "nome": nome,
+                "descricao_do_elemento": descricao_do_elemento,
+                "estado_atual": estado_atual,
+                "modelo": modelo,
+            }
+        )
+        if self._erro is not None:
+            raise self._erro
+        return EstadoSugerido(descricao=self._estado, modelo=modelo)
+
     def montar_prompt(
         self,
         descricao_da_cena: str,
         elementos: list[str],
         perfil_renderizacao: str,
         modelo: str,
+        comentario_do_usuario: str | None = None,
     ) -> PromptMontado:
         self.chamadas_de_prompt.append(
             {
@@ -87,6 +116,7 @@ class ProvedorFalso(ProvedorIA):
                 "elementos": elementos,
                 "perfil_renderizacao": perfil_renderizacao,
                 "modelo": modelo,
+                "comentario_do_usuario": comentario_do_usuario,
             }
         )
         if self._erro is not None:

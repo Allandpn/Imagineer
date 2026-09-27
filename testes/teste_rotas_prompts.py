@@ -97,7 +97,12 @@ def _montar_cena_completa(
     cena = _cena(cliente, capitulo["id"], [ned["estados"][0]["id"]])
     perfil = _perfil(cliente)
     cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
-    cliente.put("/configuracao", json={"modelo_prompt": MODELO_FALSO})
+    # modelo_extracao também é usado na leitura profunda (item 4.4, fase 2),
+    # que roda dentro de POST /cenas/{id}/prompts antes de montar o prompt.
+    cliente.put(
+        "/configuracao",
+        json={"modelo_extracao": MODELO_FALSO, "modelo_prompt": MODELO_FALSO},
+    )
     return livro, cena
 
 
@@ -120,10 +125,87 @@ def teste_criar_prompt_usa_perfil_padrao_do_livro_e_modelo_da_configuracao(
     assert corpo["modelo_ia"] == MODELO_FALSO
     assert corpo["imagens"] == []
 
+    # A leitura profunda (fase 2) já rodou antes de montar o prompt e
+    # sobrescreveu a descrição do estado — o livro é a fonte de verdade.
     chamada = provedor.chamadas_de_prompt[0]
-    assert "Ned Stark: Ned Stark está assim." in chamada["elementos"]
+    assert "Ned Stark: watercolor-ready appearance description" in chamada["elementos"]
     assert "Aquarela sombria" in chamada["perfil_renderizacao"]
     assert "aquarela" in chamada["perfil_renderizacao"]
+
+
+def teste_criar_prompt_manda_comentario_com_prioridade(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """O comentário do usuário chega até o provedor (item 4.4)."""
+    provedor = ProvedorFalso(prompt="pintura")
+    _, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+
+    resposta = cliente.post(
+        f"/cenas/{cena['id']}/prompts", json={"comentario": "A barba dele é rala."}
+    )
+
+    assert resposta.status_code == 201, resposta.text
+    assert provedor.chamadas_de_prompt[0]["comentario_do_usuario"] == "A barba dele é rala."
+
+
+def teste_leitura_profunda_em_modo_economia_roda_so_uma_vez(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """ECONOMIA (padrão): a segunda chamada reaproveita o que já foi lido."""
+    provedor = ProvedorFalso(prompt="pintura")
+    _, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+
+    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+
+    assert len(provedor.chamadas_de_estado) == 1
+
+
+def teste_leitura_profunda_em_modo_qualidade_roda_toda_vez(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """QUALIDADE: cada prompt novo relê o capítulo de origem do estado."""
+    provedor = ProvedorFalso(prompt="pintura")
+    _, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+    cliente.put("/configuracao", json={"prioridade_ia": "QUALIDADE"})
+
+    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+
+    assert len(provedor.chamadas_de_estado) == 2
+
+
+def teste_leitura_profunda_le_o_capitulo_de_origem_do_estado(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Relê o capítulo onde o estado foi registrado, não o da cena."""
+    provedor = ProvedorFalso(prompt="pintura")
+    _, cena = _montar_cena_completa(cliente, usar_provedor_falso, provedor)
+
+    cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+
+    chamada = provedor.chamadas_de_estado[0]
+    assert chamada["nome"] == "Ned Stark"
+    assert TEXTO_LONGO in chamada["texto_capitulo"]
+
+
+def teste_criar_prompt_sem_modelo_de_extracao_para_leitura_profunda_responde_422(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """A leitura profunda também precisa de um modelo configurado."""
+    usar_provedor_falso(ProvedorFalso())
+    livro = _livro(cliente)
+    capitulo = livro["capitulos"][0]
+    ned = _elemento_com_estado(cliente, livro["id"], capitulo["id"], "Ned Stark")
+    cena = _cena(cliente, capitulo["id"], [ned["estados"][0]["id"]])
+    perfil = _perfil(cliente)
+    cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
+    # Só o modelo de prompt é configurado — falta o de extração/leitura profunda.
+    cliente.put("/configuracao", json={"modelo_prompt": MODELO_FALSO})
+
+    resposta = cliente.post(f"/cenas/{cena['id']}/prompts", json={})
+
+    assert resposta.status_code == 422
 
 
 def teste_criar_prompt_sem_perfil_e_sem_padrao_responde_422(
