@@ -21,6 +21,7 @@ from imagineer.servicos.importacao_epub import (
     importar_epub,
     livros_com_mesmo_identificador,
 )
+from imagineer.servicos.upload import ler_com_limite
 
 rotas = APIRouter(prefix="/livros", tags=["Livros"])
 
@@ -31,8 +32,6 @@ O maior dos dezoito livros de validação tem 46 MB — uma história em quadrin
 então 60 MB acomoda o caso real com folga e ainda protege o Raspberry Pi de um
 arquivo absurdo.
 """
-
-_TAMANHO_DO_BLOCO = 1024 * 1024
 
 
 @rotas.post(
@@ -52,7 +51,7 @@ async def importar_livro(
     resolveria um problema que não existe e acrescentaria estado para o app
     acompanhar.
     """
-    conteudo = await _ler_com_limite(arquivo)
+    conteudo = await ler_com_limite(arquivo, TAMANHO_MAXIMO_DO_EPUB)
 
     try:
         livro = importar_epub(sessao, conteudo, arquivo.filename or "livro.epub")
@@ -154,36 +153,6 @@ def remover_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Non
 # --------------------------------------------------------------------------- #
 # Funções internas
 # --------------------------------------------------------------------------- #
-
-
-async def _ler_com_limite(arquivo: UploadFile) -> bytes:
-    """Lê o arquivo enviado, abortando se passar do limite.
-
-    A leitura é em blocos, e não de uma vez, para que um arquivo gigante seja
-    recusado **antes** de estar todo na memória — num Raspberry Pi isso é a
-    diferença entre uma resposta de erro e o serviço morrer por falta de memória.
-    """
-    blocos: list[bytes] = []
-    total = 0
-    while bloco := await arquivo.read(_TAMANHO_DO_BLOCO):
-        total += len(bloco)
-        if total > TAMANHO_MAXIMO_DO_EPUB:
-            raise HTTPException(
-                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail=(
-                    f"O arquivo passa do limite de "
-                    f"{TAMANHO_MAXIMO_DO_EPUB // (1024 * 1024)} MB."
-                ),
-            )
-        blocos.append(bloco)
-
-    if not blocos:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="O arquivo enviado está vazio.",
-        )
-
-    return b"".join(blocos)
 
 
 def _buscar_livro(sessao: Session, livro_id: int) -> Livro:

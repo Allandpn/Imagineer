@@ -909,14 +909,36 @@ Verificado contra o servidor rodando, com *O Alienista*: criei um perfil "Aquare
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `POST /cenas/{id}/prompts` | Monta o prompt com a IA (passo 8) | depende da Etapa 4 |
-| `GET /cenas/{id}/prompts` | O histórico de prompts da cena | a implementar |
-| `GET /prompts/{id}` | Um prompt com as imagens que saíram dele | a implementar |
-| `PATCH /prompts/{id}` | Anota a avaliação do resultado | a implementar |
-| `DELETE /prompts/{id}` | Remove o prompt e suas imagens | a implementar |
-| `POST /prompts/{id}/imagens` | Importa o arquivo de imagem gerado (passos 10 e 11) | a implementar |
-| `GET /imagens/{id}/arquivo` | Devolve o arquivo da imagem | a implementar |
-| `DELETE /imagens/{id}` | Remove a imagem do catálogo, e o arquivo do disco | a implementar |
+| `POST /cenas/{id}/prompts` | Monta o prompt com a IA (passo 8) | **implementado** |
+| `GET /cenas/{id}/prompts` | O histórico de prompts da cena | **implementado** |
+| `GET /prompts/{id}` | Um prompt com as imagens que saíram dele | **implementado** |
+| `PATCH /prompts/{id}` | Anota a avaliação do resultado | **implementado** |
+| `DELETE /prompts/{id}` | Remove o prompt e suas imagens | **implementado** |
+| `POST /prompts/{id}/imagens` | Importa o arquivo de imagem gerado (passos 10 e 11) | **implementado** |
+| `GET /imagens/{id}/arquivo` | Devolve o arquivo da imagem | **implementado** |
+| `DELETE /imagens/{id}` | Remove a imagem do catálogo, e o arquivo do disco | **implementado** |
+
+**`POST /cenas/{id}/prompts` monta a descrição da cena e chama `provedor.montar_prompt`:**
+
+- A lista de elementos vem dos estados ligados à cena (`Cena.estados_elemento`), formatados como `"Nome: descrição do estado"` — a mesma fonte que a tela de revisão da cena já usa (item 6.4).
+- O perfil de renderização é o informado no pedido (`perfil_renderizacao_id`) ou, na ausência dele, o padrão do livro (`Livro.perfil_renderizacao_padrao_id`). Sem nenhum dos dois, a rota responde 422 — não há estilo para aplicar.
+- O modelo é o informado no pedido ou o `modelo_prompt` da configuração. Sem nenhum dos dois, 422 (mesmo padrão do item 6.7).
+- O prompt monta um texto único a partir dos campos do perfil (`estilo`, `artista_referencia`, `iluminacao`, `paleta`, `formato`) — os únicos preenchidos entram no texto, porque cada ferramenta de imagem usa um subconjunto diferente (item 3.4c).
+- Erros do provedor seguem o mesmo mapeamento do item 6.7: `ChaveDeApiAusente`/`ModeloNaoEscolhido` → 422, qualquer outro `ErroDoProvedorIA` → 502.
+
+**O upload de imagem é multipart**, no mesmo padrão de `POST /livros` com o EPUB (item 6.2): o app manda os bytes da imagem no corpo do pedido, e o servidor grava o arquivo em `DIRETORIO_IMAGENS/prompts/{prompt_id}/{nome-gerado}` — um nome gerado (não o nome original) evita colisão entre duas imagens de nomes iguais vindas de ferramentas diferentes. Só o caminho relativo entra no banco (item 3.4c). Extensões aceitas: `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif` — o que cobre as ferramentas de geração de imagem em uso; outra extensão responde 422. O limite de tamanho é 25 MB por imagem, lido em blocos como no EPUB, para não estourar a memória do Raspberry Pi com um arquivo grande demais.
+
+**Remover apaga o arquivo do disco, não só a linha do banco** — tanto em `DELETE /imagens/{id}` quanto em `DELETE /prompts/{id}` (que remove as imagens do prompt em cascata). Um arquivo ausente no disco não impede a remoção da linha: o objetivo é o catálogo ficar consistente, e um arquivo que já sumiu não deveria travar a limpeza do registro órfão.
+
+**Limitação conhecida:** apagar um livro, capítulo, cena ou elemento remove as linhas de `prompts` e `imagens` em cascata no banco (item 3.4), mas **não** apaga os arquivos de imagem do disco — só as rotas específicas desta seção fazem essa limpeza. Adicionar isso exigiria um gatilho no banco ou uma varredura periódica, e nenhuma das duas coisas está no escopo do MVP; por ora o arquivo órfão é um custo aceitável, revisitável se o volume de imagens crescer.
+
+#### O que foi implementado
+
+As oito rotas, com 16 testes. O `ler_com_limite` que já protegia o upload do EPUB (item 6.2) virou função compartilhada em `servicos/upload.py`, reaproveitada aqui para o upload de imagem — é a mesma proteção contra um arquivo grande demais para a memória do Raspberry Pi, e duplicar essa lógica de leitura em blocos seria repetir um código sensível à segurança sem motivo.
+
+O texto do perfil que vai para a IA é montado só com os campos preenchidos (`estilo`, `artista_referencia`, `iluminacao`, `paleta`, `formato`) — confirmado com um perfil só com `estilo` definido e outro com todos os campos, verificando que o texto muda de tamanho de acordo, sem campos vazios aparecendo como "None" ou string vazia no meio do prompt.
+
+`DELETE /prompts/{id}` apaga os arquivos das imagens **depois** do commit que remove as linhas do banco, não antes: se a remoção de um arquivo falhasse no meio, o banco já estaria consistente (prompt e imagens removidos), e sobraria só um arquivo órfão no disco — o mesmo tipo de custo aceitável registrado na limitação conhecida acima, e não uma inconsistência de dados.
 
 ### 6.7 Extração e configuração
 
@@ -952,8 +974,7 @@ O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado c
 
 - [ ] Confirmar formalmente o stack mobile (assumido Kotlin + Jetpack Compose nativo Android).
 - [x] ~~Definir estrutura de pastas/módulos do projeto Python (FastAPI).~~ Concluído — ver item **1.5**.
-- [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**. Implementadas: livros, capítulos, elementos e estados, cenas, perfis de renderização, configuração e sugestões de IA (6.2 a 6.5 e 6.7). Falta só a Etapa 6.6.
-- [ ] Rotas de prompts e catálogo de imagens (Etapa 6.6) — depende de gerar/importar imagens, que ainda não tem lugar de armazenamento definido no servidor.
+- [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**, todas as seções (6.2 a 6.7): livros, capítulos, elementos e estados, cenas, perfis de renderização, prompts e catálogo de imagens, configuração e sugestões de IA.
 - [ ] Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).
 - [x] ~~Permitir marcar um capítulo como ignorado.~~ Concluído — campo `Capitulo.ignorado`, pré-sugerido pela importação e confirmado pelo usuário (itens 2.2 e 3.4a). Falta expor o ajuste na API e no app.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).

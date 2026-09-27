@@ -17,6 +17,7 @@ from imagineer.rotas import (
     elementos,
     livros,
     perfis_renderizacao,
+    prompts,
     saude,
 )
 
@@ -40,3 +41,6 @@ aplicacao.include_router(cenas.rotas_de_capitulo)
 aplicacao.include_router(cenas.rotas)
 aplicacao.include_router(perfis_renderizacao.rotas)
 aplicacao.include_router(configuracao.rotas)
+aplicacao.include_router(prompts.rotas_de_cena)
+aplicacao.include_router(prompts.rotas)
+aplicacao.include_router(prompts.rotas_de_imagem)
