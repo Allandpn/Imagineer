@@ -141,6 +141,66 @@ def teste_sugestoes_sem_frames_devolve_lista_vazia(
     assert resposta.json()["frames"] == []
 
 
+def teste_sugestoes_repetida_devolve_o_que_foi_salvo_sem_chamar_a_ia_de_novo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Sem `forcar`, a segunda chamada usa o cache — a IA não é determinística,
+    então rechamar a cada leitura daria respostas divergentes (item 4.4)."""
+    provedor = usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo_id = livro["capitulos"][0]["id"]
+
+    primeira = cliente.post(f"/capitulos/{capitulo_id}/sugestoes")
+    segunda = cliente.post(f"/capitulos/{capitulo_id}/sugestoes")
+
+    assert len(provedor.chamadas_de_extracao) == 1
+    assert primeira.json() == segunda.json()
+
+
+def teste_sugestoes_com_forcar_chama_a_ia_de_novo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor = usar_provedor_falso(ProvedorFalso())
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo_id = livro["capitulos"][0]["id"]
+
+    cliente.post(f"/capitulos/{capitulo_id}/sugestoes")
+    cliente.post(f"/capitulos/{capitulo_id}/sugestoes?forcar=true")
+
+    assert len(provedor.chamadas_de_extracao) == 2
+
+
+def teste_sugestoes_do_cache_recalcula_elemento_id_casado_depois(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Cadastrar o elemento depois da sugestão não exige `forcar`: o casamento
+    é recalculado a cada leitura, só o texto vem do cache."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo_id = livro["capitulos"][0]["id"]
+
+    primeira = cliente.post(f"/capitulos/{capitulo_id}/sugestoes")
+    assert primeira.json()["elementos"][0]["elemento_id"] is None
+
+    jon = cliente.post(
+        f"/livros/{livro['id']}/elementos", json={"tipo": "PERSONAGEM", "nome": "Jon"}
+    ).json()
+
+    segunda = cliente.post(f"/capitulos/{capitulo_id}/sugestoes")
+    assert segunda.json()["elementos"][0]["elemento_id"] == jon["id"]
+
+
 def teste_sugestoes_manda_o_texto_e_os_estados_conhecidos_ao_provedor(
     cliente: TestClient, usar_provedor_falso
 ) -> None:

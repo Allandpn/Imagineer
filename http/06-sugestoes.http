@@ -1,5 +1,8 @@
-### Pede à IA os elementos e estados sugeridos do capítulo (passo 6)
-# Não grava nada no banco — é sugestão. Precisa de chave e de modelo_extracao
+### Pede à IA os elementos e frames sugeridos do capítulo (passo 6)
+# Não grava elementos nem frames no banco — é sugestão. Mas a resposta em si
+# fica salva no capítulo (Capitulo.sugestoes_ia): rodar de novo sem forcar=true
+# devolve o que já foi salvo, sem chamar a IA (rápido, e sem risco de vir
+# diferente da vez anterior). Precisa de chave e de modelo_extracao
 # configurados em 05-configuracao-ia.http, e de primeiroCapituloId (01-livros.http).
 # POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
 POST {{baseUrl}}/capitulos/3/sugestoes
@@ -11,9 +14,17 @@ POST {{baseUrl}}/capitulos/3/sugestoes
 %}
 
 ### Rodar de novo depois de confirmar um elemento (03-elementos-e-estados.http)
-# mostra o elemento já cadastrado com elemento_id preenchido e, se a IA achar
-# que nada mudou, manter_estado_atual: true (item 4.4).
+# Mesmo sem forcar=true, mostra o elemento já cadastrado com elemento_id
+# preenchido — o casamento é recalculado a cada leitura, só o texto da
+# sugestão vem do cache (item 6.7).
 POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
+
+### Forçar uma sugestão nova, ignorando o que está salvo
+# Útil se o capítulo mudou (título/ignorado ajustado não conta, mas o texto
+# em si não muda pela API hoje) ou se a resposta salva não ficou boa e você
+# quer tentar de novo. Vale notar: a IA não é determinística, então isso pode
+# vir com elementos/frames diferentes da vez anterior.
+POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes?forcar=true
 
 ### Capítulo inexistente — confere o 404
 POST {{baseUrl}}/capitulos/999999/sugestoes

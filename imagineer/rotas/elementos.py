@@ -6,6 +6,7 @@ passo 7 do fluxo alimenta e o passo 8 consome.
 """
 
 import unicodedata
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -260,79 +261,113 @@ def listar_estados_vigentes(
 @rotas_de_capitulo.post(
     "/{capitulo_id}/sugestoes",
     response_model=SugestoesDeCapitulo,
-    summary="Pede à IA os elementos e estados sugeridos do capítulo",
+    summary="Os elementos e frames sugeridos do capítulo",
 )
 def sugerir_elementos(
     capitulo_id: int,
+    forcar: bool = Query(
+        default=False,
+        description=(
+            "Ignora a sugestão salva deste capítulo e pede uma nova à IA, "
+            "sobrescrevendo o cache. Sem isso, uma sugestão já salva é "
+            "devolvida sem chamar a IA de novo."
+        ),
+    ),
     sessao: Session = Depends(obter_sessao),
     provedor: ProvedorIA = Depends(obter_provedor),
 ) -> SugestoesDeCapitulo:
-    """Sugere elementos e estados a partir do texto do capítulo (passo 6).
+    """Sugere elementos e frames a partir do texto do capítulo (passo 6).
 
-    **Não grava nada no banco.** É a IA sugerindo; o usuário confirma pelas rotas
-    de cadastro da Etapa 6.3 (item 4.4) — esta rota só devolve a sugestão.
+    **Não grava elementos nem frames no banco** — quem confirma é o usuário,
+    pelas rotas de cadastro da Etapa 6.3 e de frame da Etapa 6.4. Mas a
+    resposta da IA em si fica salva no capítulo (`Capitulo.sugestoes_ia`):
+    sem isso, cada chamada arriscava devolver algo diferente da anterior,
+    porque a IA não é determinística — e o usuário não tinha como saber qual
+    das respostas usar para criar o frame. `forcar=true` ignora o que está
+    salvo e força uma sugestão nova, por iniciativa do usuário.
+
+    O casamento com `elemento_id` é recalculado a cada leitura, mesmo vindo do
+    cache: só o texto da sugestão é salvo, não o casamento. Assim, cadastrar
+    um elemento novo entre uma chamada e outra já aparece casado na próxima
+    leitura, sem precisar de `forcar=true`.
     """
     capitulo = _buscar_capitulo(sessao, capitulo_id)
-    configuracao = obter_ou_criar(sessao)
-    modelo = configuracao.modelo_extracao
 
-    if not modelo:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Nenhum modelo de extração foi escolhido. Configure um em /configuracao.",
-        )
+    if capitulo.sugestoes_ia is not None and not forcar:
+        bruto = capitulo.sugestoes_ia
+        modelo = capitulo.sugestoes_modelo or ""
+    else:
+        configuracao = obter_ou_criar(sessao)
+        modelo_extracao = configuracao.modelo_extracao
 
-    estados_conhecidos = _formatar_estados_conhecidos(sessao, capitulo)
+        if not modelo_extracao:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Nenhum modelo de extração foi escolhido. Configure um em /configuracao.",
+            )
 
-    try:
-        contexto_do_modelo = next(
-            (m.contexto for m in provedor.listar_modelos() if m.id == modelo), 0
-        )
-        conferir_se_cabe(capitulo.texto, contexto_do_modelo)
-        extracao = provedor.extrair_elementos(capitulo.texto, estados_conhecidos, modelo)
-    except (ChaveDeApiAusente, ModeloNaoEscolhido, TextoLongoDemais) as erro:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
-        ) from erro
-    except ErroDoProvedorIA as erro:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
-        ) from erro
+        estados_conhecidos = _formatar_estados_conhecidos(sessao, capitulo)
+
+        try:
+            contexto_do_modelo = next(
+                (m.contexto for m in provedor.listar_modelos() if m.id == modelo_extracao), 0
+            )
+            conferir_se_cabe(capitulo.texto, contexto_do_modelo)
+            extracao = provedor.extrair_elementos(
+                capitulo.texto, estados_conhecidos, modelo_extracao
+            )
+        except (ChaveDeApiAusente, ModeloNaoEscolhido, TextoLongoDemais) as erro:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
+            ) from erro
+        except ErroDoProvedorIA as erro:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
+            ) from erro
+
+        bruto = _serializar_extracao(extracao)
+        modelo = extracao.modelo
+
+        capitulo.sugestoes_ia = bruto
+        capitulo.sugestoes_modelo = modelo
+        capitulo.sugestoes_geradas_em = datetime.now(timezone.utc)
+        sessao.add(capitulo)
+        sessao.commit()
 
     elementos_existentes = _elementos_por_chave_normalizada(sessao, capitulo.livro_id)
 
-    def _elemento_id_de(tipo: TipoElemento, nome: str) -> int | None:
-        return elementos_existentes.get(_chave_normalizada(tipo, nome))
+    def _elemento_id_de(tipo: str, nome: str) -> int | None:
+        return elementos_existentes.get(_chave_normalizada(TipoElemento(tipo), nome))
 
     return SugestoesDeCapitulo(
-        modelo=extracao.modelo,
+        modelo=modelo,
         elementos=[
             ElementoSugeridoResposta(
-                tipo=sugestao.tipo,
-                nome=sugestao.nome,
-                descricao=sugestao.descricao,
-                manter_estado_atual=sugestao.manter_estado_atual,
-                elemento_id=_elemento_id_de(sugestao.tipo, sugestao.nome),
+                tipo=item["tipo"],
+                nome=item["nome"],
+                descricao=item["descricao"],
+                manter_estado_atual=item["manter_estado_atual"],
+                elemento_id=_elemento_id_de(item["tipo"], item["nome"]),
             )
-            for sugestao in extracao.elementos
+            for item in bruto["elementos"]
         ],
         frames=[
             FrameSugeridoResposta(
-                titulo=frame.titulo,
-                descricao=frame.descricao,
-                horario=frame.horario,
-                clima=frame.clima,
-                humor=frame.humor,
+                titulo=frame["titulo"],
+                descricao=frame["descricao"],
+                horario=frame["horario"],
+                clima=frame["clima"],
+                humor=frame["humor"],
                 participantes=[
                     ParticipanteSugeridoResposta(
-                        tipo=participante.tipo,
-                        nome=participante.nome,
-                        elemento_id=_elemento_id_de(participante.tipo, participante.nome),
+                        tipo=participante["tipo"],
+                        nome=participante["nome"],
+                        elemento_id=_elemento_id_de(participante["tipo"], participante["nome"]),
                     )
-                    for participante in frame.participantes
+                    for participante in frame["participantes"]
                 ],
             )
-            for frame in extracao.frames
+            for frame in bruto["frames"]
         ],
     )
 
@@ -540,6 +575,39 @@ def _exigir_imagem(sessao: Session, imagem_id: int) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Não existe imagem com id {imagem_id}.",
         )
+
+
+def _serializar_extracao(extracao) -> dict:
+    """Converte o resultado da IA (dataclasses) num dict que o banco aceita como
+    JSON — sem `elemento_id`, que é recalculado a cada leitura de
+    `sugerir_elementos`, nunca guardado. Cadastrar um elemento novo depois de
+    gerar a sugestão não deveria exigir gerar de novo só para casar o nome.
+    """
+    return {
+        "elementos": [
+            {
+                "tipo": item.tipo.value,
+                "nome": item.nome,
+                "descricao": item.descricao,
+                "manter_estado_atual": item.manter_estado_atual,
+            }
+            for item in extracao.elementos
+        ],
+        "frames": [
+            {
+                "titulo": frame.titulo,
+                "descricao": frame.descricao,
+                "horario": frame.horario,
+                "clima": frame.clima,
+                "humor": frame.humor,
+                "participantes": [
+                    {"tipo": participante.tipo.value, "nome": participante.nome}
+                    for participante in frame.participantes
+                ],
+            }
+            for frame in extracao.frames
+        ],
+    }
 
 
 def _formatar_estados_conhecidos(sessao: Session, capitulo: Capitulo) -> list[str]:

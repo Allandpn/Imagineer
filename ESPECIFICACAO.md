@@ -438,6 +438,9 @@ Um capítulo de um Livro, com o texto extraído do EPUB.
 | `titulo` | texto (500) | **sim** | o índice do EPUB nem sempre nomeia o capítulo |
 | `texto` | texto longo | não | conteúdo textual, sem limite de tamanho |
 | `ignorado` | booleano | não | se este "capítulo" fica de fora do trabalho de catalogação; padrão falso |
+| `sugestoes_ia` | JSON | sim | a última resposta de `POST /capitulos/{id}/sugestoes` (elementos e frames, sem `elemento_id`) — cache para não rechamar a IA a cada consulta (item 6.7) |
+| `sugestoes_modelo` | texto (200) | sim | o modelo que gerou `sugestoes_ia` |
+| `sugestoes_geradas_em` | data/hora | sim | quando `sugestoes_ia` foi gerado |
 
 Restrição de unicidade em (`livro_id`, `ordem`): dois capítulos não podem ocupar a mesma posição no mesmo livro. É o banco garantindo uma regra que um erro no parsing poderia violar silenciosamente.
 
@@ -1052,28 +1055,31 @@ O texto do perfil que vai para a IA é montado só com os campos preenchidos (`e
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `POST /capitulos/{id}/sugestoes` | Chama a IA para sugerir elementos e estados (passo 6) | **implementado** |
+| `POST /capitulos/{id}/sugestoes` | Sugere elementos e frames (passo 6); `?forcar=true` ignora o cache e chama a IA de novo | **implementado** |
 | `GET /configuracao/modelos` | Lista os modelos disponíveis no OpenRouter (item 4.3) | **implementado** |
 | `GET /configuracao` | A configuração atual: modelos escolhidos, se há chave cadastrada | **implementado** |
 | `PUT /configuracao` | Grava a configuração | **implementado** |
 
 `GET /configuracao` **nunca devolve a chave de API**, só se ela está cadastrada. Uma chave que sai do servidor é uma chave que vaza em log, em cache de app ou em captura de tela.
 
-**`POST /capitulos/{id}/sugestoes` não grava nada no banco.** É consulta pura, fiel ao item 4.4: a IA sugere, o usuário confirma depois pelas rotas já existentes da Etapa 6.3 (`POST /elementos`, `POST /elementos/{id}/estados`). A rota:
+**`POST /capitulos/{id}/sugestoes` não grava elementos nem frames no banco.** É a IA sugerindo; o usuário confirma depois pelas rotas já existentes da Etapa 6.3 (`POST /elementos`, `POST /elementos/{id}/estados`) e da Etapa 6.4 (`POST /frames`). A rota:
 
 1. Busca o texto do capítulo e o estado vigente de cada elemento do livro **até aquele capítulo** (mesma consulta do item 6.3, `estado_vigente_por_elemento`, limitada por `Capitulo.ordem`) — é o contexto que permite à IA responder "manter estado atual" em vez de inventar um estado novo.
-2. Confere se o texto cabe na janela do modelo escolhido (`modelo_extracao` da configuração) **antes** de chamar a IA — gastar a chamada para descobrir que não cabia seria o pior caso (item 4.3).
-3. Chama `provedor.extrair_elementos` — só identificação (fase 1 do item 4.4): tipo, nome, descrição de identidade e `manter_estado_atual`. **Não** devolve mais uma descrição de aparência; essa parte é a leitura profunda (fase 2), que só acontece mais tarde, dentro de `POST /frames/{id}/prompts` (item 6.6).
-4. Tenta casar cada sugestão com um elemento já cadastrado do livro, comparando tipo e nome **sem diferenciar maiúsculas/minúsculas nem acentuação** — a IA foi instruída a repetir o nome exato de um elemento conhecido, mas variações de caixa e acento apareceram como algo razoável de tolerar sem risco de casar elementos diferentes por engano. Quando casa, preenche `elemento_id` na resposta.
-5. Faz o mesmo casamento para cada participante de cada `cena` sugerida (item 4.4) — mesma normalização, mesmo campo `elemento_id`.
+2. **Se o capítulo já tem uma sugestão salva (`Capitulo.sugestoes_ia`) e o pedido não veio com `?forcar=true`, devolve o que está salvo sem chamar a IA.** Só os passos 5 e 6 (o casamento com `elemento_id`) são refeitos — o texto da sugestão em si vem do cache.
+3. Sem cache, ou com `forcar=true`: confere se o texto cabe na janela do modelo escolhido (`modelo_extracao` da configuração) **antes** de chamar a IA — gastar a chamada para descobrir que não cabia seria o pior caso (item 4.3).
+4. Chama `provedor.extrair_elementos` — só identificação (fase 1 do item 4.4): tipo, nome, descrição de identidade e `manter_estado_atual`. **Não** devolve mais uma descrição de aparência; essa parte é a leitura profunda (fase 2), que só acontece mais tarde, dentro de `POST /frames/{id}/prompts` (item 6.6). O resultado é salvo em `Capitulo.sugestoes_ia`/`sugestoes_modelo`/`sugestoes_geradas_em`, sobrescrevendo o que havia antes.
+5. Tenta casar cada sugestão (vinda da IA ou do cache) com um elemento já cadastrado do livro, comparando tipo e nome **sem diferenciar maiúsculas/minúsculas nem acentuação** — a IA foi instruída a repetir o nome exato de um elemento conhecido, mas variações de caixa e acento apareceram como algo razoável de tolerar sem risco de casar elementos diferentes por engano. Quando casa, preenche `elemento_id` na resposta.
+6. Faz o mesmo casamento para cada participante de cada frame sugerido (item 4.4) — mesma normalização, mesmo campo `elemento_id`.
 
 Erros do provedor viram HTTP assim: `ChaveDeApiAusente` e `ModeloNaoEscolhido` e `TextoLongoDemais` → 422 (o problema é a configuração, o usuário resolve pela tela de configuração); qualquer outro `ErroDoProvedorIA` (rede, resposta fora do formato) → 502.
 
 #### O que foi implementado
 
-As três rotas de `/configuracao` foram implementadas junto com a camada de IA (Etapa 4.3), antes desta tabela ser atualizada — o código já existia, só faltava marcar. `POST /capitulos/{id}/sugestoes` é o item novo desta rodada, com 9 testes.
+As três rotas de `/configuracao` foram implementadas junto com a camada de IA (Etapa 4.3), antes desta tabela ser atualizada — o código já existia, só faltava marcar. `POST /capitulos/{id}/sugestoes` é o item novo desta rodada, com 14 testes.
 
-**Divergência registrada, pós-validação com IA real:** o campo `estado_sugerido` foi removido da resposta depois de um teste de ponta a ponta expor mistura de atributos entre elementos (ver a divergência do item 4.2 e a nova fase 2 do item 4.4). Numa rodada seguinte, a resposta ganhou `cenas` — feedback do usuário depois de revisar uma extração real: a lista de elementos sozinha não bastava, faltava sugerir quais combinações formam um momento que vale ilustrar, e alguns elementos identificados eram irrelevantes (papelada genérica) ou classificados no tipo errado (um tabuleiro de jogo como `AMBIENTE`, uma porta como `VEICULO`).
+**Divergência registrada, pós-validação com IA real:** o campo `estado_sugerido` foi removido da resposta depois de um teste de ponta a ponta expor mistura de atributos entre elementos (ver a divergência do item 4.2 e a nova fase 2 do item 4.4). Numa rodada seguinte, a resposta ganhou `frames` (então chamado `cenas`) — feedback do usuário depois de revisar uma extração real: a lista de elementos sozinha não bastava, faltava sugerir quais combinações formam um momento que vale ilustrar, e alguns elementos identificados eram irrelevantes (papelada genérica) ou classificados no tipo errado (um tabuleiro de jogo como `AMBIENTE`, uma porta como `VEICULO`).
+
+**Segunda divergência registrada, pós-uso real.** A rota nasceu como consulta pura, sem gravar nada — inclusive a sugestão em si. Testando o fluxo completo na mão, ficou claro o problema: a IA não é determinística, então cada chamada podia devolver um resultado diferente do anterior para o mesmo capítulo, e não havia como saber qual das respostas usar para criar o frame de verdade. A rota passou a salvar a resposta da IA em `Capitulo.sugestoes_ia` (sem `elemento_id`, recalculado a cada leitura) e a servir esse cache por padrão, só chamando a IA de novo com `?forcar=true` — o mesmo princípio de cache-a-não-ser-que-peça-de-novo já usado na leitura profunda e na fundamentação de frame (item 4.4, fases 2 e 3), agora estendido à fase 1.
 
 A checagem de "cabe no modelo" (`conferir_se_cabe`) saiu de método de `ProvedorOpenRouter` para função livre em `ia/openrouter.py`: a rota precisa da mesma checagem antes de chamar **qualquer** provedor, inclusive o `ProvedorFalso` dos testes, e a estimativa de tokens não depende de nenhum detalhe de um fornecedor específico. O método antigo continua existindo, agora só delegando para a função — o que evitou reescrever os testes que já cobriam esse comportamento.
 

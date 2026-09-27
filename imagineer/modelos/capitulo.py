@@ -1,6 +1,19 @@
 """Modelo do Capítulo — o texto extraído de uma parte do EPUB (item 3.4a)."""
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint, false
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    false,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -56,6 +69,23 @@ class Capitulo(Base):
     da especificação, onde a IA sugere o estado de um elemento e o usuário
     decide.
     """
+
+    sugestoes_ia: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    """O que a IA respondeu na última vez que `POST /capitulos/{id}/sugestoes`
+    chamou o modelo — elementos e frames sugeridos, sem `elemento_id` (isso é
+    recalculado a cada leitura, contra os elementos já cadastrados no momento).
+
+    Existe para a rota não precisar rechamar a IA a cada consulta: sem isso, o
+    usuário via respostas divergentes a cada chamada, porque a IA não é
+    determinística (item 4.4, fase 1). Só é sobrescrito quando o pedido vem
+    com `forcar=true` — por padrão, a sugestão salva é a que vale.
+    """
+
+    sugestoes_modelo: Mapped[str | None] = mapped_column(String(200))
+    """O modelo que gerou `sugestoes_ia`, para o usuário saber a quem creditar."""
+
+    sugestoes_geradas_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """Quando `sugestoes_ia` foi gerado — para a tela mostrar "sugerido há X"."""
 
     livro: Mapped["Livro"] = relationship(back_populates="capitulos")  # noqa: F821
 
