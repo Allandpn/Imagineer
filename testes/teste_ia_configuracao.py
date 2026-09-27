@@ -504,6 +504,29 @@ def teste_chave_do_banco_tem_precedencia_sobre_o_ambiente(
         obter.cache_clear()
 
 
+def teste_chave_aceita_o_nome_alternativo_de_variavel_de_ambiente(
+    cliente: TestClient, monkeypatch
+) -> None:
+    """IMAGINEER_KEY_OPEN_ROUTER também é aceito, além de CHAVE_API_OPENROUTER.
+
+    Divergência registrada na Etapa 5: Allan já mantém uma variável de conta com
+    esse nome, fora do projeto, e o sistema aceita as duas em vez de exigir que
+    ele renomeie algo que já existe no ambiente dele.
+    """
+    from imagineer import configuracao as modulo_de_configuracao
+
+    obter = modulo_de_configuracao.obter_configuracoes
+    obter.cache_clear()
+    monkeypatch.setenv("IMAGINEER_KEY_OPEN_ROUTER", "sk-da-conta")
+    try:
+        resposta = cliente.get("/configuracao")
+        assert resposta.json()["tem_chave_api"] is True
+        assert resposta.json()["origem_da_chave"] == "ambiente"
+        assert "sk-da-conta" not in resposta.text
+    finally:
+        obter.cache_clear()
+
+
 # --------------------------------------------------------------------------- #
 # Rota de listagem de modelos
 # --------------------------------------------------------------------------- #

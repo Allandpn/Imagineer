@@ -12,6 +12,7 @@ hora, com mensagem clara, em vez de estourar no meio de um request.
 
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,8 +33,17 @@ class Configuracoes(BaseSettings):
     url_banco: str
     """Endereço de conexão do PostgreSQL, no formato esperado pelo SQLAlchemy."""
 
-    chave_api_openrouter: str = ""
-    """Chave de API do OpenRouter. Vazia enquanto a Etapa 4 não for implementada."""
+    chave_api_openrouter: str = Field(
+        default="",
+        validation_alias=AliasChoices("CHAVE_API_OPENROUTER", "IMAGINEER_KEY_OPEN_ROUTER"),
+    )
+    """Chave de API do OpenRouter.
+
+    Aceita duas variáveis de ambiente: ``CHAVE_API_OPENROUTER`` (o nome do
+    projeto, em português, como as demais) e ``IMAGINEER_KEY_OPEN_ROUTER`` — o
+    nome de uma variável de conta que Allan já mantém fora deste projeto,
+    aceito para não obrigar a renomear algo que já existe no ambiente dele.
+    Divergência registrada na Etapa 5 (Decisões Técnicas)."""
 
     diretorio_imagens: str = "/dados/imagens"
     """Pasta onde as imagens do catálogo são gravadas (nunca no banco — só a referência)."""

@@ -756,6 +756,7 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 | Texto antes da primeira âncora colado no capítulo anterior | O Calibre parte arquivos grandes no meio de um capítulo; sem isso, 42 mil caracteres do relatório anterior virariam um capítulo sem título e o relatório apareceria partido em dois |
 | Material não-narrativo **sugerido** como ignorado, não descartado | Medição em dezoito livros: nenhum dos quatro sinais testados separa narrativa de apêndice com segurança. Esconder narrativa é muito pior que listar um glossário, então nada é descartado — a importação sugere e o usuário confirma |
 | Limite de tamanho **relativo à mediana do livro**, não absoluto, e fixado em 10% | A mediana variou de **mil** caracteres numa coletânea de poemas a **89 mil** num livro que é um capítulo só, então um limite fixo serviria para um e falharia nos outros. Os 10% saíram de uma varredura: acima disso começa a esconder narrativa |
+| Chave do OpenRouter aceita duas variáveis de ambiente: `CHAVE_API_OPENROUTER` e `IMAGINEER_KEY_OPEN_ROUTER` | Allan já mantém `IMAGINEER_KEY_OPEN_ROUTER` como variável de conta, fora deste projeto. Aceitar as duas (via `AliasChoices` do Pydantic) evita obrigá-lo a renomear algo que já existe no ambiente dele, sem abrir mão do nome em português como principal — é uma exceção pontual à regra de idioma do `CLAUDE.md`, feita conscientemente e só no nome da variável de ambiente, não no código |
 
 ---
 
