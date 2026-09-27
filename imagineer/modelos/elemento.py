@@ -25,6 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
+from imagineer.modelos.cena import cenas_estados_elemento
 
 
 class TipoElemento(enum.Enum):
@@ -149,8 +150,31 @@ class EstadoElemento(Base):
     define a sequência narrativa é ``Capitulo.ordem`` (ver item 3.4b).
     """
 
+    imagem_ancora_id: Mapped[int | None] = mapped_column(
+        # SET NULL: apagar uma imagem do catálogo não pode apagar o estado do
+        # personagem. A âncora se desfaz, a descrição narrativa permanece.
+        ForeignKey("imagens.id", ondelete="SET NULL"),
+    )
+    """Uma imagem já aprovada deste estado, usada como referência visual.
+
+    É a "âncora visual" do item 3.1: nas gerações seguintes do mesmo personagem,
+    esta imagem serve de referência — o mecanismo que mantém a aparência
+    consistente entre capítulos distantes.
+    """
+
     elemento: Mapped["Elemento"] = relationship(back_populates="estados")
     capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
+    imagem_ancora: Mapped["Imagem | None"] = relationship()  # noqa: F821
+
+    cenas: Mapped[list["Cena"]] = relationship(  # noqa: F821
+        secondary=cenas_estados_elemento,
+        back_populates="estados_elemento",
+    )
+    """As cenas em que o elemento aparece neste estado.
+
+    É o outro lado do muitos-para-muitos do item 3.2: um elemento aparece em
+    várias cenas de vários capítulos.
+    """
 
     def __repr__(self) -> str:
         return f"<EstadoElemento id={self.id} elemento_id={self.elemento_id}>"

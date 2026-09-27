@@ -123,11 +123,13 @@ As pastas `modelos`, `esquemas`, `servicos` e `ia` nascem **vazias**, contendo a
 
 ### 3.4 Campos das entidades
 
-Esta seção detalha as colunas de cada tabela. Ela é preenchida em três partes, conforme a implementação avança:
+Esta seção detalha as colunas de cada tabela. Foi preenchida em três partes, todas **implementadas**:
 
 - **(a)** `Livro` e `Capitulo` — a base da importação do EPUB.
 - **(b)** `Elemento` e `EstadoElemento` — o coração da consistência visual.
 - **(c)** `Cena`, `PerfilRenderizacao`, `Prompt` e `Imagem` — a geração e o catálogo.
+
+O modelo do MVP está completo: 9 tabelas, criadas por três migrations que encadeiam a partir de um banco vazio.
 
 Decisões que valem para todas as tabelas:
 
@@ -227,6 +229,110 @@ Esta consulta será implementada em `imagineer/servicos/` junto do item 4.4. Nes
 
 **Pendente da parte (c):** o campo `imagem_ancora_id` previsto no item 3.1 — a imagem já gerada que serve de âncora visual para gerações futuras — depende da tabela `imagens`. Será acrescentado por migration na parte (c).
 
+#### (c) PerfilRenderizacao
+
+O estilo visual a aplicar, separado dos dados narrativos.
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária |
+| `nome` | texto (100) | não | como você chama o perfil ("Aquarela sombria"); único |
+| `estilo` | texto longo | sim | o estilo em si ("pintura a óleo", "quadrinho franco-belga") |
+| `artista_referencia` | texto (200) | sim | artista cujo traço serve de referência |
+| `iluminacao` | texto (200) | sim | ("contraluz de fim de tarde", "penumbra de vela") |
+| `paleta` | texto (200) | sim | ("tons frios e dessaturados") |
+| `formato` | texto (50) | sim | proporção ou enquadramento ("16:9", "retrato") |
+| `modelo_alvo` | texto (100) | sim | ferramenta de imagem a que o perfil se adapta |
+
+**Não pertence a um Livro.** É o que permite reaproveitar a mesma combinação de estilo entre obras diferentes — o motivo pelo qual o item 3.3 preferiu um perfil a um campo único de "estilo". O vínculo é o contrário: o Livro aponta para o seu perfil padrão.
+
+Todos os campos de estilo aceitam nulo porque cada ferramenta de imagem entende um subconjunto diferente: um perfil voltado a uma delas pode não usar `artista_referencia`, outro pode não usar `formato`.
+
+`modelo_alvo` existe porque cada ferramenta tem sintaxe própria — o mesmo estilo se escreve de um jeito numa e de outro jeito noutra.
+
+#### (c) Cena
+
+O recorte narrativo de um capítulo que vai virar uma imagem.
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária |
+| `capitulo_id` | inteiro | não | referência ao Capítulo; indexado |
+| `titulo` | texto (300) | não | como identificar a cena na lista |
+| `descricao` | texto longo | sim | o trecho ou o resumo do que acontece |
+| `horario` | texto (100) | sim | atributo situacional |
+| `clima` | texto (100) | sim | atributo situacional |
+| `humor` | texto (100) | sim | atributo situacional |
+
+Os três atributos situacionais ficam **na própria Cena**, sem uma entidade "Contexto" separada: horário, clima e humor já são naturalmente parte da cena, e uma tabela extra só acrescentaria uma junção (item 3.3).
+
+**Sem campo `ordem`**, diferente do Capítulo. A ordem dos capítulos vem do índice do EPUB e precisa ser preservada explicitamente; as cenas são criadas pelo usuário enquanto lê um capítulo, então a ordem de criação já é a ordem narrativa. Acrescentar o campo depois é uma migration trivial, se a necessidade aparecer.
+
+#### (c) Ligação entre Cena e EstadoElemento
+
+Tabela de associação `cenas_estados_elemento`, com as duas colunas formando a chave primária.
+
+| Coluna | Observação |
+|---|---|
+| `cena_id` | referência à Cena |
+| `estado_elemento_id` | referência ao EstadoElemento |
+
+A ligação é com o **Estado**, não com o Elemento. É isso que faz a cena guardar *como* cada elemento estava naquele ponto — que é o dado que entra no prompt. Ligar direto ao Elemento perderia essa informação, e o prompt não saberia qual das versões do personagem usar.
+
+Não tem colunas próprias além das duas chaves, então é uma tabela simples de associação e não uma entidade do modelo.
+
+#### (c) Prompt
+
+O registro de cada prompt gerado, que permite regenerar e comparar modelos depois.
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária |
+| `cena_id` | inteiro | não | referência à Cena; indexado |
+| `perfil_renderizacao_id` | inteiro | sim | o perfil realmente usado |
+| `modelo_ia` | texto (200) | sim | identificador do modelo no OpenRouter |
+| `texto` | texto longo | não | o prompt em si, como foi copiado |
+| `avaliacao` | texto longo | sim | sua anotação sobre como a imagem saiu |
+| `data_criacao` | data/hora com fuso | não | preenchido pelo banco |
+
+`perfil_renderizacao_id` guarda o perfil **usado naquela geração**, que pode ser o padrão do livro ou um override pontual. Aceita nulo, e apagar um perfil não apaga prompts (`ON DELETE SET NULL`): o histórico de prompts é mais valioso que a referência ao perfil, e perder um registro de prompt por causa de uma limpeza de perfis seria um prejuízo desproporcional.
+
+`avaliacao` é a interpretação do campo "resultado" citado no item 3.1: um texto livre onde você anota como a imagem ficou ("acertou o rosto, errou a armadura"). É o que dá sentido a "comparar modelos depois" — sem a anotação, comparar exigiria reabrir as imagens e lembrar o que achou de cada uma.
+
+`texto` guarda o prompt como foi copiado, e não os ingredientes para remontá-lo. Assim o registro continua fiel mesmo que o perfil de renderização ou a descrição de um estado mudem depois.
+
+#### (c) Imagem
+
+O arquivo importado de volta pelo usuário, compondo o catálogo.
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária |
+| `prompt_id` | inteiro | não | o prompt que originou a imagem; indexado |
+| `caminho_arquivo` | texto (500) | não | caminho relativo dentro de `DIRETORIO_IMAGENS`; único |
+| `data_importacao` | data/hora com fuso | não | preenchido pelo banco |
+
+Só o **caminho** vai para o banco; o arquivo fica no volume dedicado (item 1.4). Guardar a imagem no banco engordaria o backup e as consultas sem nenhum ganho.
+
+O caminho é **relativo**, não absoluto: mover a pasta de imagens ou trocar o Raspberry Pi não invalidaria todos os registros.
+
+`prompt_id` é obrigatório: no fluxo do sistema, toda imagem do catálogo nasce de um prompt. Tornar a coluna opcional depois — para aceitar, por exemplo, uma imagem de referência externa — é uma migration trivial; o caminho inverso é que seria difícil.
+
+> **Divergência do item 3.2:** ele diz que "um Prompt está associado a uma Imagem". Aqui a relação é de **um prompt para várias imagens**, sem restrição de unicidade em `prompt_id`. O motivo é prático: o mesmo prompt costuma ser gerado mais de uma vez, ou em duas ferramentas diferentes, e faz sentido guardar mais de um resultado no catálogo. Remover uma restrição de unicidade depois é fácil; acrescentá-la quando já existem dados duplicados é que dá trabalho.
+
+#### (c) As duas chaves estrangeiras pendentes
+
+Com as tabelas acima criadas, os dois campos deixados de lado nas partes (a) e (b) passam a ser possíveis:
+
+| Tabela | Coluna | Aponta para | Ao apagar o destino |
+|---|---|---|---|
+| `livros` | `perfil_renderizacao_padrao_id` | `perfis_renderizacao` | `SET NULL` |
+| `estados_elemento` | `imagem_ancora_id` | `imagens` | `SET NULL` |
+
+Ambas aceitam nulo, e ambas usam `SET NULL`: apagar um perfil de estilo não pode apagar o livro, e apagar uma imagem do catálogo não pode apagar o estado do personagem. A referência se desfaz, o dado narrativo permanece.
+
+`imagem_ancora_id` é a "âncora visual" do item 3.1: uma imagem já aprovada daquele estado, que serve de referência nas gerações seguintes do mesmo personagem — o mecanismo que mantém a aparência consistente entre capítulos.
+
 ---
 
 ## Etapa 4 — Integração com IA
@@ -288,6 +394,12 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 | Unicidade do Elemento por (`livro_id`, `tipo`, `nome`) | Barra o cadastro duplicado que a extração automática produziria ao reencontrar o mesmo personagem em outro capítulo; o `tipo` entra na chave porque um nome pode designar coisas distintas (a região e o castelo Winterfell) |
 | Ordem narrativa derivada de `Capitulo.ordem`, não de `data_criacao` nem do `id` do estado | O usuário pode processar capítulos fora de ordem ou revisitar um antigo — ordenar pela criação daria a resposta errada ao item 4.4 |
 | Fora do Docker, conectar no banco por `127.0.0.1` e não por `localhost` | No Windows, `localhost` resolve para IPv6 (`::1`) antes de IPv4 e o Docker publica a porta só em IPv4: a conexão espera o timeout expirar antes de tentar o endereço certo, o que parece um travamento |
+| Associação Cena ↔ **EstadoElemento**, não Cena ↔ Elemento | É o que faz a cena registrar *como* cada elemento estava naquele ponto. Ligada ao Elemento, a cena não saberia qual das versões do personagem usar no prompt |
+| `PerfilRenderizacao` sem `livro_id`; é o Livro que aponta para o perfil | Se o perfil pertencesse a um livro não daria para reaproveitá-lo em outro — que é o motivo de ele existir como entidade (item 3.3) |
+| `ON DELETE SET NULL` nas referências a perfil e a imagem-âncora | Apagar um perfil de estilo ou uma imagem do catálogo não pode apagar o dado narrativo. A referência se desfaz, o livro e o estado do personagem permanecem |
+| Um Prompt para **várias** Imagens, divergindo do item 3.2 | Na prática o mesmo prompt é gerado mais de uma vez, ou em duas ferramentas diferentes, e faz sentido guardar mais de um resultado. Remover uma restrição de unicidade depois é fácil; acrescentá-la sobre dados já duplicados é que dá trabalho |
+| Campo "resultado" do item 3.1 implementado como `avaliacao` (texto livre) | É o que dá sentido a "comparar modelos depois": uma nota numérica diria que um modelo foi melhor, mas não em quê — e é o "em quê" que ajuda a escrever o próximo prompt |
+| Apenas o caminho da imagem no banco, e relativo | O arquivo fica no volume dedicado (item 1.4): guardá-lo no banco engordaria backup e consultas. Relativo para que mover a pasta ou trocar o Raspberry Pi não invalide todos os registros |
 
 ---
 

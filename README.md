@@ -82,3 +82,6 @@ Não rode dois comandos do Alembic ao mesmo tempo contra o mesmo banco: o segund
 |---|---|
 | `livros`, `capitulos` | 3.4 (a) |
 | `elementos`, `estados_elemento` | 3.4 (b) |
+| `cenas`, `cenas_estados_elemento`, `perfis_renderizacao`, `prompts`, `imagens` | 3.4 (c) |
+
+O modelo do MVP está completo. Nenhuma rota de domínio existe ainda — só `/saude`.

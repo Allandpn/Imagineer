@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -40,6 +40,20 @@ class Livro(Base):
         # relógio de quem chamou a API.
         server_default=func.now(),
     )
+
+    perfil_renderizacao_padrao_id: Mapped[int | None] = mapped_column(
+        # SET NULL: apagar um perfil de estilo não pode apagar o livro. A
+        # referência se desfaz, o dado narrativo permanece.
+        ForeignKey("perfis_renderizacao.id", ondelete="SET NULL"),
+    )
+    """O estilo visual usado por padrão nos prompts deste livro.
+
+    Aceita nulo: um livro recém-importado ainda não tem perfil escolhido. Cada
+    prompt pode usar outro perfil pontualmente — por isso o perfil também fica
+    registrado no próprio Prompt.
+    """
+
+    perfil_renderizacao_padrao: Mapped["PerfilRenderizacao | None"] = relationship()  # noqa: F821
 
     capitulos: Mapped[list["Capitulo"]] = relationship(  # noqa: F821
         back_populates="livro",
