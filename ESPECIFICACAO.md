@@ -121,6 +121,57 @@ As pastas `modelos`, `esquemas`, `servicos` e `ia` nascem **vazias**, contendo a
 - **PerfilRenderizacao em vez de campo único de "estilo"**: permite reutilizar combinações de estilo/iluminação/paleta entre livros, e adaptar à ferramenta de geração de imagem usada (cada uma tem sintaxe própria).
 - **Relações entre elementos e Grupos com membros explícitos**: ideia boa, mas adiada para uma v2 — exige tabela de relacionamento tipo grafo e telas extras no app; não é essencial para o MVP (Elemento + Estado + Cena + Prompt + Imagem).
 
+### 3.4 Campos das entidades
+
+Esta seção detalha as colunas de cada tabela. Ela é preenchida em três partes, conforme a implementação avança:
+
+- **(a)** `Livro` e `Capitulo` — a base da importação do EPUB.
+- **(b)** `Elemento` e `EstadoElemento` — o coração da consistência visual.
+- **(c)** `Cena`, `PerfilRenderizacao`, `Prompt` e `Imagem` — a geração e o catálogo.
+
+Decisões que valem para todas as tabelas:
+
+- **Chave primária**: inteiro autoincremento. Legível na depuração ("capítulo 5 do livro 2"), índices menores — o que conta num Raspberry Pi — e suficiente porque só o servidor cria registros. UUID só faria sentido se o app precisasse criar registros offline, o que não está no escopo.
+- **Nomes de tabela no plural** (`livros`, `capitulos`): a tabela guarda muitos; a classe, que representa um, fica no singular.
+
+#### (a) Livro
+
+Metadados do EPUB importado.
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária |
+| `titulo` | texto (500) | não | do metadado `dc:title` do EPUB |
+| `autor` | texto (300) | **sim** | muitos EPUBs não preenchem |
+| `idioma` | texto (20) | sim | código do metadado `dc:language` (ex: `pt-BR`) |
+| `identificador_epub` | texto (200) | sim | o `dc:identifier` do arquivo (ISBN ou UUID) |
+| `nome_arquivo` | texto (500) | não | nome original do arquivo enviado |
+| `data_importacao` | data/hora com fuso | não | preenchido pelo banco na inserção |
+
+`identificador_epub` é **indexado, mas não único**: serve para avisar que um livro já foi importado antes, e não para impedir. Muitos EPUBs pirateados ou convertidos repetem identificadores genéricos, e uma restrição de unicidade bloquearia importações legítimas.
+
+`data_importacao` é preenchido pelo próprio banco (`NOW()`), não pelo Python. Assim o horário é o do servidor, consistente entre registros, independente do relógio de quem chamou a API.
+
+**Pendente da parte (c):** o campo `perfil_renderizacao_padrao_id` previsto no item 3.1 só pode existir depois de a tabela `perfis_renderizacao` existir. Será acrescentado por uma migration na parte (c) — é exatamente esse tipo de evolução incremental que justifica o Alembic.
+
+#### (a) Capitulo
+
+Um capítulo de um Livro, com o texto extraído do EPUB.
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária |
+| `livro_id` | inteiro | não | referência ao Livro; indexado |
+| `ordem` | inteiro | não | posição no livro, começando em 1 |
+| `titulo` | texto (500) | **sim** | o índice do EPUB nem sempre nomeia o capítulo |
+| `texto` | texto longo | não | conteúdo textual, sem limite de tamanho |
+
+Restrição de unicidade em (`livro_id`, `ordem`): dois capítulos não podem ocupar a mesma posição no mesmo livro. É o banco garantindo uma regra que um erro no parsing poderia violar silenciosamente.
+
+`ordem` existe porque a sequência de leitura é definida pelo índice (TOC) do EPUB, e não pelo `id` — reprocessar um livro pode gerar ids em outra ordem. Toda listagem de capítulos ordena por este campo.
+
+Apagar um Livro apaga seus Capítulos (`ON DELETE CASCADE`), em dois níveis: no banco e no ORM. Um capítulo não existe sozinho, sem o livro a que pertence.
+
 ---
 
 ## Etapa 4 — Integração com IA
@@ -174,6 +225,10 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 | `requirements.txt` + venv em vez de Poetry/uv | Transparência: o arquivo lista exatamente o que está instalado; funciona igual no PC de desenvolvimento e no Raspberry Pi, sem ferramenta extra para aprender agora |
 | `psycopg` (v3) em vez de `psycopg2` | Tem wheels pré-compiladas para ARM64, evitando compilar driver no Raspberry Pi |
 | Testes com prefixo `teste_` | Coerência com a regra de idioma; custa uma linha de configuração no pytest |
+| Convenção de nomes para índices e restrições na `Base` | Sem ela o banco inventa os nomes, e cada ambiente fica com um nome diferente — impedindo que uma migration futura remova ou altere a restrição, porque precisa citá-la pelo nome. Definida antes da primeira migration de propósito |
+| Chave primária inteira autoincremento | Legível na depuração, índices menores (conta num Raspberry Pi) e suficiente porque só o servidor cria registros; UUID só se o app precisasse criar dados offline |
+| Porta do PostgreSQL publicada em `127.0.0.1:5432`, não em `0.0.0.0` | Permite rodar o Alembic e clientes de SQL na própria máquina, sem expor o banco para a rede que alcança o Raspberry Pi |
+| Migrations com funções `aplicar`/`reverter` | Mantém a regra de idioma; os nomes `upgrade`/`downgrade` exigidos pelo Alembic ficam como apelidos no fim do arquivo |
 
 ---
 

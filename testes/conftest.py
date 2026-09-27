@@ -22,28 +22,71 @@ os.environ.setdefault("URL_BANCO", "postgresql+psycopg://teste:teste@localhost:5
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
 
+from imagineer.banco.base import Base
 from imagineer.banco.sessao import obter_sessao
 from imagineer.principal import aplicacao
+
+# Importar os modelos registra as tabelas na Base.metadata — é o que permite
+# criar o banco de teste com create_all mais abaixo.
+import imagineer.modelos  # noqa: F401
+
+
+def _criar_motor_sqlite_em_memoria():
+    """Cria um motor SQLite em memória que se comporta como o PostgreSQL.
+
+    Dois ajustes tornam o SQLite parecido o bastante com o banco de produção:
+
+    - ``check_same_thread`` + ``StaticPool``: o TestClient executa a API numa
+      thread separada da do teste, e o SQLite recusa usar a mesma conexão em
+      duas threads. O StaticPool obriga todos a usarem a *mesma* conexão, o que
+      é necessário porque um banco "em memória" vive dentro da conexão — outra
+      conexão veria outro banco, vazio.
+    - ``PRAGMA foreign_keys=ON``: o SQLite **ignora** chaves estrangeiras por
+      padrão. Sem isso, um teste de ON DELETE CASCADE passaria sem provar nada.
+    """
+    motor = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+    @event.listens_for(motor, "connect")
+    def _ativar_chaves_estrangeiras(conexao_dbapi, _registro):
+        cursor = conexao_dbapi.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    return motor
+
+
+@pytest.fixture
+def sessao_com_tabelas() -> Session:
+    """Sessão ligada a um banco de teste com todas as tabelas já criadas.
+
+    Usa ``create_all`` em vez de rodar as migrations: o teste valida os
+    *modelos*, e o banco nasce direto do ``Base.metadata``. Que as migrations
+    produzem o mesmo resultado é verificado à parte, rodando o Alembic contra
+    o PostgreSQL de verdade.
+    """
+    motor = _criar_motor_sqlite_em_memoria()
+    Base.metadata.create_all(motor)
+    criador = sessionmaker(bind=motor)
+    sessao = criador()
+    try:
+        yield sessao
+    finally:
+        sessao.close()
+        motor.dispose()
 
 
 @pytest.fixture
 def sessao_de_teste() -> Session:
     """Uma sessão ligada a um SQLite em memória, descartada no fim do teste."""
-    motor = create_engine(
-        "sqlite://",
-        # O TestClient executa a API numa thread separada da do teste, e o
-        # SQLite recusa usar a mesma conexão em duas threads. Estes dois ajustes
-        # liberam isso: "check_same_thread" desliga a checagem, e o StaticPool
-        # obriga todos a usarem a *mesma* conexão — necessário porque um banco
-        # "em memória" vive dentro da conexão: outra conexão veria outro banco,
-        # vazio.
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    motor = _criar_motor_sqlite_em_memoria()
     criador = sessionmaker(bind=motor)
     sessao = criador()
     try:

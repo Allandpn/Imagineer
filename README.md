@@ -58,8 +58,24 @@ Os testes não precisam de banco no ar: usam um SQLite em memória no lugar do P
 
 ## Migrations do banco
 
+As migrations precisam alcançar o PostgreSQL. Com a stack no ar, o banco está em `127.0.0.1:5432` e o `.env` local já aponta para lá.
+
 ```bash
 # depois de criar ou alterar um modelo em imagineer/modelos/
 ./venv/Scripts/python.exe -m alembic revision --autogenerate -m "descricao da mudanca"
 ./venv/Scripts/python.exe -m alembic upgrade head
+
+# confere se algum modelo mudou sem a migration correspondente
+./venv/Scripts/python.exe -m alembic check
+
+# desfaz a última migration
+./venv/Scripts/python.exe -m alembic downgrade -1
 ```
+
+Não rode dois comandos do Alembic ao mesmo tempo contra o mesmo banco: o segundo fica esperando o primeiro liberar a tabela.
+
+### Modelos já criados
+
+| Tabela | Item da especificação |
+|---|---|
+| `livros`, `capitulos` | 3.4 (a) |
