@@ -92,4 +92,22 @@ O modelo do MVP está completo.
 |---|---|---|
 | `servicos/importacao_epub.py` | 2.2 | Lê um EPUB e o estrutura em Livro + Capítulos, sugerindo o que não é narrativa. Validado contra dezoito livros publicados, sem esconder nenhum capítulo |
 
-Nenhuma rota de domínio existe ainda — só `/saude`. A importação já funciona, mas ainda só é alcançável de dentro do Python.
+### Rotas disponíveis
+
+| Método e caminho | O que faz |
+|---|---|
+| `GET /saude` | Confirma que a API está no ar e falando com o banco |
+| `POST /livros` | Importa um arquivo EPUB (`multipart/form-data`, campo `arquivo`) |
+| `GET /livros` | Lista a biblioteca |
+| `GET /livros/{id}` | O livro com a lista de capítulos, sem o texto |
+| `DELETE /livros/{id}` | Remove o livro e tudo que depende dele |
+| `GET /capitulos/{id}` | O capítulo com o texto |
+| `PATCH /capitulos/{id}` | Ajusta `titulo` e `ignorado` |
+
+O desenho completo da API, incluindo as rotas ainda não implementadas, está na Etapa 6 da especificação.
+
+Exemplo de importação:
+
+```bash
+curl -X POST http://localhost:8000/livros -F "arquivo=@meu-livro.epub"
+```

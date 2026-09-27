@@ -29,7 +29,7 @@ Modelo cliente-servidor:
 - **Parsing de EPUB**: `ebooklib` (extração de capítulos via TOC/spine e texto).
 - **Banco de dados**: PostgreSQL, rodando em container próprio.
 - **ORM**: SQLAlchemy.
-- **Mobile**: **assumido** Kotlin + Jetpack Compose (Android nativo), aproveitando a familiaridade com JVM. **Ainda não confirmado formalmente** — ver Etapa 6 (Pendências).
+- **Mobile**: **assumido** Kotlin + Jetpack Compose (Android nativo), aproveitando a familiaridade com JVM. **Ainda não confirmado formalmente** — ver Etapa 7 (Pendências).
 
 ### 1.4 Infraestrutura
 
@@ -692,11 +692,139 @@ A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evi
 
 ---
 
-## Etapa 6 — Pendências / Próximos Passos
+## Etapa 6 — Rotas da API
+
+Os endpoints que o app mobile consome. O desenho cobre o fluxo inteiro da Etapa 2; a implementação vem em fatias, e cada rota abaixo diz em que estado está.
+
+### 6.1 Convenções
+
+**Idioma e forma.** Caminhos, campos e mensagens em português. Recursos no plural (`/livros`, `/capitulos`), identificadores inteiros na URL.
+
+**Sem prefixo de versão.** Nada de `/api/v1`: é um sistema pessoal com um cliente só, e acrescentar versionamento depois é trivial se algum dia houver um app antigo em uso que não dê para atualizar.
+
+**Aninhamento só para criar e listar.** `POST /livros/{id}/elementos` cria um elemento no livro; `GET /elementos/{id}` acessa o elemento direto. Aninhar o acesso a um item (`/livros/2/elementos/7`) só acrescentaria uma chance de a URL ser inconsistente com os dados.
+
+**`PATCH` para ajuste pontual**, e não `PUT`: o app quase sempre muda um campo só — marcar um capítulo como ignorado, anotar a avaliação de um prompt — e exigir o objeto inteiro convidaria a sobrescrever o que outra tela acabou de mudar.
+
+**Códigos de resposta:**
+
+| Situação | Código |
+|---|---|
+| Leitura bem-sucedida | 200 |
+| Criação bem-sucedida | 201 |
+| Exclusão bem-sucedida | 204 |
+| Recurso não encontrado | 404 |
+| Corpo da requisição malformado | 422, com o detalhe que o FastAPI já gera |
+| EPUB inválido ou sem texto | 422, com a mensagem de `ArquivoEpubInvalido` |
+| Arquivo acima do limite | 413 |
+
+**Sem paginação.** Uma biblioteca pessoal tem dezenas de livros, e a listagem de capítulos mais longa dos dezoito de validação tem 105 itens. Paginar agora seria complexidade sem problema correspondente.
+
+### 6.2 Livros e capítulos
+
+| Método e caminho | O que faz | Estado |
+|---|---|---|
+| `POST /livros` | Recebe o arquivo EPUB e importa (passos 1 a 3 do fluxo) | **implementado** |
+| `GET /livros` | Lista os livros da biblioteca | **implementado** |
+| `GET /livros/{id}` | O livro com a lista de capítulos, sem o texto (passo 4) | **implementado** |
+| `DELETE /livros/{id}` | Remove o livro e tudo que depende dele | **implementado** |
+| `GET /capitulos/{id}` | Um capítulo **com** o texto (passo 5) | **implementado** |
+| `PATCH /capitulos/{id}` | Ajusta `ignorado` e `titulo` | **implementado** |
+
+**O texto não vai nas listagens.** É a decisão que mais afeta o desenho: devolver o texto de todos os capítulos em `GET /livros/{id}` daria respostas de megabytes. A listagem devolve o tamanho em caracteres, que é o que o app precisa para mostrar "capítulo curto" ou "capítulo longo", e o texto vem só quando o usuário abre um capítulo.
+
+Medido contra o servidor rodando, com *Tress* (84 capítulos): `GET /livros/{id}` responde **7,5 KB**; o texto de todos os capítulos somados dá **674 KB**. São **90 vezes** menos dados numa tela que o app abre toda hora.
+
+**O upload é síncrono.** Medido nos livros de validação: extrair e gravar leva de 0,03 a 0,33 segundo, mesmo no maior deles (12 MB, 67 capítulos). Pela rota, com o servidor no ar, um EPUB de 9 MB sobe e é importado em **0,28 segundo**. Uma fila de trabalho em segundo plano resolveria um problema que não existe, e acrescentaria estado para o app acompanhar.
+
+**Importar o mesmo livro duas vezes é permitido**, conforme o item 3.4a. A resposta do `POST /livros` traz o campo `livros_semelhantes` com os livros que já tinham aquele `dc:identifier`, para o app poder avisar — sem impedir.
+
+**Limite de tamanho do arquivo: 60 MB.** O maior dos dezoito livros de validação tem 46 MB (uma história em quadrinhos), então o limite acomoda o caso real com folga e continua protegendo o Raspberry Pi de um arquivo absurdo.
+
+#### O que foi implementado
+
+As seis rotas de livros e capítulos, com 19 testes que exercitam a API de verdade
+pelo `TestClient` — cobrindo HTTP, esquema de resposta, serviço de importação e
+banco de uma vez.
+
+Verificado também contra o servidor rodando em Docker, importando livros reais:
+`POST /livros` responde 201 em 0,28 s para um arquivo de 9 MB, `PATCH` num
+capítulo muda a contagem de ignorados do livro, e `DELETE` no livro leva os
+capítulos junto — um `GET` no capítulo apagado responde 404.
+
+O upload precisou de uma dependência nova, `python-multipart`: o FastAPI a exige
+para ler `multipart/form-data`, e sem ela a rota nem é registrada.
+
+### 6.3 Elementos e estados
+
+| Método e caminho | O que faz | Estado |
+|---|---|---|
+| `GET /livros/{id}/elementos` | Os elementos do livro, com o estado mais recente de cada | a implementar |
+| `POST /livros/{id}/elementos` | Cadastra um elemento confirmado pelo usuário (passo 7) | a implementar |
+| `GET /elementos/{id}` | O elemento com todos os seus estados | a implementar |
+| `PATCH /elementos/{id}` | Ajusta nome, tipo e descrição | a implementar |
+| `DELETE /elementos/{id}` | Remove o elemento e seus estados | a implementar |
+| `POST /elementos/{id}/estados` | Registra um novo estado a partir de um capítulo | a implementar |
+| `PATCH /estados/{id}` | Ajusta a descrição ou define a imagem-âncora | a implementar |
+| `DELETE /estados/{id}` | Remove um estado | a implementar |
+| `GET /capitulos/{id}/estados-vigentes` | O estado vigente de cada elemento naquele ponto da narrativa | a implementar |
+
+`GET /capitulos/{id}/estados-vigentes` é a consulta descrita no item 3.4b, exposta como rota porque é o que dá contexto à IA no passo 6 e ao usuário na tela de revisão.
+
+### 6.4 Cenas
+
+| Método e caminho | O que faz | Estado |
+|---|---|---|
+| `GET /capitulos/{id}/cenas` | As cenas de um capítulo | a implementar |
+| `POST /capitulos/{id}/cenas` | Cria uma cena | a implementar |
+| `GET /cenas/{id}` | A cena com os elementos e estados que ela referencia | a implementar |
+| `PATCH /cenas/{id}` | Ajusta título, descrição e atributos situacionais | a implementar |
+| `DELETE /cenas/{id}` | Remove a cena, sem apagar os estados que ela citava | a implementar |
+| `PUT /cenas/{id}/estados` | Define a lista completa de estados da cena | a implementar |
+
+`PUT` e não `PATCH` em `/cenas/{id}/estados`: aqui o app manda a lista inteira de quem está na cena, que é como a tela funciona — o usuário marca e desmarca elementos e salva o conjunto.
+
+### 6.5 Perfis de renderização
+
+| Método e caminho | O que faz | Estado |
+|---|---|---|
+| `GET /perfis-renderizacao` | Lista os perfis, que são compartilhados entre livros | a implementar |
+| `POST /perfis-renderizacao` | Cria um perfil | a implementar |
+| `PATCH /perfis-renderizacao/{id}` | Ajusta o perfil | a implementar |
+| `DELETE /perfis-renderizacao/{id}` | Remove o perfil, sem apagar livros nem prompts | a implementar |
+| `PATCH /livros/{id}` | Define o perfil padrão do livro | a implementar |
+
+### 6.6 Prompts e catálogo de imagens
+
+| Método e caminho | O que faz | Estado |
+|---|---|---|
+| `POST /cenas/{id}/prompts` | Monta o prompt com a IA (passo 8) | depende da Etapa 4 |
+| `GET /cenas/{id}/prompts` | O histórico de prompts da cena | a implementar |
+| `GET /prompts/{id}` | Um prompt com as imagens que saíram dele | a implementar |
+| `PATCH /prompts/{id}` | Anota a avaliação do resultado | a implementar |
+| `DELETE /prompts/{id}` | Remove o prompt e suas imagens | a implementar |
+| `POST /prompts/{id}/imagens` | Importa o arquivo de imagem gerado (passos 10 e 11) | a implementar |
+| `GET /imagens/{id}/arquivo` | Devolve o arquivo da imagem | a implementar |
+| `DELETE /imagens/{id}` | Remove a imagem do catálogo, e o arquivo do disco | a implementar |
+
+### 6.7 Extração e configuração
+
+| Método e caminho | O que faz | Estado |
+|---|---|---|
+| `POST /capitulos/{id}/sugestoes` | Chama a IA para sugerir elementos e estados (passo 6) | depende da Etapa 4 |
+| `GET /configuracao/modelos` | Lista os modelos disponíveis no OpenRouter (item 4.3) | depende da Etapa 4 |
+| `GET /configuracao` | A configuração atual: modelos escolhidos, se há chave cadastrada | depende da Etapa 4 |
+| `PUT /configuracao` | Grava a configuração | depende da Etapa 4 |
+
+`GET /configuracao` **nunca devolve a chave de API**, só se ela está cadastrada. Uma chave que sai do servidor é uma chave que vaza em log, em cache de app ou em captura de tela.
+
+---
+
+## Etapa 7 — Pendências / Próximos Passos
 
 - [ ] Confirmar formalmente o stack mobile (assumido Kotlin + Jetpack Compose nativo Android).
 - [x] ~~Definir estrutura de pastas/módulos do projeto Python (FastAPI).~~ Concluído — ver item **1.5**.
-- [ ] Desenhar as rotas da API (endpoints, contratos de request/response).
+- [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**. Implementadas até agora as de livros e capítulos.
 - [ ] Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).
 - [x] ~~Permitir marcar um capítulo como ignorado.~~ Concluído — campo `Capitulo.ignorado`, pré-sugerido pela importação e confirmado pelo usuário (itens 2.2 e 3.4a). Falta expor o ajuste na API e no app.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).

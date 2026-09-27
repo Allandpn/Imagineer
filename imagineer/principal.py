@@ -10,7 +10,7 @@ Para subir em desenvolvimento:
 
 from fastapi import FastAPI
 
-from imagineer.rotas import saude
+from imagineer.rotas import capitulos, livros, saude
 
 aplicacao = FastAPI(
     title="Imagineer",
@@ -22,3 +22,5 @@ aplicacao = FastAPI(
 )
 
 aplicacao.include_router(saude.rotas)
+aplicacao.include_router(livros.rotas)
+aplicacao.include_router(capitulos.rotas)

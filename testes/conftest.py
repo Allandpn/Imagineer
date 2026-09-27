@@ -97,11 +97,16 @@ def sessao_de_teste() -> Session:
 
 
 @pytest.fixture
-def cliente(sessao_de_teste: Session) -> TestClient:
-    """Cliente HTTP de teste, com o banco real substituído pelo SQLite."""
+def cliente(sessao_com_tabelas: Session) -> TestClient:
+    """Cliente HTTP de teste, com o banco real substituído pelo SQLite.
+
+    Usa o banco **com as tabelas criadas**, porque as rotas de domínio (livros,
+    capítulos) leem e gravam de verdade. As rotas que não tocam em tabela, como
+    ``/saude``, funcionam igual.
+    """
 
     def obter_sessao_de_teste():
-        yield sessao_de_teste
+        yield sessao_com_tabelas
 
     aplicacao.dependency_overrides[obter_sessao] = obter_sessao_de_teste
     try:

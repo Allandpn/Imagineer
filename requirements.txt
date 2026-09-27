@@ -6,6 +6,10 @@
 fastapi==0.141.1
 uvicorn[standard]==0.54.0
 
+# Leitura de upload de arquivo (multipart/form-data) -- exigido pelo FastAPI
+# para o POST /livros receber o EPUB
+python-multipart==0.0.32
+
 # Banco de dados: ORM, driver e migrations
 sqlalchemy==2.1.1
 psycopg[binary]==3.3.6
