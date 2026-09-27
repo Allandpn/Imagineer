@@ -1,4 +1,7 @@
 ### Cria um perfil de renderização (estilo visual, reutilizável entre livros)
+# Só "nome" é obrigatório — os demais aceitam nulo, porque cada ferramenta de
+# imagem entende um subconjunto diferente (item 3.4c). Exemplo com todos os
+# campos preenchidos, pra deixar claro o que existe.
 POST {{baseUrl}}/perfis-renderizacao
 Content-Type: application/json
 
@@ -8,7 +11,8 @@ Content-Type: application/json
   "artista_referencia": null,
   "iluminacao": "luz de vela",
   "paleta": "tons terrosos e cinza",
-  "formato": "retrato"
+  "formato": "retrato",
+  "modelo_alvo": "midjourney"
 }
 
 > {%
