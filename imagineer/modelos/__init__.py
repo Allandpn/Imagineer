@@ -9,6 +9,13 @@ disco, mas nunca no mapa de tabelas.
 """
 
 from imagineer.modelos.capitulo import Capitulo
+from imagineer.modelos.elemento import Elemento, EstadoElemento, TipoElemento
 from imagineer.modelos.livro import Livro
 
-__all__ = ["Capitulo", "Livro"]
+__all__ = [
+    "Capitulo",
+    "Elemento",
+    "EstadoElemento",
+    "Livro",
+    "TipoElemento",
+]

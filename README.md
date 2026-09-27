@@ -46,7 +46,9 @@ python -m venv venv
 ./venv/Scripts/python.exe -m uvicorn imagineer.principal:aplicacao --reload
 ```
 
-Neste modo o PostgreSQL precisa estar acessível na `URL_BANCO` do `.env` — trocando `db` por `localhost` se o banco estiver rodando via `docker compose up db`.
+Neste modo o PostgreSQL precisa estar acessível na `URL_BANCO` do `.env` — trocando `db` por `127.0.0.1` se o banco estiver rodando via `docker compose up db`.
+
+> Use `127.0.0.1`, não `localhost`. No Windows, `localhost` resolve para IPv6 (`::1`) antes de IPv4, e o Docker publica a porta apenas em IPv4. A conexão acaba funcionando, mas só depois de esperar o timeout expirar — e sem timeout definido, parece que travou.
 
 ## Testes
 
@@ -79,3 +81,4 @@ Não rode dois comandos do Alembic ao mesmo tempo contra o mesmo banco: o segund
 | Tabela | Item da especificação |
 |---|---|
 | `livros`, `capitulos` | 3.4 (a) |
+| `elementos`, `estados_elemento` | 3.4 (b) |

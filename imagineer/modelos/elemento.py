@@ -1,0 +1,156 @@
+"""Modelos do Elemento e do EstadoElemento (item 3.4b).
+
+A separação entre os dois é a ideia central da modelagem, e vale entender o
+porquê: personagens envelhecem e se ferem, objetos quebram, ambientes são
+destruídos e reconstruídos. Se a aparência fosse um campo do próprio Elemento,
+o prompt do capítulo 40 usaria a descrição do capítulo 3 — ou sobrescreveria
+a antiga, perdendo o histórico.
+
+- **Elemento** responde "quem ou o que é isto" — e não muda.
+- **EstadoElemento** responde "como está isto agora" — e muda várias vezes.
+"""
+
+import enum
+from datetime import datetime
+
+from sqlalchemy import (
+    DateTime,
+    Enum,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from imagineer.banco.base import Base
+
+
+class TipoElemento(enum.Enum):
+    """O que um Elemento é.
+
+    Um enum em vez de tabelas separadas por tipo: personagens, ambientes,
+    objetos e criaturas têm exatamente a mesma necessidade — manter
+    consistência visual ao longo da narrativa. Tabelas por tipo duplicariam
+    schema e lógica sem ganho (item 3.3 da especificação).
+    """
+
+    PERSONAGEM = "PERSONAGEM"
+    AMBIENTE = "AMBIENTE"
+    OBJETO = "OBJETO"
+    CRIATURA = "CRIATURA"
+    GRUPO = "GRUPO"
+    """Rótulo para conjuntos ("os Stark", "a Patrulha da Noite").
+
+    Funciona como qualquer outro tipo, mas **sem membros explícitos**: a tabela
+    que ligaria um grupo aos seus integrantes está adiada para a v2.
+    """
+    VEICULO = "VEICULO"
+    EDIFICACAO = "EDIFICACAO"
+
+
+class Elemento(Base):
+    """A identidade de algo recorrente na história."""
+
+    __tablename__ = "elementos"
+    __table_args__ = (
+        # Impede que a extração automática cadastre o mesmo personagem duas
+        # vezes no mesmo livro. O "tipo" entra na chave porque um nome pode
+        # designar coisas diferentes: a região Winterfell e o castelo
+        # Winterfell são registros distintos.
+        UniqueConstraint("livro_id", "tipo", "nome", name="uq_elemento_livro_tipo_nome"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    livro_id: Mapped[int] = mapped_column(
+        ForeignKey("livros.id", ondelete="CASCADE"),
+        index=True,
+    )
+
+    tipo: Mapped[TipoElemento] = mapped_column(
+        Enum(
+            TipoElemento,
+            # native_enum=False guarda o valor como VARCHAR em vez de criar um
+            # tipo próprio no PostgreSQL. Acrescentar um tipo novo depois é uma
+            # migration curta (trocar a restrição); com ENUM nativo, remover um
+            # valor exigiria recriar o tipo inteiro e converter a coluna.
+            native_enum=False,
+            length=20,
+            # create_constraint precisa ser pedido explicitamente: desde o
+            # SQLAlchemy 1.4 o padrão é False, e sem isso a coluna seria um
+            # VARCHAR sem nenhuma validação no banco.
+            create_constraint=True,
+            name="tipo_elemento",
+            # Guarda o nome do membro ("PERSONAGEM"), não o valor. Aqui os dois
+            # coincidem, mas deixar explícito evita surpresa se algum dia um
+            # valor diferir do nome.
+            values_callable=lambda tipo: [membro.value for membro in tipo],
+        )
+    )
+
+    nome: Mapped[str] = mapped_column(String(200))
+    """Como o elemento é chamado na obra."""
+
+    descricao: Mapped[str | None] = mapped_column(Text)
+    """Quem ou o que é: papel na história, natureza, função.
+
+    Aceita nulo porque, ao confirmar uma sugestão da IA, o usuário pode ainda
+    não ter definido a identidade — só reconhecido que o elemento existe.
+    """
+
+    livro: Mapped["Livro"] = relationship()  # noqa: F821
+
+    estados: Mapped[list["EstadoElemento"]] = relationship(
+        back_populates="elemento",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Elemento id={self.id} tipo={self.tipo.name} nome={self.nome!r}>"
+
+
+class EstadoElemento(Base):
+    """Como um Elemento está em um ponto específico da narrativa."""
+
+    __tablename__ = "estados_elemento"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    elemento_id: Mapped[int] = mapped_column(
+        ForeignKey("elementos.id", ondelete="CASCADE"),
+        index=True,
+    )
+
+    capitulo_id: Mapped[int] = mapped_column(
+        ForeignKey("capitulos.id", ondelete="CASCADE"),
+        index=True,
+    )
+    """Capítulo em que este estado passa a valer.
+
+    Obrigatório porque todo estado nasce de um capítulo: é lá que o usuário
+    confirma "possível novo estado" (passo 7 do fluxo). Note que **não** há
+    unicidade em (elemento_id, capitulo_id) — um personagem pode entrar ferido
+    e sair curado no mesmo capítulo, e cada mudança é um estado.
+    """
+
+    descricao: Mapped[str] = mapped_column(Text)
+    """A aparência em si: roupas, ferimentos, condição. É o que entra no prompt."""
+
+    data_criacao: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    """Quando o registro foi criado — **não** serve para ordenar a narrativa.
+
+    O usuário pode processar capítulos fora de ordem ou revisitar um capítulo
+    antigo, então a ordem de criação não corresponde à ordem da história. Quem
+    define a sequência narrativa é ``Capitulo.ordem`` (ver item 3.4b).
+    """
+
+    elemento: Mapped["Elemento"] = relationship(back_populates="estados")
+    capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
+
+    def __repr__(self) -> str:
+        return f"<EstadoElemento id={self.id} elemento_id={self.elemento_id}>"
