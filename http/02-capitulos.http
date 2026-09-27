@@ -1,0 +1,28 @@
+### Abre um capítulo com o texto completo (passo 5)
+# Rode 01-livros.http primeiro para ter livroId e primeiroCapituloId.
+GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}
+
+> {%
+    client.test("Traz o texto", function () {
+        client.assert(response.body.texto.length > 0, "capítulo sem texto");
+    });
+%}
+
+### Confirma ou desfaz a sugestão de "ignorado" da importação (item 2.2)
+PATCH {{baseUrl}}/capitulos/{{primeiroCapituloId}}
+Content-Type: application/json
+
+{
+  "ignorado": false
+}
+
+### Muda o título do capítulo
+PATCH {{baseUrl}}/capitulos/{{primeiroCapituloId}}
+Content-Type: application/json
+
+{
+  "titulo": "Título ajustado à mão"
+}
+
+### Capítulo inexistente — confere o 404
+GET {{baseUrl}}/capitulos/999999

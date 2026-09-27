@@ -1,0 +1,67 @@
+### Cadastra um elemento já com o estado inicial (passo 7)
+# Rode 01-livros.http antes, para ter livroId e primeiroCapituloId.
+POST {{baseUrl}}/livros/{{livroId}}/elementos
+Content-Type: application/json
+
+{
+  "tipo": "PERSONAGEM",
+  "nome": "Personagem de teste",
+  "descricao": "Criado pelo arquivo .http para testes manuais",
+  "estado_inicial": {
+    "capitulo_id": {{primeiroCapituloId}},
+    "descricao": "Como está no primeiro capítulo"
+  }
+}
+
+> {%
+    client.global.set("elementoId", response.body.id);
+    client.global.set("estadoId", response.body.estados[0].id);
+    client.test("Criou com o estado junto", function () {
+        client.assert(response.status === 201, "esperava 201, veio " + response.status);
+        client.assert(response.body.estados.length === 1, "esperava 1 estado");
+    });
+%}
+
+### Lista os elementos do livro, cada um com o estado mais recente
+GET {{baseUrl}}/livros/{{livroId}}/elementos
+
+### Filtra por tipo
+GET {{baseUrl}}/livros/{{livroId}}/elementos?tipo=PERSONAGEM
+
+### Abre o elemento com todos os estados, em ordem narrativa
+GET {{baseUrl}}/elementos/{{elementoId}}
+
+### Ajusta a identidade do elemento (nome, tipo ou descrição)
+PATCH {{baseUrl}}/elementos/{{elementoId}}
+Content-Type: application/json
+
+{
+  "descricao": "Descrição corrigida"
+}
+
+### Registra um novo estado, a partir de outro capítulo
+POST {{baseUrl}}/elementos/{{elementoId}}/estados
+Content-Type: application/json
+
+{
+  "capitulo_id": {{primeiroCapituloId}},
+  "descricao": "Novo estado, mesmo capítulo — mudança dentro do capítulo é permitida"
+}
+
+### Ajusta a descrição de um estado, ou define a imagem-âncora
+PATCH {{baseUrl}}/estados/{{estadoId}}
+Content-Type: application/json
+
+{
+  "descricao": "Descrição do estado corrigida"
+}
+
+### O estado vigente de cada elemento do livro, até este capítulo (item 3.4b)
+# É o que dá contexto à IA no passo 6 — ver 06-sugestoes.http.
+GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}/estados-vigentes
+
+### Remove um estado — o elemento e as cenas que o citavam permanecem
+# DELETE {{baseUrl}}/estados/{{estadoId}}
+
+### Remove o elemento e todos os seus estados
+# DELETE {{baseUrl}}/elementos/{{elementoId}}

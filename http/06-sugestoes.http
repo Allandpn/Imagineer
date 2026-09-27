@@ -1,0 +1,18 @@
+### Pede à IA os elementos e estados sugeridos do capítulo (passo 6)
+# Não grava nada no banco — é sugestão. Precisa de chave e de modelo_extracao
+# configurados em 05-configuracao-ia.http, e de primeiroCapituloId (01-livros.http).
+POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
+
+> {%
+    client.test("Devolveu sugestões", function () {
+        client.assert(response.status === 200, "esperava 200, veio " + response.status);
+    });
+%}
+
+### Rodar de novo depois de confirmar um elemento (03-elementos-e-estados.http)
+# mostra o elemento já cadastrado com elemento_id preenchido e, se a IA achar
+# que nada mudou, manter_estado_atual: true (item 4.4).
+POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
+
+### Capítulo inexistente — confere o 404
+POST {{baseUrl}}/capitulos/999999/sugestoes

@@ -1,0 +1,39 @@
+### Importa um EPUB (passos 1 a 4 do fluxo)
+# Ajuste o caminho abaixo para um arquivo real na sua máquina — nenhum EPUB
+# fica dentro do repositório.
+POST {{baseUrl}}/livros
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="arquivo"; filename="livro.epub"
+Content-Type: application/epub+zip
+
+< D:\Livros\A Vontade de Muitos\A vontade de muitos (BACKUP antes de editar).epub
+--WebAppBoundary--
+
+> {%
+    client.global.set("livroId", response.body.livro.id);
+    client.global.set("primeiroCapituloId", response.body.livro.capitulos[2].id);
+    client.test("Importou com sucesso", function () {
+        client.assert(response.status === 201, "esperava 201, veio " + response.status);
+    });
+%}
+
+### Lista a biblioteca
+GET {{baseUrl}}/livros
+
+### Abre o livro importado (com a estrutura de capítulos, sem o texto)
+GET {{baseUrl}}/livros/{{livroId}}
+
+### Corrige metadados e/ou define o perfil de renderização padrão
+# perfil_renderizacao_padrao_id vem de 04-cenas-e-perfis.http, se já tiver criado um
+PATCH {{baseUrl}}/livros/{{livroId}}
+Content-Type: application/json
+
+{
+  "autor": "James Islington",
+  "titulo":  "A Vontade de Muitos"
+}
+
+### Remove o livro — apaga capítulos, elementos, cenas, prompts e imagens em cascata
+# DELETE {{baseUrl}}/livros/{{livroId}}

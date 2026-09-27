@@ -1,0 +1,38 @@
+### A configuração atual — nunca traz a chave, só se ela existe e de onde veio
+GET {{baseUrl}}/configuracao
+
+### Lista os modelos gratuitos do OpenRouter com contexto suficiente para um capítulo
+# Funciona sem chave cadastrada — o endpoint de modelos do OpenRouter é público.
+GET {{baseUrl}}/configuracao/modelos?somente_gratuitos=true&contexto_minimo=32000
+
+### Escolhe o modelo de extração e o de montagem de prompt
+# Troque o id abaixo por um da lista da requisição anterior. Modelos gratuitos
+# às vezes respondem 429 (limite de uso) por estarem sobrecarregados no
+# OpenRouter — não é erro do sistema, é só trocar de modelo e tentar de novo.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "modelo_extracao": "nvidia/nemotron-3-super-120b-a12b:free",
+  "modelo_prompt": "nvidia/nemotron-3-super-120b-a12b:free"
+}
+
+### Prioridade de custo vs. qualidade na leitura profunda (item 4.4, fase 2)
+# ECONOMIA (padrão): relê o capítulo de origem só na primeira vez por estado.
+# QUALIDADE: relê toda vez que um prompt novo é montado para a cena.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "prioridade_ia": "QUALIDADE"
+}
+
+### Cadastra a chave pelo app, em vez de variável de ambiente
+# Só é preciso se você não usa CHAVE_API_OPENROUTER / IMAGINEER_KEY_OPEN_ROUTER
+# no ambiente. Uma chave vazia apaga o cadastro do banco.
+# PUT {{baseUrl}}/configuracao
+# Content-Type: application/json
+#
+# {
+#   "chave_api_openrouter": "sk-or-v1-..."
+# }

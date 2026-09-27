@@ -1,0 +1,2 @@
+### Confere se a API está no ar e conectada ao banco (item 6.1)
+GET {{baseUrl}}/saude

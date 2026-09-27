@@ -1,0 +1,81 @@
+### Monta o prompt de imagem a partir da cena (passo 8)
+# Precisa de cenaId (04-cenas-e-perfis.http), de chave, modelo_extracao e
+# modelo_prompt configurados (05-configuracao-ia.http) — modelo_extracao
+# também é usado na leitura profunda (item 4.4, fase 2), que roda aqui dentro
+# antes de montar o prompt e sobrescreve a descrição do estado no banco. Sem
+# perfil_renderizacao_id no corpo, usa o perfil padrão do livro — defina um em
+# 04-cenas-e-perfis.http antes.
+POST {{baseUrl}}/cenas/{{cenaId}}/prompts
+Content-Type: application/json
+
+{}
+
+> {%
+    client.global.set("promptId", response.body.id);
+    client.test("Montou o prompt", function () {
+        client.assert(response.status === 201, "esperava 201, veio " + response.status);
+    });
+%}
+
+### O mesmo, mas com perfil e modelo explícitos no pedido
+POST {{baseUrl}}/cenas/{{cenaId}}/prompts
+Content-Type: application/json
+
+{
+  "perfil_renderizacao_id": {{perfilId}},
+  "modelo": "nvidia/nemotron-3-super-120b-a12b:free"
+}
+
+### Gera de novo com um comentário — prioridade sobre a leitura automática
+# Não existe rota separada de "refinar" (item 4.4): é a mesma chamada, com um
+# comentario a mais. Útil depois de ler o capítulo ou ver a imagem anterior e
+# notar algo que a IA não captou sozinha.
+POST {{baseUrl}}/cenas/{{cenaId}}/prompts
+Content-Type: application/json
+
+{
+  "comentario": "A cicatriz no rosto dele, mencionada no capítulo seguinte, deveria aparecer."
+}
+
+### Histórico de prompts da cena
+GET {{baseUrl}}/cenas/{{cenaId}}/prompts
+
+### Abre um prompt, com as imagens que saíram dele
+GET {{baseUrl}}/prompts/{{promptId}}
+
+### Anota a avaliação do resultado, depois de ver a imagem gerada
+PATCH {{baseUrl}}/prompts/{{promptId}}
+Content-Type: application/json
+
+{
+  "avaliacao": "Ficou fiel à descrição, mas o clima não apareceu."
+}
+
+### Importa o arquivo de imagem gerado (passos 10 e 11)
+# Usa o PNG de teste em http/arquivos/. Troque pelo arquivo real gerado pela
+# ferramenta de imagem quando quiser testar com um resultado de verdade.
+POST {{baseUrl}}/prompts/{{promptId}}/imagens
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="arquivo"; filename="imagem-teste.png"
+Content-Type: image/png
+
+< ./arquivos/imagem-teste.png
+--WebAppBoundary--
+
+> {%
+    client.global.set("imagemId", response.body.id);
+    client.test("Importou a imagem", function () {
+        client.assert(response.status === 201, "esperava 201, veio " + response.status);
+    });
+%}
+
+### Baixa o arquivo da imagem
+GET {{baseUrl}}/imagens/{{imagemId}}/arquivo
+
+### Remove a imagem — apaga a linha do catálogo e o arquivo do disco
+# DELETE {{baseUrl}}/imagens/{{imagemId}}
+
+### Remove o prompt — leva as imagens dele junto, banco e disco
+# DELETE {{baseUrl}}/prompts/{{promptId}}
