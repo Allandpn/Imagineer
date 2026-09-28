@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from imagineer.modelos import TipoDeFrame, TipoElemento
+from imagineer.modelos import CategoriaEstilo, TipoDeFrame, TipoElemento
 
 
 class EstadoComElemento(BaseModel):
@@ -159,6 +159,41 @@ class PerfilRenderizacaoAjuste(PerfilRenderizacaoBase):
     """Os campos ajustáveis de um perfil."""
 
     nome: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class SugestaoDePerfilPedido(BaseModel):
+    """O que o app manda para pedir uma sugestão de perfil (item 6.5)."""
+
+    categoria_estilo: CategoriaEstilo | None = Field(
+        default=None,
+        description=(
+            "A categoria de estilo escolhida pelo usuário (ex.: PINTURA_A_OLEO, "
+            "CARTOON_ANIMACAO) — a IA detalha os atributos dentro dela, em vez "
+            "de escolher livremente. Sem isso, a IA escolhe uma categoria "
+            "sozinha, mas ainda restrita ao mesmo vocabulário fechado."
+        ),
+    )
+
+
+class PerfilRenderizacaoSugestao(BaseModel):
+    """O que a IA sugere para um perfil, a partir só dos metadados do livro.
+
+    Rascunho de validação (pendência da Etapa 8) — sem ``nome`` (quem nomeia é
+    o usuário) e sem ``modelo_alvo`` (a IA não tem como saber em qual
+    ferramenta de imagem o usuário vai colar o prompt). Devolvida solta, sem
+    gravar nada: o usuário decide se usa isto para preencher
+    ``POST /perfis-renderizacao`` ou ignora.
+    """
+
+    estilo: str | None = None
+    artista_referencia: str | None = None
+    iluminacao: str | None = None
+    paleta: str | None = None
+    formato: str | None = None
+    categoria_estilo: CategoriaEstilo | None = Field(
+        description="A categoria usada — a pedida, ou a que a IA escolheu sozinha."
+    )
+    modelo: str = Field(description="O modelo de IA que gerou esta sugestão.")
 
 
 class LivroAjuste(BaseModel):

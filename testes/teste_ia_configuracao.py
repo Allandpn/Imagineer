@@ -25,7 +25,7 @@ from imagineer.ia.provedor import (
     ModeloNaoEscolhido,
     TextoLongoDemais,
 )
-from imagineer.modelos import TipoElemento
+from imagineer.modelos import CategoriaEstilo, TipoElemento
 
 
 def _provedor(respostas: dict[str, object], chave: str | None = "chave-de-teste"):
@@ -616,6 +616,132 @@ def teste_fundamentar_frame_sem_json_levanta_erro() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Sugestão de perfil de renderização (rascunho, pendência da Etapa 8)
+# --------------------------------------------------------------------------- #
+
+
+def teste_sugerir_perfil_interpreta_o_json() -> None:
+    resposta = json.dumps(
+        {
+            "estilo": "aquarela sombria",
+            "artista_referencia": "Alan Lee",
+            "iluminacao": "luz de vela",
+            "paleta": "tons terrosos",
+            "formato": "retrato",
+        }
+    )
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_perfil_renderizacao(
+        titulo="O Senhor dos Anéis",
+        autor="J.R.R. Tolkien",
+        idioma="pt-BR",
+        categoria_estilo=None,
+        modelo="algum/modelo",
+    )
+
+    assert sugestao.estilo == "aquarela sombria"
+    assert sugestao.artista_referencia == "Alan Lee"
+    assert sugestao.modelo == "algum/modelo"
+
+
+def teste_sugerir_perfil_usa_a_categoria_devolvida_pelo_modelo() -> None:
+    """Sem categoria escolhida pelo usuário, a IA escolhe uma sozinha."""
+    resposta = json.dumps({"estilo": "x", "categoria_estilo": "PINTURA_A_OLEO"})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_perfil_renderizacao(
+        titulo="X", autor=None, idioma=None, categoria_estilo=None, modelo="m"
+    )
+
+    assert sugestao.categoria_estilo == CategoriaEstilo.PINTURA_A_OLEO
+
+
+def teste_sugerir_perfil_categoria_pedida_prevalece_se_modelo_nao_confirmar() -> None:
+    """Se o modelo não devolver `categoria_estilo` (ou devolver algo inválido),
+    cai na categoria que o usuário pediu — nunca fica perdido."""
+    resposta = json.dumps({"estilo": "x"})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_perfil_renderizacao(
+        titulo="X",
+        autor=None,
+        idioma=None,
+        categoria_estilo=CategoriaEstilo.CARTOON_ANIMACAO,
+        modelo="m",
+    )
+
+    assert sugestao.categoria_estilo == CategoriaEstilo.CARTOON_ANIMACAO
+
+
+def teste_sugerir_perfil_trata_a_palavra_nulo_como_ausencia() -> None:
+    """Achado testando com `perplexity/sonar-pro`: às vezes o modelo escreve a
+    palavra "nulo" como texto em vez de usar `null` de verdade no JSON."""
+    resposta = json.dumps(
+        {
+            "estilo": "realismo sombrio",
+            "artista_referencia": "nulo",
+            "iluminacao": "NULL",
+            "paleta": "Não informado",
+            "formato": "retrato",
+        }
+    )
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_perfil_renderizacao(
+        titulo="Um livro qualquer", autor=None, idioma=None, categoria_estilo=None, modelo="m"
+    )
+
+    assert sugestao.artista_referencia is None
+    assert sugestao.iluminacao is None
+    assert sugestao.paleta is None
+    assert sugestao.estilo == "realismo sombrio"
+
+
+def teste_sugerir_perfil_manda_os_metadados_e_liga_a_busca_web() -> None:
+    """É a única operação desta classe que liga o plugin de busca do
+    OpenRouter — não manda nenhum texto do livro, só os metadados."""
+    capturado = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado["corpo"] = json.loads(pedido.content)
+        return httpx.Response(
+            200, json=_resposta_de_conversa('{"estilo": "x"}')
+        )
+
+    provedor = ProvedorOpenRouter(
+        chave_api="k",
+        cliente=httpx.Client(
+            base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder)
+        ),
+    )
+
+    provedor.sugerir_perfil_renderizacao(
+        titulo="A Vontade de Muitos",
+        autor="James Islington",
+        idioma="pt-BR",
+        categoria_estilo=CategoriaEstilo.FOTORREALISTA_CINEMATOGRAFICO,
+        modelo="m",
+    )
+
+    corpo = capturado["corpo"]
+    assert corpo["plugins"] == [{"id": "web"}]
+    enviado = corpo["messages"][1]["content"]
+    assert "A Vontade de Muitos" in enviado
+    assert "James Islington" in enviado
+    assert "FOTORREALISTA_CINEMATOGRAFICO" in enviado
+
+
+def teste_sugerir_perfil_sem_json_levanta_erro() -> None:
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa("não é json")})
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.sugerir_perfil_renderizacao(
+            titulo="X", autor=None, idioma=None, categoria_estilo=None, modelo="m"
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Erros e pré-checagens
 # --------------------------------------------------------------------------- #
 
@@ -733,6 +859,7 @@ def teste_gravar_chave_e_modelos(cliente: TestClient) -> None:
             "chave_api_openrouter": "sk-de-teste",
             "modelo_extracao": "algum/modelo",
             "modelo_prompt": "outro/modelo",
+            "modelo_perfil": "terceiro/modelo",
         },
     )
 
@@ -742,6 +869,20 @@ def teste_gravar_chave_e_modelos(cliente: TestClient) -> None:
     assert corpo["origem_da_chave"] == "banco"
     assert corpo["modelo_extracao"] == "algum/modelo"
     assert corpo["modelo_prompt"] == "outro/modelo"
+    assert corpo["modelo_perfil"] == "terceiro/modelo"
+
+
+def teste_modelo_perfil_e_independente_do_modelo_de_extracao(cliente: TestClient) -> None:
+    """Item 6.5: a sugestão de perfil é uma chamada única por livro, então
+    compensa escolher um modelo diferente (normalmente mais caro) do usado
+    para extrair elementos a cada capítulo."""
+    cliente.put("/configuracao", json={"modelo_extracao": "barato/modelo"})
+
+    resposta = cliente.put("/configuracao", json={"modelo_perfil": "caro/modelo"})
+
+    corpo = resposta.json()
+    assert corpo["modelo_extracao"] == "barato/modelo"
+    assert corpo["modelo_perfil"] == "caro/modelo"
 
 
 def teste_a_chave_nunca_sai_na_resposta(cliente: TestClient) -> None:

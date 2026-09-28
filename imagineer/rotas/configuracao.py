@@ -40,6 +40,13 @@ class ConfiguracaoAtual(BaseModel):
     )
     modelo_extracao: str | None
     modelo_prompt: str | None
+    modelo_perfil: str | None = Field(
+        description=(
+            "Modelo para sugerir perfil de renderização (item 6.5) — separado dos "
+            "outros porque essa chamada é única por livro, não por capítulo, e "
+            "compensa usar um modelo mais caro."
+        )
+    )
     prioridade_ia: PrioridadeIA = Field(
         description=(
             "ECONOMIA (padrão) reaproveita leituras já feitas; QUALIDADE relê "
@@ -59,6 +66,7 @@ class ConfiguracaoNova(BaseModel):
     chave_api_openrouter: str | None = Field(default=None, max_length=200)
     modelo_extracao: str | None = Field(default=None, max_length=200)
     modelo_prompt: str | None = Field(default=None, max_length=200)
+    modelo_perfil: str | None = Field(default=None, max_length=200)
     prioridade_ia: PrioridadeIA | None = None
 
 
@@ -82,6 +90,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         origem_da_chave=chave.origem,
         modelo_extracao=configuracao.modelo_extracao,
         modelo_prompt=configuracao.modelo_prompt,
+        modelo_perfil=configuracao.modelo_perfil,
         prioridade_ia=configuracao.prioridade_ia,
     )
 

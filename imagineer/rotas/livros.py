@@ -8,14 +8,26 @@ from sqlalchemy import Integer, case, func, select
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
-from imagineer.esquemas.frame import LivroAjuste
+from imagineer.esquemas.frame import (
+    LivroAjuste,
+    PerfilRenderizacaoSugestao,
+    SugestaoDePerfilPedido,
+)
 from imagineer.esquemas.livro import (
     CapituloResumo,
     LivroDetalhe,
     LivroResumo,
     RespostaImportacao,
 )
+from imagineer.ia.provedor import (
+    ChaveDeApiAusente,
+    ErroDoProvedorIA,
+    ModeloNaoEscolhido,
+    ProvedorIA,
+)
 from imagineer.modelos import Capitulo, Livro, PerfilRenderizacao
+from imagineer.rotas.configuracao import obter_provedor
+from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.importacao_epub import (
     ArquivoEpubInvalido,
     importar_epub,
@@ -133,6 +145,74 @@ def ajustar_livro(
     sessao.commit()
     sessao.refresh(livro)
     return _detalhe_do_livro(sessao, livro)
+
+
+@rotas.post(
+    "/{livro_id}/perfis-renderizacao/sugestao",
+    response_model=PerfilRenderizacaoSugestao,
+    summary="Sugere um perfil de renderização por IA (rascunho)",
+)
+def sugerir_perfil_renderizacao(
+    livro_id: int,
+    pedido: SugestaoDePerfilPedido | None = None,
+    sessao: Session = Depends(obter_sessao),
+    provedor: ProvedorIA = Depends(obter_provedor),
+) -> PerfilRenderizacaoSugestao:
+    """Sugere um estilo visual a partir só de título/autor/idioma do livro.
+
+    **Rascunho de validação, ainda sem especificação fechada** (pendência da
+    Etapa 8) — não persiste nada; devolve a sugestão solta para o usuário
+    decidir se usa em `POST /perfis-renderizacao`. Não lê nenhum capítulo: a
+    ideia de usar o primeiro capítulo foi descartada porque não há como saber
+    de antemão onde a narrativa de fato começa (muitos livros têm prólogo,
+    sumário residual ou epígrafe antes do primeiro capítulo "de verdade").
+    Em vez disso, pede para a IA reconhecer a obra pelos metadados — inclusive
+    buscando na internet — o que troca o risco de ler o trecho errado do livro
+    pelo risco de a IA confundir com outra obra ou inventar um tom genérico.
+
+    `pedido.categoria_estilo` (opcional) deixa o usuário escolher a família de
+    estilo (pintura a óleo, cartoon...) e a IA detalha os atributos dentro
+    dela. Achado testando com IA real: sem essa restrição, uma sugestão livre
+    já misturou movimentos artísticos incompatíveis na mesma resposta, e o
+    prompt de imagem gerado a partir dela saiu visualmente confuso.
+    """
+    livro = _buscar_livro(sessao, livro_id)
+    configuracao = obter_ou_criar(sessao)
+    modelo_perfil = configuracao.modelo_perfil
+
+    if not modelo_perfil:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                "Nenhum modelo de sugestão de perfil foi escolhido. Configure "
+                "'modelo_perfil' em /configuracao."
+            ),
+        )
+
+    categoria_estilo = pedido.categoria_estilo if pedido else None
+
+    try:
+        sugestao = provedor.sugerir_perfil_renderizacao(
+            livro.titulo, livro.autor, livro.idioma, categoria_estilo, modelo_perfil
+        )
+    except (ChaveDeApiAusente, ModeloNaoEscolhido) as erro:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
+        ) from erro
+    except ErroDoProvedorIA as erro:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
+        ) from erro
+
+    return PerfilRenderizacaoSugestao(
+        estilo=sugestao.estilo,
+        artista_referencia=sugestao.artista_referencia,
+        iluminacao=sugestao.iluminacao,
+        paleta=sugestao.paleta,
+        formato=sugestao.formato,
+        categoria_estilo=sugestao.categoria_estilo,
+        modelo=sugestao.modelo,
+    )
 
 
 @rotas.delete(

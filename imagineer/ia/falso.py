@@ -19,10 +19,11 @@ from imagineer.ia.provedor import (
     ExtracaoDeElementos,
     FrameFundamentado,
     ModeloDisponivel,
+    PerfilRenderizacaoSugerido,
     PromptMontado,
     ProvedorIA,
 )
-from imagineer.modelos import TipoElemento
+from imagineer.modelos import CategoriaEstilo, TipoElemento
 
 MODELO_FALSO = "falso/modelo-de-teste"
 
@@ -54,6 +55,7 @@ class ProvedorFalso(ProvedorIA):
         estado: str = "watercolor-ready appearance description",
         contexto: str = "the book confirms this happens in the guard room",
         prompt: str = "watercolor painting of a snowy courtyard at dusk",
+        perfil_sugerido: PerfilRenderizacaoSugerido | None = None,
         erro: Exception | None = None,
     ):
         self._elementos = elementos if elementos is not None else []
@@ -61,11 +63,15 @@ class ProvedorFalso(ProvedorIA):
         self._estado = estado
         self._contexto = contexto
         self._prompt = prompt
+        self._perfil_sugerido = perfil_sugerido or PerfilRenderizacaoSugerido(
+            estilo="aquarela, traços soltos", iluminacao="luz de vela", paleta="tons terrosos"
+        )
         self._erro = erro
         self.chamadas_de_extracao: list[dict] = []
         self.chamadas_de_estado: list[dict] = []
         self.chamadas_de_fundamentacao: list[dict] = []
         self.chamadas_de_prompt: list[dict] = []
+        self.chamadas_de_sugestao_de_perfil: list[dict] = []
 
     def listar_modelos(self) -> list[ModeloDisponivel]:
         if self._erro is not None:
@@ -162,3 +168,27 @@ class ProvedorFalso(ProvedorIA):
         if self._erro is not None:
             raise self._erro
         return PromptMontado(texto=self._prompt, modelo=modelo)
+
+    def sugerir_perfil_renderizacao(
+        self,
+        titulo: str,
+        autor: str | None,
+        idioma: str | None,
+        categoria_estilo: CategoriaEstilo | None,
+        modelo: str,
+    ) -> PerfilRenderizacaoSugerido:
+        self.chamadas_de_sugestao_de_perfil.append(
+            {
+                "titulo": titulo,
+                "autor": autor,
+                "idioma": idioma,
+                "categoria_estilo": categoria_estilo,
+                "modelo": modelo,
+            }
+        )
+        if self._erro is not None:
+            raise self._erro
+        sugestao = self._perfil_sugerido
+        sugestao.modelo = modelo
+        sugestao.categoria_estilo = categoria_estilo or sugestao.categoria_estilo
+        return sugestao

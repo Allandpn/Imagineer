@@ -10,6 +10,9 @@ import io
 from ebooklib import epub
 from fastapi.testclient import TestClient
 
+from imagineer.ia.falso import MODELO_FALSO, ProvedorFalso
+from imagineer.ia.provedor import ChaveDeApiAusente, ErroDoProvedorIA, PerfilRenderizacaoSugerido
+
 TEXTO_LONGO = "Este é um parágrafo com texto suficiente para não ser descartado. " * 3
 
 
@@ -283,3 +286,139 @@ def teste_ajuste_reflete_nas_contagens_do_livro(cliente: TestClient) -> None:
 
 def teste_ajustar_capitulo_inexistente_responde_404(cliente: TestClient) -> None:
     assert cliente.patch("/capitulos/999", json={"ignorado": True}).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# POST /livros/{id}/perfis-renderizacao/sugestao (rascunho, pendência da Etapa 8)
+# --------------------------------------------------------------------------- #
+
+
+def teste_sugerir_perfil_devolve_o_que_o_provedor_deu(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Não persiste nada — só repassa a sugestão do provedor."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            perfil_sugerido=PerfilRenderizacaoSugerido(
+                estilo="aquarela sombria",
+                artista_referencia="Alan Lee",
+                iluminacao="luz de vela",
+                paleta="tons terrosos",
+                formato="retrato",
+            )
+        )
+    )
+    livro = _importar(cliente).json()["livro"]
+    cliente.put("/configuracao", json={"modelo_perfil": MODELO_FALSO})
+
+    resposta = cliente.post(f"/livros/{livro['id']}/perfis-renderizacao/sugestao")
+
+    assert resposta.status_code == 200
+    assert resposta.json() == {
+        "estilo": "aquarela sombria",
+        "artista_referencia": "Alan Lee",
+        "iluminacao": "luz de vela",
+        "paleta": "tons terrosos",
+        "formato": "retrato",
+        "categoria_estilo": None,
+        "modelo": MODELO_FALSO,
+    }
+    # Nada foi criado — é só uma sugestão solta.
+    assert cliente.get("/perfis-renderizacao").json() == []
+
+
+def teste_sugerir_perfil_manda_os_metadados_do_livro(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """O provedor recebe título/autor/idioma, nunca o texto de um capítulo."""
+    provedor = usar_provedor_falso(ProvedorFalso())
+    livro = _importar(cliente).json()["livro"]
+    cliente.put("/configuracao", json={"modelo_perfil": MODELO_FALSO})
+
+    cliente.post(f"/livros/{livro['id']}/perfis-renderizacao/sugestao")
+
+    (chamada,) = provedor.chamadas_de_sugestao_de_perfil
+    assert chamada == {
+        "titulo": "A Guerra dos Tronos",
+        "autor": "George R. R. Martin",
+        "idioma": "pt-BR",
+        "categoria_estilo": None,
+        "modelo": MODELO_FALSO,
+    }
+
+
+def teste_sugerir_perfil_manda_a_categoria_escolhida(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """O usuário pode escolher a categoria (item 6.5) — a IA detalha dentro dela."""
+    provedor = usar_provedor_falso(ProvedorFalso())
+    livro = _importar(cliente).json()["livro"]
+    cliente.put("/configuracao", json={"modelo_perfil": MODELO_FALSO})
+
+    resposta = cliente.post(
+        f"/livros/{livro['id']}/perfis-renderizacao/sugestao",
+        json={"categoria_estilo": "PINTURA_A_OLEO"},
+    )
+
+    assert resposta.status_code == 200
+    (chamada,) = provedor.chamadas_de_sugestao_de_perfil
+    assert chamada["categoria_estilo"].name == "PINTURA_A_OLEO"
+
+
+def teste_sugerir_perfil_sem_categoria_funciona_igual(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Sem corpo nenhum no pedido, continua funcionando (categoria opcional)."""
+    usar_provedor_falso(ProvedorFalso())
+    livro = _importar(cliente).json()["livro"]
+    cliente.put("/configuracao", json={"modelo_perfil": MODELO_FALSO})
+
+    resposta = cliente.post(f"/livros/{livro['id']}/perfis-renderizacao/sugestao")
+
+    assert resposta.status_code == 200
+
+
+def teste_sugerir_perfil_livro_inexistente_responde_404(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(ProvedorFalso())
+    cliente.put("/configuracao", json={"modelo_perfil": MODELO_FALSO})
+
+    resposta = cliente.post("/livros/999/perfis-renderizacao/sugestao")
+
+    assert resposta.status_code == 404
+
+
+def teste_sugerir_perfil_sem_modelo_escolhido_responde_422(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(ProvedorFalso())
+    livro = _importar(cliente).json()["livro"]
+
+    resposta = cliente.post(f"/livros/{livro['id']}/perfis-renderizacao/sugestao")
+
+    assert resposta.status_code == 422
+
+
+def teste_sugerir_perfil_sem_chave_de_api_responde_422(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(ProvedorFalso(erro=ChaveDeApiAusente("sem chave")))
+    livro = _importar(cliente).json()["livro"]
+    cliente.put("/configuracao", json={"modelo_perfil": MODELO_FALSO})
+
+    resposta = cliente.post(f"/livros/{livro['id']}/perfis-renderizacao/sugestao")
+
+    assert resposta.status_code == 422
+
+
+def teste_sugerir_perfil_erro_do_provedor_responde_502(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(ProvedorFalso(erro=ErroDoProvedorIA("o provedor caiu")))
+    livro = _importar(cliente).json()["livro"]
+    cliente.put("/configuracao", json={"modelo_perfil": MODELO_FALSO})
+
+    resposta = cliente.post(f"/livros/{livro['id']}/perfis-renderizacao/sugestao")
+
+    assert resposta.status_code == 502

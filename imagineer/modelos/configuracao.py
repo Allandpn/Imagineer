@@ -28,6 +28,43 @@ class PrioridadeIA(enum.Enum):
     salvo — prioriza a leitura mais recente do texto sobre o custo."""
 
 
+class CategoriaEstilo(enum.Enum):
+    """Uma família de estilo visual coerente, para guiar a sugestão de perfil.
+
+    Não é uma coluna do banco — é um vocabulário compartilhado entre o pedido
+    de `POST /livros/{id}/perfis-renderizacao/sugestao` (item 6.5) e a
+    instrução que a IA recebe. Existe porque, sem restringir a um vocabulário
+    fechado, a IA já misturou movimentos artísticos incompatíveis na mesma
+    sugestão ("oil on canvas... expressionist shadows") e usou linguagem
+    temática em vez de visual ("atmosfera de conspiração e revelação") —
+    achado testando com um livro real, prompt gerado a partir do perfil saiu
+    visualmente confuso. Cada categoria aqui é internamente coerente; a IA
+    detalha os atributos (`iluminacao`, `paleta`, `artista_referencia`...)
+    dentro da categoria escolhida (pelo usuário, ou por ela mesma sem
+    indicação), em vez de inventar uma combinação livre.
+    """
+
+    FOTORREALISTA_CINEMATOGRAFICO = "FOTORREALISTA_CINEMATOGRAFICO"
+    """Still de cinema: lente, profundidade de campo, grão de filme."""
+
+    PINTURA_A_OLEO = "PINTURA_A_OLEO"
+    """Pincelada visível, textura de tela, tradição da pintura clássica."""
+
+    AQUARELA = "AQUARELA"
+    """Traços soltos, transparência, bordas que sangram."""
+
+    ARTE_DIGITAL_CONCEITUAL = "ARTE_DIGITAL_CONCEITUAL"
+    """"Concept art" de jogos/cinema: pintura digital, luz dramática, sem
+    textura de tela nem grão de filme."""
+
+    QUADRINHOS = "QUADRINHOS"
+    """Contorno de tinta, cores chapadas ou tramadas, estética de graphic novel."""
+
+    CARTOON_ANIMACAO = "CARTOON_ANIMACAO"
+    """Formas simplificadas, cores vivas, estética de animação — não
+    fotorrealista nem pintura tradicional."""
+
+
 class Configuracao(Base):
     """A configuração da integração com IA, numa linha só.
 
@@ -60,6 +97,18 @@ class Configuracao(Base):
     modelo_prompt: Mapped[str | None] = mapped_column(String(200))
     """Modelo usado para montar o prompt de imagem (passo 8 do fluxo)."""
 
+    modelo_perfil: Mapped[str | None] = mapped_column(String(200))
+    """Modelo usado para sugerir um perfil de renderização (item 6.5).
+
+    Campo próprio, separado de ``modelo_extracao``, porque o caso de uso é bem
+    diferente: essa chamada acontece **uma vez por livro** (não uma vez por
+    capítulo), então vale a pena pagar por um modelo mais caro e melhor —
+    testado na prática: ``claude-haiku-4.5`` custou cerca de 55% a mais que
+    ``gpt-4o-mini`` na mesma chamada, mas devolveu uma sugestão bem mais rica.
+    Amarrar isso a ``modelo_extracao`` obrigaria a mesma escolha de custo para
+    as duas coisas, mesmo elas tendo frequências de uso completamente diferentes.
+    """
+
     prioridade_ia: Mapped[PrioridadeIA] = mapped_column(
         Enum(
             PrioridadeIA,
@@ -78,5 +127,5 @@ class Configuracao(Base):
     def __repr__(self) -> str:
         return (
             f"<Configuracao extracao={self.modelo_extracao!r} "
-            f"prompt={self.modelo_prompt!r}>"
+            f"prompt={self.modelo_prompt!r} perfil={self.modelo_perfil!r}>"
         )

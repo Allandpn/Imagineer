@@ -11,7 +11,7 @@ adivinhar o formato da resposta nem repetir o trabalho de interpretá-la.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from imagineer.modelos import TipoElemento
+from imagineer.modelos import CategoriaEstilo, TipoElemento
 
 
 class ErroDoProvedorIA(Exception):
@@ -165,6 +165,30 @@ class PromptMontado:
     modelo: str = ""
 
 
+@dataclass
+class PerfilRenderizacaoSugerido:
+    """Um perfil de estilo sugerido a partir só dos metadados do livro.
+
+    Rascunho de validação (pendência da Etapa 8, ainda sem especificação
+    fechada): ao contrário das outras operações desta interface, esta não lê
+    nenhum texto do livro — só título/autor/idioma — porque não há como saber
+    de antemão em que capítulo a narrativa realmente começa. Depende de o
+    modelo ter (ou buscar na internet) conhecimento sobre a obra citada; sem
+    isso, o resultado tende a ser genérico para o gênero informado.
+    """
+
+    estilo: str | None = None
+    artista_referencia: str | None = None
+    iluminacao: str | None = None
+    paleta: str | None = None
+    formato: str | None = None
+    categoria_estilo: CategoriaEstilo | None = None
+    """A categoria usada — a informada no pedido, ou a que a IA escolheu
+    sozinha quando nenhuma veio. Devolvida para o usuário saber qual foi,
+    mesmo sem ter escolhido explicitamente."""
+    modelo: str = ""
+
+
 class ProvedorIA(ABC):
     """O que a aplicação espera de um provedor de IA de texto.
 
@@ -285,4 +309,37 @@ class ProvedorIA(ABC):
                 menor que ``descricao_do_frame``.
             comentario_do_usuario: uma correção pontual do usuário, com
                 prioridade sobre tudo o mais (item 4.4).
+        """
+
+    @abstractmethod
+    def sugerir_perfil_renderizacao(
+        self,
+        titulo: str,
+        autor: str | None,
+        idioma: str | None,
+        categoria_estilo: CategoriaEstilo | None,
+        modelo: str,
+    ) -> PerfilRenderizacaoSugerido:
+        """Sugere um estilo visual para o livro, a partir só dos metadados.
+
+        Rascunho de validação (pendência da Etapa 8) — não lê o texto do
+        livro, só título/autor/idioma. A ideia é o modelo reconhecer a obra
+        (de conhecimento próprio ou buscando na internet) e sugerir um estilo
+        coerente com gênero/tom/época, antes de o usuário criar o perfil à
+        mão sem ainda ter lido o livro.
+
+        Args:
+            titulo: obrigatório — sem título não há o que identificar.
+            autor: de contexto; ausente, a identificação fica mais fraca
+                (muitos livros têm título comum a mais de uma obra).
+            idioma: de contexto, ajuda a desambiguar edições/traduções.
+            categoria_estilo: quando o usuário escolhe uma (ex.: pintura a
+                óleo, cartoon), a IA detalha os atributos **dentro** dela, em
+                vez de escolher livremente. Sem isso, a IA escolhe uma
+                categoria sozinha — mas ainda restrita ao mesmo vocabulário
+                fechado, nunca uma mistura livre. Achado com IA real: sem essa
+                restrição, uma sugestão livre misturou movimentos artísticos
+                incompatíveis ("oil on canvas" com "expressionist shadows")
+                e saiu confusa quando virou prompt de imagem.
+            modelo: o identificador do modelo a usar.
         """

@@ -21,11 +21,12 @@ from imagineer.ia.provedor import (
     ModeloDisponivel,
     ModeloNaoEscolhido,
     ParticipanteSugerido,
+    PerfilRenderizacaoSugerido,
     PromptMontado,
     ProvedorIA,
     TextoLongoDemais,
 )
-from imagineer.modelos import TipoElemento
+from imagineer.modelos import CategoriaEstilo, TipoElemento
 
 ENDERECO_BASE = "https://openrouter.ai/api/v1"
 
@@ -272,6 +273,81 @@ Responda APENAS com o texto do prompt, sem aspas, sem explicação, sem título,
 sem numerar os blocos.
 """
 
+_DESCRICAO_DE_CATEGORIA = {
+    CategoriaEstilo.FOTORREALISTA_CINEMATOGRAFICO: (
+        "still de cinema: lente e enquadramento fotográficos, profundidade de "
+        "campo, grão de filme — não pareça uma pintura"
+    ),
+    CategoriaEstilo.PINTURA_A_OLEO: (
+        "pincelada visível, textura de tela, tradição da pintura clássica a óleo"
+    ),
+    CategoriaEstilo.AQUARELA: (
+        "traços soltos, transparência, bordas que sangram — nunca bordas duras "
+        "nem textura de tela"
+    ),
+    CategoriaEstilo.ARTE_DIGITAL_CONCEITUAL: (
+        "pintura digital de \"concept art\" (jogos/cinema): luz dramática, "
+        "pincelada digital limpa — sem grão de filme nem textura de tela"
+    ),
+    CategoriaEstilo.QUADRINHOS: (
+        "contorno de tinta bem definido, cores chapadas ou tramadas, estética "
+        "de graphic novel — nunca fotorrealista"
+    ),
+    CategoriaEstilo.CARTOON_ANIMACAO: (
+        "formas simplificadas, cores vivas e saturadas, estética de animação — "
+        "nunca fotorrealista nem pintura tradicional"
+    ),
+}
+
+_INSTRUCAO_DE_PERFIL = """\
+Você sugere um estilo visual (perfil de renderização) para adaptar um livro em \
+imagens de referência geradas por IA. Você recebe só título, autor e idioma do \
+livro — não o texto dele. Se reconhecer a obra, use o que sabe sobre gênero, \
+tom, época e ambientação; se precisar, pesquise na internet para identificar a \
+obra antes de responder. Se não conseguir identificar o livro com confiança a \
+partir do que foi informado, responda com todos os campos usando o valor JSON \
+`null` (nunca a palavra "nulo" como texto) em vez de inventar um estilo genérico.
+
+## Categorias de estilo (escolha UMA, nunca misture)
+
+{categorias}
+
+Se o pedido trouxer uma "CATEGORIA ESCOLHIDA", use exatamente essa — não troque \
+por outra, mesmo que ache outra mais adequada ao livro. Sem categoria indicada, \
+escolha você mesma a mais coerente com o gênero/tom da obra, mas ainda assim \
+**uma só** da lista acima — nunca combine técnicas de categorias diferentes \
+(ex.: nunca "pintura a óleo" com "grão de filme", que é de outra categoria).
+
+## Regras
+
+- Todo campo é linguagem **técnica e visual** (técnica de arte, tipo de luz, \
+cor), nunca linguagem **temática ou narrativa** ("conspiração", "traição", \
+"revelação", "nostalgia") — um modelo de imagem não sabe desenhar um tema, só \
+técnica, luz e cor concretas.
+- "artista_referencia" deve combinar com a categoria escolhida (não cite um \
+pintor a óleo clássico para a categoria QUADRINHOS, por exemplo).
+
+Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
+
+{{
+  "estilo": "técnica e tom visual dentro da categoria escolhida, ex.: 'aquarela, traços soltos, sombras marcadas'",
+  "artista_referencia": "um artista ou estilo artístico coerente com a categoria, ou nulo",
+  "iluminacao": "descrição curta, ex.: 'luz de vela, alto contraste'",
+  "paleta": "cores predominantes, ex.: 'tons terrosos e cinza'",
+  "formato": "uma palavra: retrato, paisagem ou quadrado",
+  "categoria_estilo": "o identificador exato da categoria escolhida, ex.: 'PINTURA_A_OLEO'"
+}}
+
+Escreva em português, exceto o nome de artistas/obras.
+"""
+
+_INSTRUCAO_DE_PERFIL = _INSTRUCAO_DE_PERFIL.format(
+    categorias="\n".join(
+        f"- {categoria.value}: {descricao}"
+        for categoria, descricao in _DESCRICAO_DE_CATEGORIA.items()
+    )
+)
+
 
 class ProvedorOpenRouter(ProvedorIA):
     """Conversa com o OpenRouter.
@@ -421,6 +497,50 @@ class ProvedorOpenRouter(ProvedorIA):
         resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido)
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
 
+    def sugerir_perfil_renderizacao(
+        self,
+        titulo: str,
+        autor: str | None,
+        idioma: str | None,
+        categoria_estilo: CategoriaEstilo | None,
+        modelo: str,
+    ) -> PerfilRenderizacaoSugerido:
+        """Pede ao modelo um estilo visual, só com os metadados do livro.
+
+        Única chamada desta classe que habilita o plugin de busca do
+        OpenRouter (``usar_busca_web``) — é a única que não manda nenhum
+        trecho do livro, então depender só do conhecimento do modelo teria
+        mais chance de errar a obra.
+        """
+        pedido = (
+            f"Título: {titulo}\n"
+            f"Autor: {autor or '(não informado)'}\n"
+            f"Idioma: {idioma or '(não informado)'}\n"
+            f"CATEGORIA ESCOLHIDA: "
+            f"{categoria_estilo.value if categoria_estilo else '(nenhuma — escolha você mesma)'}"
+        )
+
+        resposta = self._conversar(
+            modelo, _INSTRUCAO_DE_PERFIL, pedido, usar_busca_web=True
+        )
+        bruto = _extrair_json(resposta)
+        if bruto is None:
+            raise ErroDoProvedorIA(
+                "O modelo não devolveu JSON. Tente outro modelo: alguns modelos "
+                "pequenos não seguem bem instruções de formato."
+            )
+        return PerfilRenderizacaoSugerido(
+            estilo=_texto_ou_nulo(bruto.get("estilo")),
+            artista_referencia=_texto_ou_nulo(bruto.get("artista_referencia")),
+            iluminacao=_texto_ou_nulo(bruto.get("iluminacao")),
+            paleta=_texto_ou_nulo(bruto.get("paleta")),
+            formato=_texto_ou_nulo(bruto.get("formato")),
+            categoria_estilo=_interpretar_categoria(
+                bruto.get("categoria_estilo"), padrao=categoria_estilo
+            ),
+            modelo=modelo,
+        )
+
     # ----------------------------------------------------------------------- #
     # Funções internas
     # ----------------------------------------------------------------------- #
@@ -433,8 +553,17 @@ class ProvedorOpenRouter(ProvedorIA):
         """
         conferir_se_cabe(texto, contexto_do_modelo)
 
-    def _conversar(self, modelo: str, instrucao: str, pedido: str) -> str:
-        """Faz uma chamada de conversa e devolve o texto da resposta."""
+    def _conversar(
+        self, modelo: str, instrucao: str, pedido: str, *, usar_busca_web: bool = False
+    ) -> str:
+        """Faz uma chamada de conversa e devolve o texto da resposta.
+
+        ``usar_busca_web`` liga o plugin de busca do OpenRouter — o modelo
+        pode consultar a internet antes de responder. Custa mais e só faz
+        sentido quando não há texto do livro na própria chamada para o
+        modelo se basear (``sugerir_perfil_renderizacao``); as demais
+        operações desta classe nunca precisam disso.
+        """
         if not modelo:
             raise ModeloNaoEscolhido(
                 "Nenhum modelo foi escolhido. Configure um em /configuracao."
@@ -446,18 +575,17 @@ class ProvedorOpenRouter(ProvedorIA):
                 "/configuracao."
             )
 
-        dados = self._pedir(
-            "POST",
-            "/chat/completions",
-            json={
-                "model": modelo,
-                "messages": [
-                    {"role": "system", "content": instrucao},
-                    {"role": "user", "content": pedido},
-                ],
-            },
-            autenticado=True,
-        )
+        corpo = {
+            "model": modelo,
+            "messages": [
+                {"role": "system", "content": instrucao},
+                {"role": "user", "content": pedido},
+            ],
+        }
+        if usar_busca_web:
+            corpo["plugins"] = [{"id": "web"}]
+
+        dados = self._pedir("POST", "/chat/completions", json=corpo, autenticado=True)
 
         try:
             return dados["choices"][0]["message"]["content"] or ""
@@ -718,12 +846,39 @@ def _extrair_json(resposta: str) -> dict | None:
     return carregado if isinstance(carregado, dict) else None
 
 
+_PALAVRAS_DE_NULO = {"nulo", "null", "none", "n/a", "não informado", "nao informado"}
+"""Palavras que alguns modelos escrevem como texto em vez de usar `null` de
+verdade no JSON — achado testando `sugerir_perfil_renderizacao` com
+`perplexity/sonar-pro`, que devolveu `"artista_referencia": "nulo"` como
+string. Sem isso, esse texto vazaria como se fosse um valor real."""
+
+
 def _texto_ou_nulo(valor) -> str | None:
     """Normaliza um campo de texto opcional vindo do modelo."""
     if not isinstance(valor, str):
         return None
     limpo = valor.strip()
-    return limpo or None
+    if not limpo or limpo.lower() in _PALAVRAS_DE_NULO:
+        return None
+    return limpo
+
+
+def _interpretar_categoria(
+    valor, *, padrao: CategoriaEstilo | None
+) -> CategoriaEstilo | None:
+    """Lê a categoria de estilo devolvida pelo modelo.
+
+    Se o modelo devolver um identificador que não bate com nenhuma categoria
+    conhecida (ou não devolver nada), cai no que foi pedido (``padrao``) — que
+    é a própria categoria escolhida pelo usuário, quando houve uma. Só fica
+    ``None`` de fato quando ninguém, nem o usuário nem o modelo, escolheu uma.
+    """
+    if isinstance(valor, str):
+        try:
+            return CategoriaEstilo[valor.strip().upper()]
+        except KeyError:
+            pass
+    return padrao
 
 
 def _resumir(texto: str, limite: int = 200) -> str:

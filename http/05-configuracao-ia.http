@@ -5,16 +5,19 @@ GET {{baseUrl}}/configuracao
 # Funciona sem chave cadastrada — o endpoint de modelos do OpenRouter é público.
 GET {{baseUrl}}/configuracao/modelos?somente_gratuitos=false&contexto_minimo=32000
 
-### Escolhe o modelo de extração e o de montagem de prompt
+### Escolhe o modelo de extração, o de montagem de prompt e o de sugestão de perfil
 # Troque o id abaixo por um da lista da requisição anterior. Modelos gratuitos
 # às vezes respondem 429 (limite de uso) por estarem sobrecarregados no
 # OpenRouter — não é erro do sistema, é só trocar de modelo e tentar de novo.
+# "modelo_perfil" é chamado uma vez por livro (item 6.5), não uma vez por
+# capítulo como os outros dois — por isso vale usar algo mais caro aqui.
 PUT {{baseUrl}}/configuracao
 Content-Type: application/json
 
 {
   "modelo_extracao": "openai/gpt-4o-mini",
-  "modelo_prompt": "openai/gpt-4o-mini"
+  "modelo_prompt": "openai/gpt-4o-mini",
+  "modelo_perfil": "anthropic/claude-haiku-4.5"
 }
 
 ### Prioridade de custo vs. qualidade na releitura do livro (item 4.4, fases 2 e 3)
