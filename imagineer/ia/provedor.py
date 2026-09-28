@@ -255,8 +255,10 @@ class ProvedorIA(ABC):
         Args:
             texto_capitulo: o capítulo do frame.
             titulo, descricao, horario, clima, humor: o que o usuário escreveu.
-            participantes: "Nome: descrição do estado" de cada elemento ligado
-                ao frame, já com a aparência estabelecida.
+            participantes: "Nome (identidade): descrição do estado" de cada
+                elemento ligado ao frame, já com a aparência estabelecida — a
+                identidade (entre parênteses) só aparece quando o elemento
+                tem uma registrada.
             modelo: o identificador do modelo a usar.
         """
 
@@ -276,6 +278,8 @@ class ProvedorIA(ABC):
             descricao_do_frame: o que o usuário escreveu sobre o frame — vazio
                 para um frame do tipo PERSONAGEM (item 4.4: um retrato não
                 referencia nada além do próprio elemento).
+            elementos: "Nome (identidade): descrição do estado" de cada
+                elemento do frame — mesmo formato de ``fundamentar_frame.participantes``.
             contexto_do_livro: a leitura profunda do frame (``fundamentar_frame``),
                 só para frames do tipo CENA — contexto de apoio, prioridade
                 menor que ``descricao_do_frame``.

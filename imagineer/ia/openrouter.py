@@ -234,7 +234,11 @@ bloco se não houver informação para ele — nunca invente para preencher):
 low-angle, over-the-shoulder) coerente com a cena ou o retrato.
 2. Sujeito principal, num instante congelado: quem/o que é o foco, numa pose \
 ou gesto específico e parado — nunca uma ação contínua ("ele caminha e olha \
-para trás" vira "mid-stride, glancing back").
+para trás" vira "mid-stride, glancing back"). Se o gênero de uma pessoa \
+estiver claro pela identidade ou aparência fornecida, deixe isso inequívoco \
+no prompt ("man", "woman", ou o termo que a informação sustentar) — \
+ferramentas de imagem produzem resultados inconsistentes sem essa indicação. \
+Não invente gênero quando a informação não permitir concluir.
 3. Vestuário, texturas e expressão física de cada elemento presente.
 4. Cenário imediato e objetos ao redor (só se houver cena — num retrato, pule).
 5. Ambiente de fundo, arquitetura e época (só se houver cena).

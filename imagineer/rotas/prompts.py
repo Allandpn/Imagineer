@@ -428,11 +428,22 @@ def _descricao_do_frame(frame: Frame) -> str:
 
 
 def _elementos_do_frame(frame: Frame) -> list[str]:
-    """"Nome: descrição do estado", para cada elemento que aparece no frame."""
-    return [
-        f"{estado.elemento.nome}: {estado.descricao}"
-        for estado in sorted(frame.estados_elemento, key=lambda e: (e.elemento.tipo.name, e.elemento.nome))
-    ]
+    """"Nome (identidade): aparência", para cada elemento que aparece no frame.
+
+    A identidade (``Elemento.descricao``) entra entre parênteses quando existe
+    — é o que diz gênero, papel, natureza do elemento — sem ela, a IA que
+    fundamenta a cena ou monta o prompt final nunca via essa informação,
+    só a leitura profunda de UM estado (``sugerir_estado``) recebia (item 4.4).
+    Omitida quando o elemento não tem identidade registrada.
+    """
+    partes = []
+    for estado in sorted(frame.estados_elemento, key=lambda e: (e.elemento.tipo.name, e.elemento.nome)):
+        nome = estado.elemento.nome
+        if estado.elemento.descricao:
+            partes.append(f"{nome} ({estado.elemento.descricao}): {estado.descricao}")
+        else:
+            partes.append(f"{nome}: {estado.descricao}")
+    return partes
 
 
 def _referencias_visuais(frame: Frame) -> list[Imagem]:

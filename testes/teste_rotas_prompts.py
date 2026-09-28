@@ -141,6 +141,58 @@ def teste_criar_prompt_usa_perfil_padrao_do_livro_e_modelo_da_configuracao(
     assert "aquarela" in chamada["perfil_renderizacao"]
 
 
+def teste_criar_prompt_inclui_identidade_do_elemento_no_contexto(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """"Nome (identidade): aparência" — a IA que monta o prompt (e a que
+    fundamenta uma cena) passam a receber a identidade do elemento, não só a
+    aparência (item 4.5) — é o que permite deixar o gênero explícito."""
+    provedor = ProvedorFalso(prompt="uma pintura de teste")
+    usar_provedor_falso(provedor)
+    livro = _livro(cliente)
+    capitulo = livro["capitulos"][0]
+    elemento = cliente.post(
+        f"/livros/{livro['id']}/elementos",
+        json={
+            "tipo": "PERSONAGEM",
+            "nome": "Ned Stark",
+            "descricao": "um lorde do norte, homem de meia-idade",
+            "estado_inicial": {"capitulo_id": capitulo["id"], "descricao": "Ned está assim."},
+        },
+    ).json()
+    frame = _frame(cliente, capitulo["id"], [elemento["estados"][0]["id"]], tipo="PERSONAGEM")
+    perfil = _perfil(cliente)
+    cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
+    cliente.put(
+        "/configuracao",
+        json={"modelo_extracao": MODELO_FALSO, "modelo_prompt": MODELO_FALSO},
+    )
+
+    resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    assert resposta.status_code == 201, resposta.text
+    chamada = provedor.chamadas_de_prompt[0]
+    assert any(
+        e.startswith("Ned Stark (um lorde do norte, homem de meia-idade):")
+        for e in chamada["elementos"]
+    )
+
+
+def teste_criar_prompt_sem_identidade_do_elemento_omite_os_parenteses(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Sem identidade cadastrada, o formato cai pro que já existia — sem
+    parênteses vazios nem "None" aparecendo no meio do prompt."""
+    provedor = ProvedorFalso(prompt="uma pintura de teste")
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    chamada = provedor.chamadas_de_prompt[0]
+    assert "Ned Stark: watercolor-ready appearance description" in chamada["elementos"]
+    assert not any("(" in e for e in chamada["elementos"])
+
+
 def teste_criar_prompt_manda_comentario_com_prioridade(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
