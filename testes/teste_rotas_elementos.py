@@ -241,6 +241,19 @@ def teste_ajustar_elemento_muda_so_o_que_foi_enviado(cliente: TestClient) -> Non
     assert corpo["descricao"] == "Senhor de Winterfell."
 
 
+def teste_ajustar_elemento_ancora_padrao_inexistente_responde_422(cliente: TestClient) -> None:
+    """Item 4.5: a referência visual principal precisa ser uma imagem real do catálogo."""
+    livro = _livro_importado(cliente)
+    elemento = _criar(cliente, livro["id"], tipo="PERSONAGEM", nome="Jon")
+
+    resposta = cliente.patch(
+        f"/elementos/{elemento['id']}", json={"imagem_ancora_padrao_id": 999}
+    )
+
+    assert resposta.status_code == 422
+    assert "999" in resposta.json()["detail"]
+
+
 def teste_renomear_para_um_nome_ja_usado_responde_409(cliente: TestClient) -> None:
     """A unicidade vale também no ajuste."""
     livro = _livro_importado(cliente)

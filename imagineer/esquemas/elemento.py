@@ -103,6 +103,15 @@ class ElementoDetalhe(BaseModel):
     tipo: TipoElemento
     nome: str
     descricao: str | None
+    imagem_ancora_padrao_id: int | None = Field(
+        default=None,
+        description=(
+            "A referência visual de como este elemento normalmente parece "
+            "(item 4.5), separada da âncora por Estado. Serve de reserva em "
+            "referencias_visuais quando o Estado usado num Frame não tem "
+            "âncora própria."
+        ),
+    )
     estados: list[EstadoResumo]
     historico_identidade: list[HistoricoIdentidadeResumo] = Field(
         default_factory=list,
@@ -156,6 +165,14 @@ class ElementoAjuste(BaseModel):
     tipo: TipoElemento | None = None
     nome: str | None = Field(default=None, min_length=1, max_length=200)
     descricao: str | None = None
+    imagem_ancora_padrao_id: int | None = Field(
+        default=None,
+        description=(
+            "Define (ou, com null, desfaz) a referência visual principal do "
+            "elemento — item 4.5. Precisa ser uma imagem já existente no "
+            "catálogo."
+        ),
+    )
 
 
 class ElementoSugerido(BaseModel):

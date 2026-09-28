@@ -210,12 +210,17 @@ def ajustar_elemento(
     ajuste: ElementoAjuste,
     sessao: Session = Depends(obter_sessao),
 ) -> ElementoDetalhe:
-    """Muda a identidade do elemento: nome, tipo ou descrição.
+    """Muda a identidade do elemento: nome, tipo, descrição ou a referência
+    visual principal (`imagem_ancora_padrao_id`, item 4.5).
 
     Não mexe nos estados: a aparência é assunto deles (item 3.4b).
     """
     elemento = _buscar_elemento(sessao, elemento_id)
     campos = ajuste.model_dump(exclude_unset=True)
+
+    if campos.get("imagem_ancora_padrao_id") is not None:
+        _exigir_imagem(sessao, campos["imagem_ancora_padrao_id"])
+
     for campo, valor in campos.items():
         setattr(elemento, campo, valor)
 
@@ -611,6 +616,7 @@ def _detalhe(sessao: Session, elemento: Elemento) -> ElementoDetalhe:
         tipo=elemento.tipo,
         nome=elemento.nome,
         descricao=elemento.descricao,
+        imagem_ancora_padrao_id=elemento.imagem_ancora_padrao_id,
         estados=[EstadoResumo.model_validate(estado) for estado in estados],
         historico_identidade=[
             HistoricoIdentidadeResumo.model_validate(registro)

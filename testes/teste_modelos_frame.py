@@ -276,6 +276,30 @@ def teste_apagar_imagem_ancora_nao_apaga_o_estado(sessao_com_tabelas: Session) -
     assert estado.imagem_ancora_id is None
 
 
+def teste_apagar_imagem_ancora_padrao_nao_apaga_o_elemento(sessao_com_tabelas: Session) -> None:
+    """Item 4.5: mesmo princípio da âncora por estado, agora pra referência
+    principal do Elemento — apagar a imagem só desfaz a referência."""
+    livro, capitulo = _livro_com_um_capitulo(sessao_com_tabelas)
+    frame = Frame(capitulo_id=capitulo.id, titulo="No pátio")
+    sessao_com_tabelas.add(frame)
+    sessao_com_tabelas.commit()
+    prompt = Prompt(frame_id=frame.id, texto="...")
+    prompt.imagens = [Imagem(caminho_arquivo="ned-padrao.png")]
+    personagem = Elemento(livro_id=livro.id, tipo=TipoElemento.PERSONAGEM, nome="Ned")
+    sessao_com_tabelas.add_all([prompt, personagem])
+    sessao_com_tabelas.commit()
+
+    personagem.imagem_ancora_padrao_id = prompt.imagens[0].id
+    sessao_com_tabelas.commit()
+
+    sessao_com_tabelas.delete(prompt.imagens[0])
+    sessao_com_tabelas.commit()
+    sessao_com_tabelas.expire(personagem)
+
+    assert sessao_com_tabelas.get(Elemento, personagem.id) is not None
+    assert personagem.imagem_ancora_padrao_id is None
+
+
 def teste_fluxo_completo_do_livro_ate_a_imagem_ancorada(
     sessao_com_tabelas: Session,
 ) -> None:

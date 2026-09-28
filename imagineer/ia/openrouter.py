@@ -250,8 +250,10 @@ Você monta prompts para ferramentas de geração de imagem (Midjourney, DALL-E,
 Imagen e afins), a partir de um frame de livro já traduzido para descrições \
 concretas de aparência. Um frame pode ser um RETRATO (um elemento só, sem \
 nenhum outro) ou uma CENA (vários elementos interagindo) — a diferença fica \
-clara pelo que foi preenchido abaixo. Produza UM prompt em inglês, numa linha \
-só, pronto para colar na ferramenta.
+clara pelo que foi preenchido abaixo. Produza UM prompt em inglês, num texto \
+corrido só (sem título, sem numerar os blocos), pronto para colar na \
+ferramenta — o bloco final de estética (ver abaixo) é estruturado, mas ainda \
+faz parte do mesmo texto único, não uma resposta separada.
 
 Se não vier nenhuma descrição de cena (só um elemento na lista), monte um \
 RETRATO: use exclusivamente a aparência desse elemento e o estilo pedido — não \
@@ -276,8 +278,17 @@ Não invente gênero quando a informação não permitir concluir.
 moonlight, harsh neon) e o que há no ar (dust motes, mist, smoke) — derive isso \
 do horário/clima informados e do estilo pedido, não invente uma fonte que \
 contradiga o que foi dito.
-7. Estética final: estilo, granulado de filme, qualidade — vindo do perfil de \
-renderização indicado.
+
+Depois dos blocos acima (a prosa da cena/sujeito), acrescente um bloco \
+FINAL e SEPARADO — não misture com a prosa, nem reescreva os campos numa \
+frase corrida — com os atributos do perfil de renderização informado, \
+traduzidos para o inglês **literalmente**, campo por campo, no formato \
+"Style: X. Lighting: Y. Palette: Z. Format: W. Reference: V." (pule um \
+campo se ele não vier no perfil informado). Isso é diferente dos blocos 1-6: \
+ali você tem liberdade criativa para traduzir o texto do capítulo em \
+imagem; aqui não — o perfil já é uma escolha técnica e deliberada do \
+usuário, e sua única função é traduzir para o inglês sem interpretar, \
+embelezar ou parafrasear.
 
 Regras:
 - PROIBIDO usar adjetivos subjetivos de qualidade ou literários ("lindo", \
@@ -358,8 +369,17 @@ escolha você mesma a mais coerente com o gênero/tom da obra, mas ainda assim \
 
 - Todo campo é linguagem **técnica e visual** (técnica de arte, tipo de luz, \
 cor), nunca linguagem **temática ou narrativa** ("conspiração", "traição", \
-"revelação", "nostalgia") — um modelo de imagem não sabe desenhar um tema, só \
-técnica, luz e cor concretas.
+"revelação", "nostalgia", "perigo", "dualidade", "mistério", "tensão") — um \
+modelo de imagem não sabe desenhar um tema, só técnica, luz e cor concretas. \
+Isso vale mesmo como qualificador dentro de uma frase maior: "paleta que \
+sugere perigo e duplicidade" é tão temática quanto "perigo e duplicidade" \
+sozinho — o problema não é a palavra estar isolada, é ela aparecer em \
+qualquer lugar do campo.
+- Teste cada campo antes de responder: um ilustrador consegue desenhar \
+literalmente o que você escreveu, sem precisar interpretar um sentimento ou \
+uma intenção narrativa? Se a resposta for não, reescreva só com o que é \
+fisicamente visível (cor, luz, textura, traço) — nunca a emoção ou o tema por \
+trás disso.
 - "artista_referencia" deve combinar com a categoria escolhida (não cite um \
 pintor a óleo clássico para a categoria QUADRINHOS, por exemplo).
 

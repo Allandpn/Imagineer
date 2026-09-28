@@ -104,7 +104,25 @@ class Elemento(Base):
     não ter definido a identidade — só reconhecido que o elemento existe.
     """
 
+    imagem_ancora_padrao_id: Mapped[int | None] = mapped_column(
+        # SET NULL, como a âncora por estado (item 3.1): apagar a imagem do
+        # catálogo não pode apagar o elemento, só desfaz a referência.
+        ForeignKey("imagens.id", ondelete="SET NULL"),
+    )
+    """A referência visual "de como este elemento normalmente parece",
+    separada da âncora por Estado (aparência numa cena específica).
+
+    Espelha, para imagens, a mesma separação identidade/aparência que já
+    existe para texto (`Elemento.descricao` vs. `EstadoElemento.descricao`):
+    esta é a foto-base do personagem, escolhida à mão pelo usuário entre as
+    imagens já aprovadas do catálogo — nunca a mais recente automaticamente
+    (uma cena de ferimento não deveria virar a referência padrão). Serve de
+    reserva quando o Estado usado num Frame não tem âncora própria (item 4.5).
+    """
+
     livro: Mapped["Livro"] = relationship()  # noqa: F821
+
+    imagem_ancora_padrao: Mapped["Imagem | None"] = relationship()  # noqa: F821
 
     estados: Mapped[list["EstadoElemento"]] = relationship(
         back_populates="elemento",

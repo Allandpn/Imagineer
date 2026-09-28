@@ -409,6 +409,50 @@ def teste_criar_prompt_sem_imagem_ancora_nao_traz_referencias(
     assert resposta["referencias_visuais"] == []
 
 
+def teste_referencias_visuais_cai_na_ancora_padrao_do_elemento(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Item 4.5: sem âncora no Estado usado pelo frame, cai na referência
+    principal do Elemento — mitiga a variação entre capítulos distantes e
+    entre ferramentas de geração diferentes a cada vez."""
+    provedor = ProvedorFalso(prompt="pintura")
+    livro, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
+    elemento_id = frame["elementos"][0]["elemento_id"]
+
+    primeiro = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
+    imagem = _importar_imagem(cliente, primeiro["id"])
+    ajuste = cliente.patch(
+        f"/elementos/{elemento_id}", json={"imagem_ancora_padrao_id": imagem["id"]}
+    )
+    assert ajuste.status_code == 200, ajuste.text
+
+    segundo = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
+    assert [r["id"] for r in segundo["referencias_visuais"]] == [imagem["id"]]
+
+
+def teste_referencias_visuais_ancora_do_estado_tem_prioridade_sobre_a_padrao(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """A âncora do Estado (mais específica — "como ele está nesta cena") vence
+    a padrão do Elemento ("como ele normalmente parece") quando as duas existem."""
+    provedor = ProvedorFalso(prompt="pintura")
+    livro, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
+    elemento_id = frame["elementos"][0]["elemento_id"]
+    estado_id = frame["elementos"][0]["estado_id"]
+
+    primeiro = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
+    imagem_padrao = _importar_imagem(cliente, primeiro["id"], nome="padrao.png")
+    cliente.patch(
+        f"/elementos/{elemento_id}", json={"imagem_ancora_padrao_id": imagem_padrao["id"]}
+    )
+    imagem_do_estado = _importar_imagem(cliente, primeiro["id"], nome="do-estado.png")
+    cliente.patch(f"/estados/{estado_id}", json={"imagem_ancora_id": imagem_do_estado["id"]})
+
+    resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
+
+    assert [r["id"] for r in resposta["referencias_visuais"]] == [imagem_do_estado["id"]]
+
+
 def teste_criar_prompt_com_chave_ausente_responde_422(
     cliente: TestClient, usar_provedor_falso
 ) -> None:

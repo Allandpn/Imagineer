@@ -88,6 +88,32 @@ Content-Type: image/png
     });
 %}
 
+### Marca a imagem importada como âncora deste Estado (item 3.1)
+# "Como ele está nesta cena específica" — a próxima vez que este mesmo
+# estado_elemento_id entrar num frame, GET/POST .../prompts devolve esta
+# imagem em referencias_visuais, pra você anexar de novo na ferramenta.
+# Rode 03-elementos-e-estados.http antes, para ter estadoId.
+PATCH {{baseUrl}}/estados/{{estadoId}}
+Content-Type: application/json
+
+{
+  "imagem_ancora_id": {{imagemId}}
+}
+
+### Marca a imagem importada como referência PRINCIPAL do elemento (item 4.5)
+# "Como ele normalmente parece" — diferente da âncora por Estado acima:
+# serve de reserva em referencias_visuais quando um Estado novo (outro
+# capítulo, outra cena, dias depois) ainda não tem âncora própria. Mitiga a
+# variação de consistência quando cada geração acontece numa IA diferente,
+# sem depender de o usuário lembrar de reatribuir a âncora toda vez.
+# Rode 03-elementos-e-estados.http antes, para ter elementoId.
+PATCH {{baseUrl}}/elementos/{{elementoId}}
+Content-Type: application/json
+
+{
+  "imagem_ancora_padrao_id": {{imagemId}}
+}
+
 ### Baixa o arquivo da imagem
 GET {{baseUrl}}/imagens/{{imagemId}}/arquivo
 

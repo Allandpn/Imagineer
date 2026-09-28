@@ -502,19 +502,26 @@ def _elementos_do_frame(frame: Frame) -> list[str]:
 
 
 def _referencias_visuais(frame: Frame) -> list[Imagem]:
-    """As imagens-âncora (item 3.1) já aprovadas para os elementos do frame.
+    """As imagens-âncora (item 3.1/4.5) já aprovadas para os elementos do frame.
 
     O fluxo de geração é manual (o usuário copia o prompt e cola numa
     ferramenta externa — passo 9), então a API não consegue anexar a imagem
     sozinha nessa chamada; o que dá para fazer é avisar quais referências
     existem, para o app oferecer "anexe também" — é o que mantém a aparência
-    de um personagem consistente entre capítulos distantes, em vez da
-    ferramenta de imagem inventar um rosto novo a cada geração.
+    de um personagem consistente entre capítulos distantes, e entre
+    ferramentas de geração diferentes a cada vez (item 4.5).
+
+    Prioridade por elemento: a âncora do **Estado** ligado ao frame, se
+    existir (é a mais específica — como ele está *nesta* cena); senão, a
+    âncora **padrão** do Elemento (`imagem_ancora_padrao_id`, item 4.5) —
+    "como ele normalmente parece". Sem nenhuma das duas, o elemento
+    simplesmente não entra na lista.
     """
     vistas: dict[int, Imagem] = {}
     for estado in frame.estados_elemento:
-        if estado.imagem_ancora is not None:
-            vistas[estado.imagem_ancora.id] = estado.imagem_ancora
+        ancora = estado.imagem_ancora or estado.elemento.imagem_ancora_padrao
+        if ancora is not None:
+            vistas[ancora.id] = ancora
     return [vistas[identificador] for identificador in sorted(vistas)]
 
 

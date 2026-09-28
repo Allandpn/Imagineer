@@ -58,6 +58,9 @@ GET {{baseUrl}}/livros/{{livroId}}/elementos?tipo=PERSONAGEM
 # inicial) com os incrementos até aquele capítulo, em ordem. Só ganha linhas
 # quando POST /frames/{id}/prompts roda a leitura profunda (fase 2b) e a IA
 # acha algo genuinamente novo — o caso comum é não acrescentar nada.
+# imagem_ancora_padrao_id (item 4.5) é a referência visual principal do
+# elemento — "como ele normalmente parece", diferente da âncora por Estado.
+# Definida em PATCH /elementos/{id} (ver 07-prompts-e-imagens.http).
 GET {{baseUrl}}/elementos/{{elementoId}}
 
 ### Abre um elemento por id manual — troque pelo id que quiser inspecionar
