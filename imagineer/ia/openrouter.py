@@ -18,6 +18,7 @@ from imagineer.ia.provedor import (
     EstadoSugerido,
     ExtracaoDeElementos,
     FrameFundamentado,
+    IdentidadeSugerida,
     ModeloDisponivel,
     ModeloNaoEscolhido,
     ParticipanteSugerido,
@@ -178,6 +179,34 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 
 {
   "descricao": "a aparência do elemento neste capítulo, seguindo as regras acima"
+}
+
+Escreva em português.
+"""
+
+_INSTRUCAO_DE_IDENTIDADE = """\
+Você lê um capítulo de livro inteiro, mas quer descobrir se ele revela algo \
+NOVO sobre a IDENTIDADE de UM SÓ elemento — quem ele é: papel na história, \
+origem, relações, segredos, traços de caráter. Isto NÃO é aparência física \
+(cor de cabelo, roupas, ferimentos) — isso é outra etapa. É sobre quem ou o \
+que o elemento É.
+
+Você recebe a identidade já conhecida dele, se houver. Sua tarefa é achar só \
+o que é GENUINAMENTE NOVO neste capítulo:
+- Nunca repita o que já está na identidade conhecida.
+- Nunca contradiga nem substitua o que já é conhecido — identidade só \
+acumula, não se apaga.
+- Se o capítulo não revela nada novo sobre quem este elemento é, isso é o \
+caso mais comum, não uma falha: responda com "descricao": null em vez de \
+forçar uma novidade que não existe.
+- Descreva só o que o texto diz ou implica com segurança. Não invente.
+- Escreva só o INCREMENTO em si — uma ou duas frases do que é novo, não um \
+resumo de tudo que já se sabe sobre o elemento.
+
+Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
+
+{
+  "descricao": "o que este capítulo especificamente revela de novo sobre a identidade, ou null se nada"
 }
 
 Escreva em português.
@@ -386,6 +415,9 @@ class ProvedorOpenRouter(ProvedorIA):
                     nome=bruto.get("name") or bruto.get("id", ""),
                     contexto=int(bruto.get("context_length") or 0),
                     gratuito=_e_gratuito(bruto),
+                    suporta_json=_suporta_json(bruto),
+                    custo_saida=_custo_de_saida(bruto),
+                    moderado=_e_moderado(bruto),
                 )
             )
 
@@ -442,6 +474,24 @@ class ProvedorOpenRouter(ProvedorIA):
 
         resposta = self._conversar(modelo, _INSTRUCAO_DE_ESTADO, pedido)
         return EstadoSugerido(descricao=_interpretar_estado(resposta), modelo=modelo)
+
+    def sugerir_identidade(
+        self,
+        texto_capitulo: str,
+        tipo: TipoElemento,
+        nome: str,
+        identidade_vigente: str | None,
+        modelo: str,
+    ) -> IdentidadeSugerida:
+        """Pede ao modelo o que há de novo na identidade de UM elemento — fase 2b."""
+        pedido = (
+            f"ELEMENTO: {nome} ({tipo.name})\n"
+            f"IDENTIDADE JÁ CONHECIDA: {identidade_vigente or '(nenhuma ainda)'}\n\n"
+            f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
+        )
+
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_IDENTIDADE, pedido)
+        return IdentidadeSugerida(descricao=_interpretar_identidade(resposta), modelo=modelo)
 
     def fundamentar_frame(
         self,
@@ -712,6 +762,32 @@ def _e_gratuito(bruto: dict) -> bool:
         return False
 
 
+def _suporta_json(bruto: dict) -> bool:
+    """Se o modelo aceita resposta estruturada/JSON (item 4.3).
+
+    ``supported_parameters`` é a lista de parâmetros que o modelo aceita na
+    chamada; ``response_format``/``structured_outputs`` são os dois nomes
+    usados pelo OpenRouter para essa capacidade, confirmados ao vivo contra
+    o `/models` antes de implementar este filtro.
+    """
+    suportados = set((bruto.get("supported_parameters") or []))
+    return bool(suportados & {"response_format", "structured_outputs"})
+
+
+def _custo_de_saida(bruto: dict) -> float:
+    """Preço por token de saída (``pricing.completion``, item 4.3)."""
+    preco = (bruto.get("pricing") or {}).get("completion")
+    try:
+        return float(preco)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _e_moderado(bruto: dict) -> bool:
+    """Se o modelo é moderado pelo provedor (``top_provider.is_moderated``, item 4.3)."""
+    return bool((bruto.get("top_provider") or {}).get("is_moderated"))
+
+
 def _interpretar_elementos(bruto: dict) -> list[ElementoSugerido]:
     """Lê a lista de elementos de dentro do JSON já interpretado.
 
@@ -806,6 +882,21 @@ def _interpretar_estado(resposta: str) -> str:
             "O modelo devolveu um JSON sem o campo 'descricao'."
         )
     return descricao
+
+
+def _interpretar_identidade(resposta: str) -> str | None:
+    """Lê o JSON da leitura profunda de identidade (fase 2b, item 4.4).
+
+    Diferente de ``_interpretar_estado``, ``None`` aqui é uma resposta válida
+    e comum — significa "nada de novo neste capítulo", não uma falha.
+    """
+    bruto = _extrair_json(resposta)
+    if bruto is None:
+        raise ErroDoProvedorIA(
+            "O modelo não devolveu JSON. Tente outro modelo: alguns modelos "
+            "pequenos não seguem bem instruções de formato."
+        )
+    return _texto_ou_nulo(bruto.get("descricao"))
 
 
 def _interpretar_contexto(resposta: str) -> str:

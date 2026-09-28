@@ -249,6 +249,66 @@ def teste_leitura_profunda_le_o_capitulo_de_origem_do_estado(
     assert TEXTO_LONGO in chamada["texto_capitulo"]
 
 
+def teste_fase_2b_cria_historico_de_identidade_quando_ha_algo_novo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """A leitura profunda de identidade (fase 2b, item 4.4) roda junto da de
+    aparência, e um incremento vira linha em HistoricoIdentidadeElemento."""
+    provedor = ProvedorFalso(prompt="pintura", identidade="É filho adotivo, não de sangue.")
+    livro, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
+    elemento_id = cliente.get(f"/frames/{frame['id']}").json()["elementos"][0]["elemento_id"]
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    elemento = cliente.get(f"/elementos/{elemento_id}").json()
+    assert len(elemento["historico_identidade"]) == 1
+    assert elemento["historico_identidade"][0]["descricao"] == "É filho adotivo, não de sangue."
+
+
+def teste_fase_2b_nao_cria_registro_quando_nada_e_novo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """O caso comum: a IA não acha nada novo, e nenhuma linha é criada."""
+    provedor = ProvedorFalso(prompt="pintura")  # identidade=None por padrão
+    livro, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
+    elemento_id = cliente.get(f"/frames/{frame['id']}").json()["elementos"][0]["elemento_id"]
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    elemento = cliente.get(f"/elementos/{elemento_id}").json()
+    assert elemento["historico_identidade"] == []
+    assert len(provedor.chamadas_de_identidade) == 1
+
+
+def teste_fase_2b_nao_repete_a_pergunta_para_o_mesmo_par_elemento_capitulo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Mesmo em QUALIDADE (que relê o estado toda vez), a leitura profunda de
+    identidade só é tentada uma vez por (elemento, capítulo) — evita
+    incrementos quase idênticos repetidos a cada prompt gerado."""
+    provedor = ProvedorFalso(prompt="pintura", identidade="Algo novo.")
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
+    cliente.put("/configuracao", json={"prioridade_ia": "QUALIDADE"})
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    assert len(provedor.chamadas_de_identidade) == 1
+
+
+def teste_fase_2b_manda_a_identidade_vigente_como_contexto(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor = ProvedorFalso(prompt="pintura")
+    livro, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    chamada = provedor.chamadas_de_identidade[0]
+    assert chamada["nome"] == "Ned Stark"
+    assert TEXTO_LONGO in chamada["texto_capitulo"]
+
+
 def teste_criar_prompt_sem_modelo_de_extracao_para_leitura_profunda_responde_422(
     cliente: TestClient, usar_provedor_falso
 ) -> None:

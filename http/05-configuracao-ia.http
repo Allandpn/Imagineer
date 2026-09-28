@@ -5,6 +5,20 @@ GET {{baseUrl}}/configuracao
 # Funciona sem chave cadastrada — o endpoint de modelos do OpenRouter é público.
 GET {{baseUrl}}/configuracao/modelos?somente_gratuitos=false&contexto_minimo=32000
 
+### Só modelos que aceitam resposta estruturada/JSON (item 4.3)
+# Ataca direto o erro "O modelo não devolveu JSON", mais comum em modelos
+# pequenos/gratuitos. custo_saida e moderado vêm sempre na resposta de cada
+# modelo, mesmo sem filtrar por eles.
+GET {{baseUrl}}/configuracao/modelos?somente_com_json=true
+
+### Só modelos sem moderação do provedor
+# Útil se um texto narrativo (violência, fantasia) estiver sendo rejeitado
+# por um modelo mais restritivo.
+GET {{baseUrl}}/configuracao/modelos?somente_nao_moderados=true
+
+### Ordenados por custo de saída, o mais barato primeiro
+GET {{baseUrl}}/configuracao/modelos?ordenar_por_custo=true
+
 ### Escolhe o modelo de extração, o de montagem de prompt e o de sugestão de perfil
 # Troque o id abaixo por um da lista da requisição anterior. Modelos gratuitos
 # às vezes respondem 429 (limite de uso) por estarem sobrecarregados no

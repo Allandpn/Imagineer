@@ -51,7 +51,13 @@ GET {{baseUrl}}/livros/1/elementos
 ### Filtra por tipo
 GET {{baseUrl}}/livros/{{livroId}}/elementos?tipo=PERSONAGEM
 
-### Abre o elemento com todos os estados, em ordem narrativa
+### Abre o elemento com todos os estados e todo o histórico de identidade
+# historico_identidade (item 3.4f) é cumulativo — cada linha é o que UM
+# capítulo específico acrescentou sobre quem o elemento é, não um resumo. A
+# identidade vigente num ponto da narrativa soma descricao (identidade
+# inicial) com os incrementos até aquele capítulo, em ordem. Só ganha linhas
+# quando POST /frames/{id}/prompts roda a leitura profunda (fase 2b) e a IA
+# acha algo genuinamente novo — o caso comum é não acrescentar nada.
 GET {{baseUrl}}/elementos/{{elementoId}}
 
 ### Abre um elemento por id manual — troque pelo id que quiser inspecionar
@@ -118,6 +124,11 @@ Content-Type: application/json
 # {
 #   "sugestoes_elemento_ids": [3, 8]
 # }
+
+### Abre um estado isolado, com o elemento a que pertence
+# Faltava: só existiam PATCH e DELETE. Mesmo padrão de GET /frames/{id} — a
+# resposta já traz elemento_tipo/elemento_nome, sem cruzar outra chamada.
+GET {{baseUrl}}/estados/{{estadoId}}
 
 ### Ajusta a descrição de um estado, ou define a imagem-âncora
 PATCH {{baseUrl}}/estados/{{estadoId}}

@@ -18,6 +18,7 @@ from imagineer.ia.provedor import (
     EstadoSugerido,
     ExtracaoDeElementos,
     FrameFundamentado,
+    IdentidadeSugerida,
     ModeloDisponivel,
     PerfilRenderizacaoSugerido,
     PromptMontado,
@@ -52,7 +53,9 @@ class ProvedorFalso(ProvedorIA):
         self,
         elementos: list[ElementoSugerido] | None = None,
         cenas_sugeridas: list[CenaSugerida] | None = None,
+        modelos: list[ModeloDisponivel] | None = None,
         estado: str = "watercolor-ready appearance description",
+        identidade: str | None = None,
         contexto: str = "the book confirms this happens in the guard room",
         prompt: str = "watercolor painting of a snowy courtyard at dusk",
         perfil_sugerido: PerfilRenderizacaoSugerido | None = None,
@@ -60,7 +63,11 @@ class ProvedorFalso(ProvedorIA):
     ):
         self._elementos = elementos if elementos is not None else []
         self._cenas_sugeridas = cenas_sugeridas if cenas_sugeridas is not None else []
+        self._modelos = list(MODELOS_FALSOS) if modelos is None else modelos
         self._estado = estado
+        self._identidade = identidade
+        """O incremento de identidade a devolver — ``None`` por padrão (o
+        caso comum: nada de novo), como ``sugerir_identidade`` documenta."""
         self._contexto = contexto
         self._prompt = prompt
         self._perfil_sugerido = perfil_sugerido or PerfilRenderizacaoSugerido(
@@ -69,6 +76,7 @@ class ProvedorFalso(ProvedorIA):
         self._erro = erro
         self.chamadas_de_extracao: list[dict] = []
         self.chamadas_de_estado: list[dict] = []
+        self.chamadas_de_identidade: list[dict] = []
         self.chamadas_de_fundamentacao: list[dict] = []
         self.chamadas_de_prompt: list[dict] = []
         self.chamadas_de_sugestao_de_perfil: list[dict] = []
@@ -76,7 +84,7 @@ class ProvedorFalso(ProvedorIA):
     def listar_modelos(self) -> list[ModeloDisponivel]:
         if self._erro is not None:
             raise self._erro
-        return list(MODELOS_FALSOS)
+        return list(self._modelos)
 
     def extrair_elementos(
         self, texto_capitulo: str, estados_conhecidos: list[str], modelo: str
@@ -118,6 +126,27 @@ class ProvedorFalso(ProvedorIA):
         if self._erro is not None:
             raise self._erro
         return EstadoSugerido(descricao=self._estado, modelo=modelo)
+
+    def sugerir_identidade(
+        self,
+        texto_capitulo: str,
+        tipo: TipoElemento,
+        nome: str,
+        identidade_vigente: str | None,
+        modelo: str,
+    ) -> IdentidadeSugerida:
+        self.chamadas_de_identidade.append(
+            {
+                "texto_capitulo": texto_capitulo,
+                "tipo": tipo,
+                "nome": nome,
+                "identidade_vigente": identidade_vigente,
+                "modelo": modelo,
+            }
+        )
+        if self._erro is not None:
+            raise self._erro
+        return IdentidadeSugerida(descricao=self._identidade, modelo=modelo)
 
     def fundamentar_frame(
         self,

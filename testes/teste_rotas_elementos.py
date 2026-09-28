@@ -312,6 +312,33 @@ def teste_dois_estados_no_mesmo_capitulo_sao_permitidos(cliente: TestClient) -> 
     assert vigente["descricao"] == "Curado."
 
 
+def teste_abrir_estado_traz_a_identidade_do_elemento(cliente: TestClient) -> None:
+    """Faltava: só existiam PATCH e DELETE, sem como abrir um estado isolado."""
+    livro = _livro_importado(cliente)
+    elemento = _criar(
+        cliente,
+        livro["id"],
+        tipo="PERSONAGEM",
+        nome="Jon",
+        estado_inicial={"capitulo_id": livro["capitulos"][0]["id"], "descricao": "Manto negro."},
+    )
+    estado_id = elemento["estados"][0]["id"]
+
+    resposta = cliente.get(f"/estados/{estado_id}")
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["id"] == estado_id
+    assert corpo["descricao"] == "Manto negro."
+    assert corpo["elemento_id"] == elemento["id"]
+    assert corpo["elemento_tipo"] == "PERSONAGEM"
+    assert corpo["elemento_nome"] == "Jon"
+
+
+def teste_abrir_estado_inexistente_responde_404(cliente: TestClient) -> None:
+    assert cliente.get("/estados/999").status_code == 404
+
+
 def teste_ajustar_a_descricao_de_um_estado(cliente: TestClient) -> None:
     livro = _livro_importado(cliente)
     elemento = _criar(

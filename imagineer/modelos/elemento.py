@@ -23,6 +23,7 @@ from sqlalchemy import (
     UniqueConstraint,
     false,
     func,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -110,6 +111,11 @@ class Elemento(Base):
         cascade="all, delete-orphan",
     )
 
+    historico_identidade: Mapped[list["HistoricoIdentidadeElemento"]] = relationship(
+        back_populates="elemento",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:
         return f"<Elemento id={self.id} tipo={self.tipo.name} nome={self.nome!r}>"
 
@@ -191,3 +197,59 @@ class EstadoElemento(Base):
 
     def __repr__(self) -> str:
         return f"<EstadoElemento id={self.id} elemento_id={self.elemento_id}>"
+
+
+class HistoricoIdentidadeElemento(Base):
+    """O que um capítulo específico revela/acrescenta sobre a *identidade*
+    de um Elemento — quem ele é, não sua aparência (item 3.4f).
+
+    Ao contrário de ``EstadoElemento`` (aparência, "última vale"), isto é
+    **cumulativo**: um registro não substitui o anterior, soma-se a ele. O
+    que o capítulo 8 revela sobre um personagem continua verdade no
+    capítulo 20 — sobrescrever perderia o que já foi revelado antes (ver a
+    justificativa completa no item 3.3 da especificação).
+    """
+
+    __tablename__ = "historico_identidade_elemento"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    elemento_id: Mapped[int] = mapped_column(
+        ForeignKey("elementos.id", ondelete="CASCADE"),
+        index=True,
+    )
+
+    capitulo_id: Mapped[int] = mapped_column(
+        ForeignKey("capitulos.id", ondelete="CASCADE"),
+        index=True,
+    )
+    """O capítulo que revelou este incremento."""
+
+    descricao: Mapped[str] = mapped_column(Text)
+    """Só o que **este** capítulo especificamente acrescenta sobre a
+    identidade — não um resumo acumulado. A "identidade vigente" num ponto
+    da narrativa é a soma de ``Elemento.descricao`` com estes registros, em
+    ordem narrativa (``servicos/identidade_de_elemento.py``)."""
+
+    confirmado_pela_leitura_profunda: Mapped[bool] = mapped_column(
+        Boolean, server_default=true()
+    )
+    """Mesmo espírito do campo homônimo em ``EstadoElemento``. Na prática já
+    nasce ``True``: um registro só é criado depois que a leitura profunda de
+    identidade (fase 2b, item 4.4) de fato achou algo novo — não existe
+    "rascunho" de identidade como existe de aparência.
+    """
+
+    data_criacao: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    elemento: Mapped["Elemento"] = relationship(back_populates="historico_identidade")
+    capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
+
+    def __repr__(self) -> str:
+        return (
+            f"<HistoricoIdentidadeElemento id={self.id} elemento_id={self.elemento_id} "
+            f"capitulo_id={self.capitulo_id}>"
+        )

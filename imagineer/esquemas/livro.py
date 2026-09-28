@@ -29,6 +29,14 @@ class CapituloResumo(BaseModel):
     tamanho_do_texto: int = Field(
         description="Número de caracteres do texto do capítulo."
     )
+    sugestoes_pendentes: int = Field(
+        default=0,
+        description=(
+            "Sugestões de elemento ou cena deste capítulo ainda não "
+            "confirmadas (item 4.6) — indicador não-bloqueante, para o "
+            "usuário ver de relance onde falta revisar."
+        ),
+    )
 
 
 class CapituloDetalhe(CapituloResumo):

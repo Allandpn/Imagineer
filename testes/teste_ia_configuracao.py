@@ -141,6 +141,56 @@ def teste_gratuitos_vem_antes_na_lista() -> None:
     assert [m.id for m in provedor.listar_modelos()] == ["a/gratis", "z/pago"]
 
 
+def teste_listar_modelos_le_suporte_a_json_custo_e_moderacao() -> None:
+    """Os três campos do item 4.3, com os nomes confirmados ao vivo contra o
+    /models real antes de implementar o filtro: `supported_parameters`,
+    `pricing.completion` e `top_provider.is_moderated`."""
+    provedor = _provedor(
+        {
+            "/models": {
+                "data": [
+                    {
+                        "id": "com/tudo",
+                        "context_length": 128000,
+                        "pricing": {"prompt": "0.000002", "completion": "0.00001"},
+                        "supported_parameters": ["response_format", "structured_outputs"],
+                        "top_provider": {"is_moderated": True},
+                    },
+                    {
+                        "id": "sem/nada",
+                        "context_length": 32000,
+                        "pricing": {"prompt": "0", "completion": "0"},
+                        "supported_parameters": ["temperature"],
+                        "top_provider": {"is_moderated": False},
+                    },
+                ]
+            }
+        }
+    )
+
+    modelos = {m.id: m for m in provedor.listar_modelos()}
+
+    assert modelos["com/tudo"].suporta_json is True
+    assert modelos["com/tudo"].custo_saida == 0.00001
+    assert modelos["com/tudo"].moderado is True
+
+    assert modelos["sem/nada"].suporta_json is False
+    assert modelos["sem/nada"].custo_saida == 0.0
+    assert modelos["sem/nada"].moderado is False
+
+
+def teste_listar_modelos_sem_os_campos_novos_usa_padroes_seguros() -> None:
+    """Um modelo sem esses campos (API mudou, ou faltou na resposta) não
+    deveria quebrar a listagem — só ficar com os valores mais conservadores."""
+    provedor = _provedor({"/models": {"data": [{"id": "so/o-basico"}]}})
+
+    modelo = provedor.listar_modelos()[0]
+
+    assert modelo.suporta_json is False
+    assert modelo.custo_saida == 0.0
+    assert modelo.moderado is False
+
+
 # --------------------------------------------------------------------------- #
 # Extração de elementos
 # --------------------------------------------------------------------------- #
@@ -537,6 +587,83 @@ def teste_sugerir_estado_sem_json_levanta_erro() -> None:
             nome="Ned",
             descricao_do_elemento=None,
             estado_atual=None,
+            modelo="m",
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Leitura profunda de identidade — fase 2b (item 4.4/3.4f)
+# --------------------------------------------------------------------------- #
+
+
+def teste_sugerir_identidade_interpreta_o_json() -> None:
+    resposta = json.dumps({"descricao": "É filho adotivo, não de sangue."})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_identidade(
+        texto_capitulo="texto do capítulo",
+        tipo=TipoElemento.PERSONAGEM,
+        nome="Vis",
+        identidade_vigente="Um jovem aprendiz de ferreiro.",
+        modelo="algum/modelo",
+    )
+
+    assert sugestao.descricao == "É filho adotivo, não de sangue."
+    assert sugestao.modelo == "algum/modelo"
+
+
+def teste_sugerir_identidade_null_vira_nenhum_incremento() -> None:
+    """O caso comum: nada de novo no capítulo. `null` é uma resposta válida,
+    diferente de `sugerir_estado`, onde a ausência de descrição é erro."""
+    resposta = json.dumps({"descricao": None})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_identidade(
+        texto_capitulo="t",
+        tipo=TipoElemento.PERSONAGEM,
+        nome="Vis",
+        identidade_vigente=None,
+        modelo="m",
+    )
+
+    assert sugestao.descricao is None
+
+
+def teste_sugerir_identidade_manda_a_identidade_vigente_e_o_capitulo() -> None:
+    capturado = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado["corpo"] = json.loads(pedido.content)
+        return httpx.Response(200, json=_resposta_de_conversa('{"descricao": null}'))
+
+    provedor = ProvedorOpenRouter(
+        chave_api="k",
+        cliente=httpx.Client(base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder)),
+    )
+
+    provedor.sugerir_identidade(
+        texto_capitulo="Vis descobre que é filho adotivo.",
+        tipo=TipoElemento.PERSONAGEM,
+        nome="Vis",
+        identidade_vigente="Um jovem aprendiz de ferreiro.",
+        modelo="m",
+    )
+
+    enviado = capturado["corpo"]["messages"][1]["content"]
+    assert "Vis" in enviado
+    assert "Um jovem aprendiz de ferreiro." in enviado
+    assert "Vis descobre que é filho adotivo." in enviado
+
+
+def teste_sugerir_identidade_sem_json_levanta_erro() -> None:
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa("não é json")})
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.sugerir_identidade(
+            texto_capitulo="t",
+            tipo=TipoElemento.PERSONAGEM,
+            nome="Vis",
+            identidade_vigente=None,
             modelo="m",
         )
 
@@ -997,6 +1124,58 @@ def teste_listar_modelos_filtra_gratuitos_e_contexto(
         "/configuracao/modelos", params={"somente_gratuitos": True}
     ).json()
     assert len(gratuitos) == 2
+
+
+def teste_listar_modelos_filtra_json_moderacao_e_ordena_por_custo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Os três filtros do item 4.3, confirmados contra o /models real antes
+    de implementar: suporta_json, moderado e ordenação por custo_saida."""
+    from imagineer.ia.provedor import ModeloDisponivel
+
+    usar_provedor_falso(
+        ProvedorFalso(
+            modelos=[
+                ModeloDisponivel(
+                    id="caro/sem-json",
+                    nome="Caro sem JSON",
+                    contexto=128_000,
+                    gratuito=False,
+                    suporta_json=False,
+                    custo_saida=0.01,
+                    moderado=True,
+                ),
+                ModeloDisponivel(
+                    id="barato/com-json",
+                    nome="Barato com JSON",
+                    contexto=128_000,
+                    gratuito=True,
+                    suporta_json=True,
+                    custo_saida=0.0,
+                    moderado=False,
+                ),
+            ]
+        )
+    )
+
+    todos = cliente.get("/configuracao/modelos").json()
+    assert {m["id"] for m in todos} == {"caro/sem-json", "barato/com-json"}
+    assert all("suporta_json" in m and "custo_saida" in m and "moderado" in m for m in todos)
+
+    com_json = cliente.get(
+        "/configuracao/modelos", params={"somente_com_json": True}
+    ).json()
+    assert [m["id"] for m in com_json] == ["barato/com-json"]
+
+    nao_moderados = cliente.get(
+        "/configuracao/modelos", params={"somente_nao_moderados": True}
+    ).json()
+    assert [m["id"] for m in nao_moderados] == ["barato/com-json"]
+
+    ordenados = cliente.get(
+        "/configuracao/modelos", params={"ordenar_por_custo": True}
+    ).json()
+    assert [m["id"] for m in ordenados] == ["barato/com-json", "caro/sem-json"]
 
 
 def teste_falha_do_openrouter_na_listagem_responde_502(

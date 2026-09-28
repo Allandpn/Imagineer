@@ -22,10 +22,13 @@ from imagineer.esquemas.elemento import (
     ElementoResumo,
     ElementoSugerido as ElementoSugeridoResposta,
     EstadoAjuste,
+    EstadoComIdentidadeDoElemento,
     EstadoNovo,
     EstadoResumo,
     EstadosDeSugestoes,
+    HistoricoIdentidadeResumo,
     ParticipanteSugerido as ParticipanteSugeridoResposta,
+    SugestaoDeElementoAjuste,
     SugestaoDeElementoBuscada,
     SugestoesDeCapitulo,
 )
@@ -41,6 +44,7 @@ from imagineer.modelos import (
     Capitulo,
     Elemento,
     EstadoElemento,
+    HistoricoIdentidadeElemento,
     Imagem,
     Livro,
     SugestaoDeCena,
@@ -55,6 +59,7 @@ rotas_de_livro = APIRouter(prefix="/livros", tags=["Elementos"])
 rotas = APIRouter(prefix="/elementos", tags=["Elementos"])
 rotas_de_estado = APIRouter(prefix="/estados", tags=["Elementos"])
 rotas_de_capitulo = APIRouter(prefix="/capitulos", tags=["Elementos"])
+rotas_de_sugestao_elemento = APIRouter(prefix="/sugestoes-elemento", tags=["Elementos"])
 
 
 # --------------------------------------------------------------------------- #
@@ -178,6 +183,8 @@ def buscar_sugestoes_de_elemento(
             descricao=sugestao.descricao,
             manter_estado_atual=sugestao.manter_estado_atual,
             elemento_id=sugestao.elemento_id,
+            casamento_automatico=sugestao.casamento_automatico,
+            estado_id=_estado_id_no_capitulo(sessao, sugestao),
         )
         for sugestao, ordem, titulo in linhas
         if alvo in _texto_normalizado(sugestao.nome)
@@ -323,6 +330,31 @@ def criar_estados_de_sugestoes(
     return [EstadoResumo.model_validate(estado) for estado in estados]
 
 
+@rotas_de_estado.get(
+    "/{estado_id}",
+    response_model=EstadoComIdentidadeDoElemento,
+    summary="Abre um estado isolado",
+)
+def abrir_estado(
+    estado_id: int, sessao: Session = Depends(obter_sessao)
+) -> EstadoComIdentidadeDoElemento:
+    """Um estado isolado, com o elemento a que pertence.
+
+    Faltava: só existiam ``PATCH`` e ``DELETE`` para um estado — não havia
+    como abrir (ou testar) um estado só pelo id, a não ser abrindo o
+    elemento inteiro (``GET /elementos/{id}``) ou pelo estado vigente
+    (``GET /capitulos/{id}/estados-vigentes``). Mesmo padrão de ``GET
+    /frames/{id}`` (item 6.4): a resposta traz nome/tipo do elemento
+    embutidos, para a tela não ter que cruzar duas chamadas.
+    """
+    estado = _buscar_estado(sessao, estado_id)
+    return EstadoComIdentidadeDoElemento(
+        **EstadoResumo.model_validate(estado).model_dump(),
+        elemento_tipo=estado.elemento.tipo,
+        elemento_nome=estado.elemento.nome,
+    )
+
+
 @rotas_de_estado.patch(
     "/{estado_id}", response_model=EstadoResumo, summary="Ajusta um estado"
 )
@@ -358,6 +390,67 @@ def remover_estado(estado_id: int, sessao: Session = Depends(obter_sessao)) -> N
     """Apaga um estado. O elemento e os frames que o citavam permanecem."""
     sessao.delete(_buscar_estado(sessao, estado_id))
     sessao.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Corrigir o casamento de uma sugestão (item 4.6)
+# --------------------------------------------------------------------------- #
+
+
+@rotas_de_sugestao_elemento.patch(
+    "/{sugestao_elemento_id}",
+    response_model=ElementoSugeridoResposta,
+    summary="Corrige só o casamento de uma sugestão de elemento",
+)
+def ajustar_casamento_de_sugestao(
+    sugestao_elemento_id: int,
+    ajuste: SugestaoDeElementoAjuste,
+    sessao: Session = Depends(obter_sessao),
+) -> ElementoSugeridoResposta:
+    """Corrige só `elemento_id` de uma sugestão, sem gravar Estado nenhum.
+
+    Diferente de `POST /elementos/{id}/estados-de-sugestoes`, que sempre cria
+    um Estado como efeito colateral (item 3.4e) — o que serve bem ao caso
+    comum (a IA reconheceu o personagem de novo, faz sentido registrar o
+    estado daquele capítulo), mas não ao caso raro de o casamento automático
+    ter errado (associou a um elemento errado por coincidência de nome
+    normalizado) e o usuário só querer desfazer isso, sem estado nenhum.
+
+    Se `elemento_id` vier preenchido, exige que o elemento exista e seja do
+    mesmo livro do capítulo da sugestão — mesma checagem que já vale para
+    `estados_ids`/`sugestoes_elemento_ids` em outras rotas (item 6.3).
+    """
+    sugestao = _buscar_sugestao_de_elemento(sessao, sugestao_elemento_id)
+
+    if ajuste.elemento_id is not None:
+        elemento = _buscar_elemento(sessao, ajuste.elemento_id)
+        if elemento.livro_id != sugestao.capitulo.livro_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"O elemento {ajuste.elemento_id} é do livro {elemento.livro_id}, "
+                    f"não do livro {sugestao.capitulo.livro_id} desta sugestão."
+                ),
+            )
+
+    sugestao.elemento_id = ajuste.elemento_id
+    # É uma correção explícita do usuário — deixa de ser "casamento nunca
+    # revisado", mesmo que o novo valor seja null (desfazendo o casamento).
+    sugestao.casamento_automatico = False
+    sessao.commit()
+    sessao.refresh(sugestao)
+
+    return ElementoSugeridoResposta(
+        id=sugestao.id,
+        tipo=sugestao.tipo,
+        nome=sugestao.nome,
+        descricao=sugestao.descricao,
+        manter_estado_atual=sugestao.manter_estado_atual,
+        elemento_id=sugestao.elemento_id,
+        casamento_automatico=sugestao.casamento_automatico,
+        estado_id=_estado_id_no_capitulo(sessao, sugestao),
+        modelo=sugestao.modelo,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -426,7 +519,8 @@ def sugerir_elementos(
 
     _casar_sugestoes_pendentes(sessao, capitulo_id, capitulo.livro_id)
 
-    return _sugestoes_de_capitulo(sessao, capitulo)
+    pendentes_anteriores = _sugestoes_pendentes_anteriores(sessao, capitulo)
+    return _sugestoes_de_capitulo(sessao, capitulo, pendentes_anteriores)
 
 
 # --------------------------------------------------------------------------- #
@@ -502,6 +596,15 @@ def _detalhe(sessao: Session, elemento: Elemento) -> ElementoDetalhe:
         )
     )
 
+    historico_identidade = list(
+        sessao.scalars(
+            select(HistoricoIdentidadeElemento)
+            .join(Capitulo, Capitulo.id == HistoricoIdentidadeElemento.capitulo_id)
+            .where(HistoricoIdentidadeElemento.elemento_id == elemento.id)
+            .order_by(Capitulo.ordem, HistoricoIdentidadeElemento.id)
+        )
+    )
+
     return ElementoDetalhe(
         id=elemento.id,
         livro_id=elemento.livro_id,
@@ -509,6 +612,10 @@ def _detalhe(sessao: Session, elemento: Elemento) -> ElementoDetalhe:
         nome=elemento.nome,
         descricao=elemento.descricao,
         estados=[EstadoResumo.model_validate(estado) for estado in estados],
+        historico_identidade=[
+            HistoricoIdentidadeResumo.model_validate(registro)
+            for registro in historico_identidade
+        ],
     )
 
 
@@ -605,6 +712,39 @@ def _buscar_elemento(sessao: Session, elemento_id: int) -> Elemento:
             detail=f"Não existe elemento com id {elemento_id}.",
         )
     return elemento
+
+
+def _buscar_sugestao_de_elemento(sessao: Session, sugestao_id: int) -> SugestaoDeElemento:
+    sugestao = sessao.get(SugestaoDeElemento, sugestao_id)
+    if sugestao is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Não existe sugestão de elemento com id {sugestao_id}.",
+        )
+    return sugestao
+
+
+def _estado_id_no_capitulo(sessao: Session, sugestao: SugestaoDeElemento) -> int | None:
+    """O Estado já registrado para o elemento casado, neste capítulo específico.
+
+    `elemento_id` preenchido só diz que a sugestão está ligada a um Elemento;
+    não diz se aquele capítulo em particular já virou um `EstadoElemento`
+    (item 3.4e) — achado com um caso real em que uma menção casada num
+    capítulo posterior nunca tinha gerado Estado, e isso não aparecia em
+    lugar nenhum da resposta. Campo calculado, não coluna no banco — mesmo
+    princípio de `estado_vigente` (item 6.3).
+    """
+    if sugestao.elemento_id is None:
+        return None
+    return sessao.execute(
+        select(EstadoElemento.id)
+        .where(
+            EstadoElemento.elemento_id == sugestao.elemento_id,
+            EstadoElemento.capitulo_id == sugestao.capitulo_id,
+        )
+        .order_by(EstadoElemento.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
 
 
 def _buscar_estado(sessao: Session, estado_id: int) -> EstadoElemento:
@@ -767,13 +907,16 @@ def _casar_sugestoes_pendentes(sessao: Session, capitulo_id: int, livro_id: int)
         )
         if correspondente is not None:
             sugestao.elemento_id = correspondente
+            sugestao.casamento_automatico = True
             mudou = True
 
     if mudou:
         sessao.commit()
 
 
-def _sugestoes_de_capitulo(sessao: Session, capitulo: Capitulo) -> SugestoesDeCapitulo:
+def _sugestoes_de_capitulo(
+    sessao: Session, capitulo: Capitulo, pendentes_anteriores: int = 0
+) -> SugestoesDeCapitulo:
     """Monta a resposta a partir do que está salvo para este capítulo."""
     elementos = list(
         sessao.scalars(
@@ -792,6 +935,7 @@ def _sugestoes_de_capitulo(sessao: Session, capitulo: Capitulo) -> SugestoesDeCa
 
     return SugestoesDeCapitulo(
         gerado_em=capitulo.sugestoes_geradas_em,
+        sugestoes_pendentes_anteriores=pendentes_anteriores,
         elementos=[
             ElementoSugeridoResposta(
                 id=elemento.id,
@@ -800,6 +944,8 @@ def _sugestoes_de_capitulo(sessao: Session, capitulo: Capitulo) -> SugestoesDeCa
                 descricao=elemento.descricao,
                 manter_estado_atual=elemento.manter_estado_atual,
                 elemento_id=elemento.elemento_id,
+                casamento_automatico=elemento.casamento_automatico,
+                estado_id=_estado_id_no_capitulo(sessao, elemento),
                 modelo=elemento.modelo,
             )
             for elemento in elementos
@@ -819,6 +965,8 @@ def _sugestoes_de_capitulo(sessao: Session, capitulo: Capitulo) -> SugestoesDeCa
                         tipo=participante.tipo,
                         nome=participante.nome,
                         elemento_id=participante.elemento_id,
+                        casamento_automatico=participante.casamento_automatico,
+                        estado_id=_estado_id_no_capitulo(sessao, participante),
                     )
                     for participante in cena.participantes
                 ],
@@ -826,6 +974,29 @@ def _sugestoes_de_capitulo(sessao: Session, capitulo: Capitulo) -> SugestoesDeCa
             for cena in cenas
         ],
     )
+
+
+def _sugestoes_pendentes_anteriores(sessao: Session, capitulo: Capitulo) -> int:
+    """Quantas sugestões de capítulos anteriores deste livro ainda não foram
+    confirmadas (item 4.6) — soma elementos e cenas, porque os dois tipos de
+    confirmação pendente prejudicam igualmente o contexto que a IA recebe.
+    """
+    capitulos_anteriores = select(Capitulo.id).where(
+        Capitulo.livro_id == capitulo.livro_id, Capitulo.ordem < capitulo.ordem
+    )
+    elementos_pendentes = sessao.scalar(
+        select(func.count(SugestaoDeElemento.id)).where(
+            SugestaoDeElemento.capitulo_id.in_(capitulos_anteriores),
+            SugestaoDeElemento.elemento_id.is_(None),
+        )
+    )
+    cenas_pendentes = sessao.scalar(
+        select(func.count(SugestaoDeCena.id)).where(
+            SugestaoDeCena.capitulo_id.in_(capitulos_anteriores),
+            SugestaoDeCena.frame_id.is_(None),
+        )
+    )
+    return (elementos_pendentes or 0) + (cenas_pendentes or 0)
 
 
 def _sugestoes_de_elemento_do_livro(

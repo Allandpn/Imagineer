@@ -23,6 +23,9 @@ Content-Type: application/epub+zip
 GET {{baseUrl}}/livros
 
 ### Abre o livro importado (com a estrutura de capítulos, sem o texto)
+# Cada capítulo traz "sugestoes_pendentes" (item 4.6): quantas sugestões de
+# elemento/cena daquele capítulo ainda não foram confirmadas — indicador
+# não-bloqueante, só pra saber onde falta revisar.
 GET {{baseUrl}}/livros/{{livroId}}
 
 ### Abre um livro por id manual — troque pelo id que quiser inspecionar

@@ -20,6 +20,28 @@ class EstadoResumo(BaseModel):
     data_criacao: datetime
 
 
+class EstadoComIdentidadeDoElemento(EstadoResumo):
+    """Um estado isolado, com a identidade do elemento a que pertence
+    (``GET /estados/{id}``, item 6.3) — mesmo padrão de ``GET /frames/{id}``:
+    a tela não deveria ter que cruzar duas chamadas pra saber de quem é o
+    estado que está mostrando."""
+
+    elemento_tipo: TipoElemento
+    elemento_nome: str
+
+
+class HistoricoIdentidadeResumo(BaseModel):
+    """Um incremento de identidade (item 3.4f) como a API o devolve."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    elemento_id: int
+    capitulo_id: int
+    descricao: str
+    data_criacao: datetime
+
+
 class EstadoNovo(BaseModel):
     """O que o app manda para registrar um estado.
 
@@ -71,7 +93,8 @@ class ElementoResumo(BaseModel):
 
 
 class ElementoDetalhe(BaseModel):
-    """O elemento com todos os seus estados, em ordem narrativa."""
+    """O elemento com todos os seus estados e todo o histórico de
+    identidade, em ordem narrativa (item 3.4f)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -81,6 +104,16 @@ class ElementoDetalhe(BaseModel):
     nome: str
     descricao: str | None
     estados: list[EstadoResumo]
+    historico_identidade: list[HistoricoIdentidadeResumo] = Field(
+        default_factory=list,
+        description=(
+            "O que cada capítulo acrescentou sobre a identidade deste "
+            "elemento (item 3.4f) — cumulativo, ao contrário dos estados de "
+            "aparência acima. 'descricao' do elemento é a identidade "
+            "inicial; some com estes registros, em ordem, para a identidade "
+            "vigente num ponto da narrativa."
+        ),
+    )
 
 
 class ElementoNovo(BaseModel):
@@ -160,7 +193,44 @@ class ElementoSugerido(BaseModel):
             "Nulo significa elemento ainda não confirmado."
         ),
     )
+    casamento_automatico: bool = Field(
+        default=False,
+        description=(
+            "True quando elemento_id veio só do casamento automático por "
+            "nome, nunca revisado por uma pessoa (item 4.6). Não bloqueia "
+            "nada — é sinal pra a tela destacar antes de confirmar uma cena "
+            "em lote."
+        ),
+    )
+    estado_id: int | None = Field(
+        default=None,
+        description=(
+            "O Estado já registrado para este elemento, neste capítulo "
+            "específico — calculado, não é coluna do banco (item 3.4e). "
+            "Nulo mesmo com elemento_id preenchido significa: casada, mas "
+            "ainda não virou Estado."
+        ),
+    )
     modelo: str = Field(description="O modelo de IA que gerou esta sugestão.")
+
+
+class SugestaoDeElementoAjuste(BaseModel):
+    """O que `PATCH /sugestoes-elemento/{id}` recebe (item 4.6).
+
+    Só corrige o vínculo `elemento_id` — nunca grava Estado. Resolve o caso
+    em que o casamento automático (item 6.7) associou a sugestão a um
+    elemento errado, e o usuário só quer desfazer isso, sem os dois passos
+    manuais que a rota anterior exigia (confirmar no elemento certo e apagar
+    o Estado criado no errado).
+    """
+
+    elemento_id: int | None = Field(
+        description=(
+            "O elemento correto, ou null para desfazer o casamento por "
+            "completo. Campo obrigatório no corpo (mesmo que null) — é a "
+            "única coisa que esta rota ajusta."
+        )
+    )
 
 
 class ParticipanteSugerido(BaseModel):
@@ -181,6 +251,23 @@ class ParticipanteSugerido(BaseModel):
     elemento_id: int | None = Field(
         default=None,
         description="O elemento já cadastrado correspondente, se algum bateu.",
+    )
+    casamento_automatico: bool = Field(
+        default=False,
+        description=(
+            "True quando elemento_id veio só do casamento automático por "
+            "nome, nunca revisado por uma pessoa (item 4.6) — é o sinal que "
+            "a tela usa para destacar um participante antes de confirmar a "
+            "cena em lote."
+        ),
+    )
+    estado_id: int | None = Field(
+        default=None,
+        description=(
+            "O Estado já registrado para este elemento, neste capítulo "
+            "específico — nulo mesmo com elemento_id preenchido significa "
+            "'casada, mas ainda não virou Estado' (item 3.4e)."
+        ),
     )
 
 
@@ -220,6 +307,17 @@ class SugestoesDeCapitulo(BaseModel):
     gerado_em: datetime | None = Field(
         description="Quando a última rodada de sugestão deste capítulo rodou a IA."
     )
+    sugestoes_pendentes_anteriores: int = Field(
+        default=0,
+        description=(
+            "Quantas sugestões (de elemento ou cena) de capítulos anteriores "
+            "deste livro ainda não foram confirmadas (item 4.6). Não bloqueia "
+            "esta análise — só avisa que o contexto usado nela está mais "
+            "pobre do que poderia estar, porque o casamento automático "
+            "depende de quanto já foi confirmado, não de quantos capítulos "
+            "já foram lidos."
+        ),
+    )
     elementos: list[ElementoSugerido]
     cenas: list[CenaSugerida] = Field(
         default_factory=list,
@@ -246,3 +344,18 @@ class SugestaoDeElementoBuscada(BaseModel):
     descricao: str | None
     manter_estado_atual: bool
     elemento_id: int | None
+    casamento_automatico: bool = Field(
+        default=False,
+        description=(
+            "True quando elemento_id veio só do casamento automático por "
+            "nome, nunca revisado por uma pessoa (item 4.6)."
+        ),
+    )
+    estado_id: int | None = Field(
+        default=None,
+        description=(
+            "O Estado já registrado para este elemento, neste capítulo "
+            "específico — nulo mesmo com elemento_id preenchido significa "
+            "'casada, mas ainda não virou Estado' (item 3.4e)."
+        ),
+    )

@@ -9,7 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session
 
-from imagineer.modelos import Capitulo, Elemento, EstadoElemento, Livro, TipoElemento
+from imagineer.modelos import (
+    Capitulo,
+    Elemento,
+    EstadoElemento,
+    HistoricoIdentidadeElemento,
+    Livro,
+    TipoElemento,
+)
+from imagineer.servicos.identidade_de_elemento import identidade_vigente
 
 
 def _livro_com_capitulos(sessao: Session, quantidade: int = 3) -> Livro:
@@ -260,3 +268,118 @@ def teste_apagar_livro_apaga_elementos_e_seus_estados(
 
     assert sessao_com_tabelas.scalars(select(Elemento)).all() == []
     assert sessao_com_tabelas.scalars(select(EstadoElemento)).all() == []
+
+
+# --------------------------------------------------------------------------- #
+# HistoricoIdentidadeElemento (item 3.4f) — identidade evolutiva, cumulativa
+# --------------------------------------------------------------------------- #
+
+
+def teste_identidade_vigente_soma_identidade_inicial_com_incrementos(
+    sessao_com_tabelas: Session,
+) -> None:
+    """Ao contrário da aparência, identidade **acumula** — não é "última vale"."""
+    livro = _livro_com_capitulos(sessao_com_tabelas, quantidade=3)
+    cap1, cap2, cap3 = livro.capitulos
+
+    personagem = Elemento(
+        livro_id=livro.id,
+        tipo=TipoElemento.PERSONAGEM,
+        nome="Vis",
+        descricao="Um jovem aprendiz de ferreiro.",
+    )
+    sessao_com_tabelas.add(personagem)
+    sessao_com_tabelas.commit()
+
+    sessao_com_tabelas.add_all(
+        [
+            HistoricoIdentidadeElemento(
+                elemento_id=personagem.id,
+                capitulo_id=cap2.id,
+                descricao="É filho adotivo do ferreiro, não o filho de sangue.",
+            ),
+            HistoricoIdentidadeElemento(
+                elemento_id=personagem.id,
+                capitulo_id=cap3.id,
+                descricao="Guarda um segredo: já matou um homem.",
+            ),
+        ]
+    )
+    sessao_com_tabelas.commit()
+
+    assert identidade_vigente(sessao_com_tabelas, personagem, cap1.ordem) == (
+        "Um jovem aprendiz de ferreiro."
+    )
+    assert identidade_vigente(sessao_com_tabelas, personagem, cap2.ordem) == (
+        "Um jovem aprendiz de ferreiro. "
+        "É filho adotivo do ferreiro, não o filho de sangue."
+    )
+    assert identidade_vigente(sessao_com_tabelas, personagem, cap3.ordem) == (
+        "Um jovem aprendiz de ferreiro. "
+        "É filho adotivo do ferreiro, não o filho de sangue. "
+        "Guarda um segredo: já matou um homem."
+    )
+
+
+def teste_identidade_vigente_nao_vaza_revelacao_de_capitulo_posterior(
+    sessao_com_tabelas: Session,
+) -> None:
+    """Processar capítulos fora de ordem não deve vazar spoiler retroativo.
+
+    Se o capítulo 10 é processado antes do capítulo 4, a identidade vigente
+    consultada no capítulo 4 nunca deveria incluir o que só o capítulo 10
+    revelou — mesmo princípio de ``Capitulo.ordem`` já usado pela aparência.
+    """
+    livro = _livro_com_capitulos(sessao_com_tabelas, quantidade=10)
+    cap4, cap10 = livro.capitulos[3], livro.capitulos[9]
+
+    personagem = Elemento(livro_id=livro.id, tipo=TipoElemento.PERSONAGEM, nome="Vis")
+    sessao_com_tabelas.add(personagem)
+    sessao_com_tabelas.commit()
+
+    # Processado fora de ordem: capítulo 10 antes do capítulo 4.
+    sessao_com_tabelas.add(
+        HistoricoIdentidadeElemento(
+            elemento_id=personagem.id,
+            capitulo_id=cap10.id,
+            descricao="Revelação: é o herdeiro perdido do reino.",
+        )
+    )
+    sessao_com_tabelas.commit()
+
+    assert identidade_vigente(sessao_com_tabelas, personagem, cap4.ordem) is None
+
+
+def teste_identidade_vigente_sem_nada_devolve_nulo(
+    sessao_com_tabelas: Session,
+) -> None:
+    """Sem identidade inicial nem incrementos, não há o que devolver."""
+    livro = _livro_com_capitulos(sessao_com_tabelas, quantidade=1)
+    personagem = Elemento(livro_id=livro.id, tipo=TipoElemento.PERSONAGEM, nome="Sem Nome")
+    sessao_com_tabelas.add(personagem)
+    sessao_com_tabelas.commit()
+
+    assert (
+        identidade_vigente(sessao_com_tabelas, personagem, livro.capitulos[0].ordem)
+        is None
+    )
+
+
+def teste_apagar_elemento_apaga_seu_historico_de_identidade(
+    sessao_com_tabelas: Session,
+) -> None:
+    """O cascade percorre a cadeia: Elemento -> HistoricoIdentidadeElemento."""
+    livro = _livro_com_capitulos(sessao_com_tabelas, quantidade=1)
+    personagem = Elemento(livro_id=livro.id, tipo=TipoElemento.PERSONAGEM, nome="Vis")
+    personagem.historico_identidade = [
+        HistoricoIdentidadeElemento(
+            capitulo_id=livro.capitulos[0].id, descricao="Algo novo."
+        )
+    ]
+    sessao_com_tabelas.add(personagem)
+    sessao_com_tabelas.commit()
+
+    sessao_com_tabelas.delete(personagem)
+    sessao_com_tabelas.commit()
+
+    assert sessao_com_tabelas.scalars(select(HistoricoIdentidadeElemento)).all() == []

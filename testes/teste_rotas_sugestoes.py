@@ -128,6 +128,8 @@ def teste_sugestoes_devolve_o_que_o_provedor_deu(
         "descricao": "Um bastardo do norte.",
         "manter_estado_atual": False,
         "elemento_id": None,
+        "casamento_automatico": False,
+        "estado_id": None,
         "modelo": MODELO_FALSO,
     }
 
@@ -294,6 +296,294 @@ def teste_sugestoes_casa_com_elemento_existente_ignorando_caixa_e_acento(
     resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
 
     assert resposta.json()["elementos"][0]["elemento_id"] == elemento["id"]
+
+
+# --------------------------------------------------------------------------- #
+# casamento_automatico e estado_id (item 4.6) — sinalização de confiança
+# --------------------------------------------------------------------------- #
+
+
+def teste_casamento_automatico_marca_true_quando_a_rota_casa_sozinha(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Um casamento por nome, sem o usuário ter revisado esta sugestão
+    especificamente, fica sinalizado como não revisado (item 4.6)."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+
+    cliente.post(
+        f"/livros/{livro['id']}/elementos", json={"tipo": "PERSONAGEM", "nome": "Jon"}
+    )
+
+    resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
+
+    elemento = resposta.json()["elementos"][0]
+    assert elemento["elemento_id"] is not None
+    assert elemento["casamento_automatico"] is True
+
+
+def teste_estado_id_nulo_quando_casado_mas_sem_estado_neste_capitulo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Achado com um caso real: sugestão casada não significa que virou Estado
+    *neste* capítulo — o campo calculado torna isso visível (item 3.4e)."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_com_capitulos(cliente, capitulos=2)
+    _escolher_modelo_de_extracao(cliente)
+    cap1, cap2 = livro["capitulos"]
+
+    # Jon só tem Estado registrado no capítulo 1.
+    cliente.post(
+        f"/livros/{livro['id']}/elementos",
+        json={
+            "tipo": "PERSONAGEM",
+            "nome": "Jon",
+            "estado_inicial": {"capitulo_id": cap1["id"], "descricao": "Manto negro."},
+        },
+    )
+
+    # Sugestão do capítulo 2 casa com o Jon já cadastrado, mas nenhum Estado
+    # foi criado no capítulo 2 ainda.
+    resposta = cliente.post(f"/capitulos/{cap2['id']}/sugestoes")
+
+    elemento = resposta.json()["elementos"][0]
+    assert elemento["elemento_id"] is not None
+    assert elemento["estado_id"] is None
+
+
+def teste_estado_id_preenchido_quando_ja_existe_estado_no_capitulo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo = livro["capitulos"][0]
+
+    elemento = cliente.post(
+        f"/livros/{livro['id']}/elementos",
+        json={
+            "tipo": "PERSONAGEM",
+            "nome": "Jon",
+            "estado_inicial": {"capitulo_id": capitulo["id"], "descricao": "Manto negro."},
+        },
+    ).json()
+
+    resposta = cliente.post(f"/capitulos/{capitulo['id']}/sugestoes")
+
+    sugerido = resposta.json()["elementos"][0]
+    assert sugerido["estado_id"] == elemento["estados"][0]["id"]
+
+
+# --------------------------------------------------------------------------- #
+# sugestoes_pendentes_anteriores (item 4.6) — aviso não-bloqueante
+# --------------------------------------------------------------------------- #
+
+
+def teste_sugestoes_pendentes_anteriores_conta_elementos_e_cenas_nao_confirmados(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[
+                ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon"),
+                ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Robb"),
+            ],
+            cenas_sugeridas=[
+                CenaSugerida(
+                    titulo="A partida",
+                    participantes=[
+                        ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")
+                    ],
+                )
+            ],
+        )
+    )
+    livro = _livro_com_capitulos(cliente, capitulos=2)
+    _escolher_modelo_de_extracao(cliente)
+    cap1, cap2 = livro["capitulos"]
+
+    # Capítulo 1 gera duas sugestões de elemento e uma de cena, nenhuma confirmada.
+    cliente.post(f"/capitulos/{cap1['id']}/sugestoes")
+
+    resposta = cliente.post(f"/capitulos/{cap2['id']}/sugestoes")
+
+    assert resposta.json()["sugestoes_pendentes_anteriores"] == 3
+
+
+def teste_sugestoes_pendentes_anteriores_zero_no_primeiro_capitulo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Sem capítulo anterior, não há o que contar."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+
+    resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
+
+    assert resposta.json()["sugestoes_pendentes_anteriores"] == 0
+
+
+def teste_sugestoes_pendentes_anteriores_nao_conta_ja_confirmadas(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_com_capitulos(cliente, capitulos=2)
+    _escolher_modelo_de_extracao(cliente)
+    cap1, cap2 = livro["capitulos"]
+
+    cliente.post(f"/capitulos/{cap1['id']}/sugestoes")
+    cliente.post(
+        f"/livros/{livro['id']}/elementos", json={"tipo": "PERSONAGEM", "nome": "Jon"}
+    )
+    # Recasar via nova leitura marca elemento_id — deixa de ser "pendente".
+    cliente.post(f"/capitulos/{cap1['id']}/sugestoes")
+
+    resposta = cliente.post(f"/capitulos/{cap2['id']}/sugestoes")
+
+    assert resposta.json()["sugestoes_pendentes_anteriores"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# PATCH /sugestoes-elemento/{id} (item 4.6) — corrigir só o casamento
+# --------------------------------------------------------------------------- #
+
+
+def teste_corrigir_casamento_sem_criar_estado(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Resolve o caso raro de o casamento automático ter errado: o usuário
+    corrige o vínculo sem que um Estado seja criado como efeito colateral."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Hospius")]
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+
+    elemento_certo = cliente.post(
+        f"/livros/{livro['id']}/elementos", json={"tipo": "PERSONAGEM", "nome": "Hospius"}
+    ).json()
+    elemento_errado = cliente.post(
+        f"/livros/{livro['id']}/elementos", json={"tipo": "PERSONAGEM", "nome": "Hrolf"}
+    ).json()
+
+    sugestao_id = cliente.post(
+        f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes"
+    ).json()["elementos"][0]["id"]
+
+    resposta = cliente.patch(
+        f"/sugestoes-elemento/{sugestao_id}", json={"elemento_id": elemento_errado["id"]}
+    )
+    assert resposta.status_code == 200
+    assert resposta.json()["elemento_id"] == elemento_errado["id"]
+    assert resposta.json()["casamento_automatico"] is False
+
+    # Corrige para o elemento certo — sem nenhum Estado ter sido criado.
+    resposta = cliente.patch(
+        f"/sugestoes-elemento/{sugestao_id}", json={"elemento_id": elemento_certo["id"]}
+    )
+    assert resposta.status_code == 200
+    assert resposta.json()["elemento_id"] == elemento_certo["id"]
+
+    assert cliente.get(f"/elementos/{elemento_certo['id']}").json()["estados"] == []
+    assert cliente.get(f"/elementos/{elemento_errado['id']}").json()["estados"] == []
+
+
+def teste_corrigir_casamento_para_nulo_desfaz_o_vinculo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    cliente.post(
+        f"/livros/{livro['id']}/elementos", json={"tipo": "PERSONAGEM", "nome": "Jon"}
+    )
+    sugestao_id = cliente.post(
+        f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes"
+    ).json()["elementos"][0]["id"]
+
+    resposta = cliente.patch(f"/sugestoes-elemento/{sugestao_id}", json={"elemento_id": None})
+
+    assert resposta.status_code == 200
+    assert resposta.json()["elemento_id"] is None
+
+
+def teste_corrigir_casamento_com_elemento_de_outro_livro_responde_422(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro1 = _livro_importado(cliente)
+    livro2 = _livro_importado(cliente, identificador="urn:isbn:2")
+    _escolher_modelo_de_extracao(cliente)
+
+    de_outro_livro = cliente.post(
+        f"/livros/{livro2['id']}/elementos", json={"tipo": "PERSONAGEM", "nome": "Jon"}
+    ).json()
+    sugestao_id = cliente.post(
+        f"/capitulos/{livro1['capitulos'][0]['id']}/sugestoes"
+    ).json()["elementos"][0]["id"]
+
+    resposta = cliente.patch(
+        f"/sugestoes-elemento/{sugestao_id}", json={"elemento_id": de_outro_livro["id"]}
+    )
+
+    assert resposta.status_code == 422
+
+
+def teste_corrigir_casamento_de_sugestao_inexistente_responde_404(
+    cliente: TestClient,
+) -> None:
+    resposta = cliente.patch("/sugestoes-elemento/999", json={"elemento_id": None})
+    assert resposta.status_code == 404
+
+
+def teste_corrigir_casamento_com_elemento_inexistente_responde_404(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    sugestao_id = cliente.post(
+        f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes"
+    ).json()["elementos"][0]["id"]
+
+    resposta = cliente.patch(f"/sugestoes-elemento/{sugestao_id}", json={"elemento_id": 999})
+
+    assert resposta.status_code == 404
 
 
 def teste_sugestoes_nao_casa_elemento_de_tipo_diferente(
@@ -800,3 +1090,94 @@ def teste_criar_frame_de_sugestao_inexistente_responde_404(
     )
 
     assert resposta.status_code == 404
+
+
+def teste_confirmar_a_mesma_cena_sugerida_duas_vezes_responde_409(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Sem isto, cada chamada criava um Frame novo, sobrescrevendo
+    `SugestaoDeCena.frame_id` sem aviso — o Frame anterior ficava órfão no
+    banco (item 4.6/6.4). Mesmo padrão já usado para elemento duplicado
+    (item 6.3): 409 com o id do registro existente."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
+            cenas_sugeridas=[
+                CenaSugerida(
+                    titulo="A vigília no Muro",
+                    participantes=[
+                        ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")
+                    ],
+                )
+            ],
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo_id = livro["capitulos"][0]["id"]
+
+    sugestoes = cliente.post(f"/capitulos/{capitulo_id}/sugestoes").json()
+    _confirmar_elemento_da_sugestao(cliente, livro["id"], sugestoes["elementos"][0]["id"])
+    sugestao_cena_id = sugestoes["cenas"][0]["id"]
+
+    primeira = cliente.post(
+        f"/capitulos/{capitulo_id}/frames", json={"sugestao_cena_id": sugestao_cena_id}
+    )
+    assert primeira.status_code == 201
+    frame_id = primeira.json()["id"]
+
+    segunda = cliente.post(
+        f"/capitulos/{capitulo_id}/frames", json={"sugestao_cena_id": sugestao_cena_id}
+    )
+
+    assert segunda.status_code == 409
+    assert str(frame_id) in segunda.json()["detail"]
+    # Nenhum Frame novo foi criado — só o primeiro existe.
+    assert len(cliente.get(f"/capitulos/{capitulo_id}/frames").json()) == 1
+
+
+# --------------------------------------------------------------------------- #
+# sugestoes_pendentes em GET /livros/{id} (item 4.6) — indicador por capítulo
+# --------------------------------------------------------------------------- #
+
+
+def teste_livro_traz_sugestoes_pendentes_por_capitulo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_com_capitulos(cliente, capitulos=2)
+    _escolher_modelo_de_extracao(cliente)
+    cap1, cap2 = livro["capitulos"]
+
+    cliente.post(f"/capitulos/{cap1['id']}/sugestoes")
+
+    resposta = cliente.get(f"/livros/{livro['id']}")
+
+    capitulos = {c["id"]: c for c in resposta.json()["capitulos"]}
+    assert capitulos[cap1["id"]]["sugestoes_pendentes"] == 1
+    assert capitulos[cap2["id"]]["sugestoes_pendentes"] == 0
+
+
+def teste_livro_nao_conta_sugestao_ja_confirmada_como_pendente(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")]
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo_id = livro["capitulos"][0]["id"]
+
+    sugestao_id = cliente.post(f"/capitulos/{capitulo_id}/sugestoes").json()["elementos"][0]["id"]
+    _confirmar_elemento_da_sugestao(cliente, livro["id"], sugestao_id)
+
+    resposta = cliente.get(f"/livros/{livro['id']}")
+
+    capitulo = next(c for c in resposta.json()["capitulos"] if c["id"] == capitulo_id)
+    assert capitulo["sugestoes_pendentes"] == 0

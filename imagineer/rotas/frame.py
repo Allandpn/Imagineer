@@ -83,6 +83,7 @@ def criar_frame(
     sugestao = None
     if novo.sugestao_cena_id is not None:
         sugestao = _buscar_sugestao_de_cena(sessao, novo.sugestao_cena_id, capitulo_id)
+        _exigir_cena_ainda_nao_confirmada(sugestao)
 
     titulo = novo.titulo if novo.titulo is not None else (sugestao.titulo if sugestao else None)
     descricao = (
@@ -241,6 +242,28 @@ def _buscar_sugestao_de_cena(
             ),
         )
     return sugestao
+
+
+def _exigir_cena_ainda_nao_confirmada(sugestao: SugestaoDeCena) -> None:
+    """Impede confirmar a mesma cena sugerida duas vezes (item 4.6/6.4).
+
+    Sem isto, cada chamada criava um Frame novo, sobrescrevendo
+    `SugestaoDeCena.frame_id` sem aviso — o Frame anterior ficava órfão no
+    banco (achado testando: três confirmações seguidas, três Frames, só o
+    último referenciado). Mesmo padrão já usado para elemento duplicado
+    (item 6.3): 409 com o id do registro existente, para o app oferecer
+    abrir o Frame já criado em vez de duplicar. Vale só para
+    `sugestao_cena_id` — um frame manual com `estados_ids` continua livre,
+    porque duas cenas com os mesmos participantes podem ser legítimas.
+    """
+    if sugestao.frame_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Esta sugestão de cena já virou o frame {sugestao.frame_id}. "
+                "Abra o frame existente em vez de confirmar de novo."
+            ),
+        )
 
 
 def _resolver_estados_da_sugestao(

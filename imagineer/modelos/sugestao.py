@@ -95,6 +95,15 @@ class SugestaoDeElemento(Base):
     """O Elemento real a que esta sugestão corresponde — nulo até confirmar,
     automaticamente (nome normalizado casando) ou manualmente pelo usuário."""
 
+    casamento_automatico: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    """``True`` quando ``elemento_id`` veio só do casamento automático por
+    nome (item 6.7), nunca revisado por uma pessoa. Vira ``False`` quando o
+    usuário confirma ou corrige esta sugestão especificamente — seja
+    confirmando um Estado a partir dela, seja por ``PATCH
+    /sugestoes-elemento/{id}`` (item 4.6). Não é bloqueio: só torna visível
+    um casamento que hoje é silencioso, para o app poder destacar antes de o
+    usuário confirmar uma cena inteira de uma vez."""
+
     capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
     elemento: Mapped["Elemento | None"] = relationship()  # noqa: F821
 

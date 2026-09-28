@@ -50,6 +50,23 @@ class ModeloDisponivel:
 
     gratuito: bool
 
+    suporta_json: bool = True
+    """Se o modelo aceita resposta estruturada/JSON (``supported_parameters``
+    do OpenRouter contendo ``response_format``/``structured_outputs``, item
+    4.3). Ataca direto o erro "O modelo não devolveu JSON", mais comum em
+    modelos pequenos/gratuitos. Padrão ``True`` para não quebrar um provedor
+    (como o falso, nos testes) que não modela esse detalhe."""
+
+    custo_saida: float = 0.0
+    """Preço por token de saída (``pricing.completion`` do OpenRouter),
+    sempre presente na resposta — não só quando filtrado, porque é
+    informação útil mesmo sem filtrar por ela (item 4.3)."""
+
+    moderado: bool = False
+    """Se o modelo é moderado pelo provedor (``top_provider.is_moderated``).
+    Texto narrativo (violência, fantasia) pode ser rejeitado por modelos
+    mais restritivos — item 4.3."""
+
 
 @dataclass
 class ElementoSugerido:
@@ -139,6 +156,22 @@ class EstadoSugerido:
     """
 
     descricao: str
+    modelo: str = ""
+
+
+@dataclass
+class IdentidadeSugerida:
+    """O resultado da leitura profunda de identidade (item 4.4, fase 2b).
+
+    Ao contrário de ``EstadoSugerido`` (que sobrescreve a descrição do
+    estado), isto **não é** a identidade inteira — só o incremento que este
+    capítulo especificamente acrescenta, ou ``None`` quando nada de novo.
+    Vira uma linha nova em ``HistoricoIdentidadeElemento`` (item 3.4f) em vez
+    de sobrescrever ``Elemento.descricao``: identidade é cumulativa, não um
+    retrato de um só ponto da narrativa.
+    """
+
+    descricao: str | None
     modelo: str = ""
 
 
@@ -251,6 +284,35 @@ class ProvedorIA(ABC):
                 de contexto.
             estado_atual: a descrição de aparência já registrada, se houver —
                 de contexto; o texto do capítulo tem precedência sobre ela.
+            modelo: o identificador do modelo a usar.
+        """
+
+    @abstractmethod
+    def sugerir_identidade(
+        self,
+        texto_capitulo: str,
+        tipo: TipoElemento,
+        nome: str,
+        identidade_vigente: str | None,
+        modelo: str,
+    ) -> IdentidadeSugerida:
+        """A leitura profunda de *identidade* de UM elemento — fase 2b (item 4.4).
+
+        Roda no mesmo ponto que ``sugerir_estado`` (dentro de
+        ``POST /frames/{id}/prompts``), relendo a mesma chamada — sem chamada
+        de IA extra. Ao contrário de ``sugerir_estado``, o resultado **não
+        sobrescreve** nada: quando há algo genuinamente novo, vira uma linha
+        em ``HistoricoIdentidadeElemento`` (item 3.4f); quando não há nada
+        novo (o caso comum), a resposta vem com ``descricao=None`` e nenhuma
+        linha é criada.
+
+        Args:
+            texto_capitulo: o capítulo sendo relido — o mesmo de ``sugerir_estado``.
+            tipo, nome: identificam o elemento no texto.
+            identidade_vigente: a identidade já conhecida até este ponto da
+                narrativa (``Elemento.descricao`` mais os incrementos
+                anteriores, em ordem — ver ``servicos/identidade_de_elemento.py``),
+                de contexto para a IA não repetir o que já sabe.
             modelo: o identificador do modelo a usar.
         """
 

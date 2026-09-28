@@ -25,7 +25,7 @@ from imagineer.ia.provedor import (
     ModeloNaoEscolhido,
     ProvedorIA,
 )
-from imagineer.modelos import Capitulo, Livro, PerfilRenderizacao
+from imagineer.modelos import Capitulo, Livro, PerfilRenderizacao, SugestaoDeCena, SugestaoDeElemento
 from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.importacao_epub import (
@@ -294,6 +294,31 @@ def _resumo_do_livro(sessao: Session, livro: Livro) -> LivroResumo:
     )
 
 
+def _sugestoes_pendentes_por_capitulo(sessao: Session, livro_id: int) -> dict[int, int]:
+    """Quantas sugestões (elemento ou cena) de cada capítulo ainda não foram
+    confirmadas (item 4.6) — o que alimenta o indicador de pendência da tela
+    de Livro, numa consulta por tipo em vez de uma por capítulo.
+    """
+    contagem: dict[int, int] = {}
+    for capitulo_id, total in sessao.execute(
+        select(SugestaoDeElemento.capitulo_id, func.count(SugestaoDeElemento.id))
+        .join(Capitulo, Capitulo.id == SugestaoDeElemento.capitulo_id)
+        .where(Capitulo.livro_id == livro_id, SugestaoDeElemento.elemento_id.is_(None))
+        .group_by(SugestaoDeElemento.capitulo_id)
+    ).all():
+        contagem[capitulo_id] = contagem.get(capitulo_id, 0) + total
+
+    for capitulo_id, total in sessao.execute(
+        select(SugestaoDeCena.capitulo_id, func.count(SugestaoDeCena.id))
+        .join(Capitulo, Capitulo.id == SugestaoDeCena.capitulo_id)
+        .where(Capitulo.livro_id == livro_id, SugestaoDeCena.frame_id.is_(None))
+        .group_by(SugestaoDeCena.capitulo_id)
+    ).all():
+        contagem[capitulo_id] = contagem.get(capitulo_id, 0) + total
+
+    return contagem
+
+
 def _detalhe_do_livro(sessao: Session, livro: Livro) -> LivroDetalhe:
     """Monta o detalhe de um livro com a lista de capítulos sem texto.
 
@@ -313,6 +338,8 @@ def _detalhe_do_livro(sessao: Session, livro: Livro) -> LivroDetalhe:
         .order_by(Capitulo.ordem)
     ).all()
 
+    pendentes = _sugestoes_pendentes_por_capitulo(sessao, livro.id)
+
     capitulos = [
         CapituloResumo(
             id=identificador,
@@ -320,6 +347,7 @@ def _detalhe_do_livro(sessao: Session, livro: Livro) -> LivroDetalhe:
             titulo=titulo,
             ignorado=ignorado,
             tamanho_do_texto=tamanho,
+            sugestoes_pendentes=pendentes.get(identificador, 0),
         )
         for identificador, ordem, titulo, ignorado, tamanho in linhas
     ]

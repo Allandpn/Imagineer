@@ -77,6 +77,18 @@ class ModeloDaLista(BaseModel):
     nome: str
     contexto: int = Field(description="Janela de contexto em tokens.")
     gratuito: bool
+    suporta_json: bool = Field(
+        description=(
+            "Se o modelo aceita resposta estruturada/JSON. Modelos sem isso "
+            "tendem a produzir o erro 'O modelo não devolveu JSON' (item 4.3)."
+        )
+    )
+    custo_saida: float = Field(
+        description="Preço por token de saída (US$), sempre presente mesmo sem filtrar por ele."
+    )
+    moderado: bool = Field(
+        description="Se o modelo é moderado pelo provedor — pode rejeitar texto narrativo mais pesado."
+    )
 
 
 @rotas.get("", response_model=ConfiguracaoAtual, summary="A configuração atual")
@@ -135,6 +147,26 @@ def listar_modelos(
             "validação ocupa cerca de 28 mil tokens, então 32000 é um bom valor."
         ),
     ),
+    somente_com_json: bool = Query(
+        default=False,
+        description=(
+            "Mostra só modelos que aceitam resposta estruturada/JSON — evita o "
+            "erro 'O modelo não devolveu JSON', mais comum em modelos pequenos "
+            "ou gratuitos (item 4.3)."
+        ),
+    ),
+    somente_nao_moderados: bool = Query(
+        default=False,
+        description=(
+            "Mostra só modelos sem moderação do provedor — útil quando o texto "
+            "narrativo (violência, fantasia) é rejeitado por modelos mais "
+            "restritivos."
+        ),
+    ),
+    ordenar_por_custo: bool = Query(
+        default=False,
+        description="Ordena a lista por custo de saída crescente, o mais barato primeiro.",
+    ),
     provedor: ProvedorIA = Depends(obter_provedor),
 ) -> list[ModeloDaLista]:
     """Os modelos de texto do OpenRouter, para a tela de escolha.
@@ -151,11 +183,24 @@ def listar_modelos(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
         ) from erro
 
-    return [
+    filtrados = [
         ModeloDaLista(
-            id=modelo.id, nome=modelo.nome, contexto=modelo.contexto, gratuito=modelo.gratuito
+            id=modelo.id,
+            nome=modelo.nome,
+            contexto=modelo.contexto,
+            gratuito=modelo.gratuito,
+            suporta_json=modelo.suporta_json,
+            custo_saida=modelo.custo_saida,
+            moderado=modelo.moderado,
         )
         for modelo in modelos
         if (not somente_gratuitos or modelo.gratuito)
         and modelo.contexto >= contexto_minimo
+        and (not somente_com_json or modelo.suporta_json)
+        and (not somente_nao_moderados or not modelo.moderado)
     ]
+
+    if ordenar_por_custo:
+        filtrados.sort(key=lambda m: m.custo_saida)
+
+    return filtrados

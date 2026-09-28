@@ -21,7 +21,11 @@ POST {{baseUrl}}/capitulos/7/sugestoes
 ### Rodar de novo depois de confirmar um elemento (03-elementos-e-estados.http)
 # Mesmo sem forcar=true, mostra o elemento já cadastrado com elemento_id
 # preenchido — o casamento é recalculado a cada leitura, só o texto da
-# sugestão vem do cache (item 6.7).
+# sugestão vem do cache (item 6.7). Cada sugestão traz casamento_automatico
+# (true = ninguém revisou este casamento ainda) e estado_id (o Estado já
+# registrado NESTE capítulo, ou null mesmo com elemento_id preenchido — item
+# 4.6). sugestoes_pendentes_anteriores (no topo da resposta) avisa, sem
+# bloquear, quantas sugestões de capítulos anteriores ainda faltam confirmar.
 POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
 
 ### Forçar uma sugestão nova, ignorando o que está salvo
@@ -40,6 +44,20 @@ GET {{baseUrl}}/livros/{{livroId}}/sugestoes-elemento?nome=hospius
 
 ### O mesmo, por id de livro manual e outro nome — troque os dois pra testar
 GET {{baseUrl}}/livros/1/sugestoes-elemento?nome=vis
+
+### Corrige só o casamento de uma sugestão, sem gravar Estado (item 4.6)
+# Resolve o caso raro de o casamento automático ter errado (associou a um
+# elemento errado por coincidência de nome normalizado) — diferente de
+# POST /elementos/{id}/estados-de-sugestoes, que sempre cria um Estado
+# junto. elemento_id é obrigatório no corpo, mas aceita null pra desfazer o
+# casamento por completo. Troque o id abaixo por um id real de sugestão
+# (elementos[].id na resposta de POST /capitulos/{id}/sugestoes).
+# PATCH {{baseUrl}}/sugestoes-elemento/6
+# Content-Type: application/json
+#
+# {
+#   "elemento_id": 3
+# }
 
 ### Capítulo inexistente — confere o 404
 POST {{baseUrl}}/capitulos/999999/sugestoes

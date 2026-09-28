@@ -29,7 +29,9 @@ from imagineer.ia.provedor import (
 from imagineer.modelos import (
     Capitulo,
     Configuracao,
+    EstadoElemento,
     Frame,
+    HistoricoIdentidadeElemento,
     Imagem,
     Livro,
     PerfilRenderizacao,
@@ -46,6 +48,7 @@ from imagineer.servicos.catalogo_imagens import (
     salvar_imagem,
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.identidade_de_elemento import identidade_vigente
 from imagineer.servicos.upload import ler_com_limite
 
 rotas_de_frame = APIRouter(prefix="/frames", tags=["Prompts"])
@@ -318,6 +321,58 @@ def _fazer_leitura_profunda(
         estado.descricao = sugestao.descricao
         estado.confirmado_pela_leitura_profunda = True
         sessao.add(estado)
+
+        _sugerir_identidade_se_necessario(sessao, provedor, estado, capitulo_de_origem, modelo)
+
+
+def _sugerir_identidade_se_necessario(
+    sessao: Session,
+    provedor: ProvedorIA,
+    estado: EstadoElemento,
+    capitulo_de_origem: Capitulo,
+    modelo: str,
+) -> None:
+    """A leitura profunda de *identidade* — fase 2b do item 4.4, especificada
+    no item 4.6 como resolução da pendência de prioridade alta da Etapa 8.
+
+    Roda no mesmo ponto da fase 2 (aparência), reaproveitando a decisão de
+    "este estado precisa ser relido" que ``_fazer_leitura_profunda`` já
+    tomou — sem chamada de IA extra além da que a fase 2 já faz.
+
+    **Gatilho é a existência do registro, não `prioridade_ia`.** Diferente da
+    fase 2 (que sobrescreve o mesmo campo a cada releitura), aqui um
+    incremento só é tentado uma vez por (elemento, capítulo): se já existe um
+    `HistoricoIdentidadeElemento` para este par, não há por que perguntar de
+    novo — mesmo em `QUALIDADE`, perguntar toda vez arriscaria um incremento
+    quase idêntico repetido a cada prompt gerado.
+    """
+    ja_existe = sessao.execute(
+        select(HistoricoIdentidadeElemento.id).where(
+            HistoricoIdentidadeElemento.elemento_id == estado.elemento_id,
+            HistoricoIdentidadeElemento.capitulo_id == capitulo_de_origem.id,
+        )
+    ).first()
+    if ja_existe is not None:
+        return
+
+    identidade_ate_aqui = identidade_vigente(sessao, estado.elemento, capitulo_de_origem.ordem)
+    sugestao = provedor.sugerir_identidade(
+        texto_capitulo=capitulo_de_origem.texto,
+        tipo=estado.elemento.tipo,
+        nome=estado.elemento.nome,
+        identidade_vigente=identidade_ate_aqui,
+        modelo=modelo,
+    )
+    if sugestao.descricao is None:
+        return
+
+    sessao.add(
+        HistoricoIdentidadeElemento(
+            elemento_id=estado.elemento_id,
+            capitulo_id=capitulo_de_origem.id,
+            descricao=sugestao.descricao,
+        )
+    )
 
 
 def _fundamentar_se_necessario(

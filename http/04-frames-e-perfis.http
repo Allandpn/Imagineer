@@ -136,6 +136,17 @@ Content-Type: application/json
   "sugestao_cena_id": 8
 }
 
+### Confirmar a mesma sugestão de cena de novo responde 409 (item 4.6)
+# Mesmo padrão já usado para elemento duplicado (item 6.3): a resposta traz
+# o id do Frame já criado, em vez de duplicar. Rode a request acima duas
+# vezes seguidas (mesmo sugestao_cena_id) pra ver isso na prática.
+# POST {{baseUrl}}/capitulos/4/frames
+# Content-Type: application/json
+#
+# {
+#   "sugestao_cena_id": 8
+# }
+
 ### Lista os frames do capítulo
 GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}/frames
 

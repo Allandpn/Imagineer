@@ -377,6 +377,7 @@ Esse mesmo arquivo também traz metadados de **outro livro** — declara-se *Dea
 - **Imagem**: arquivo final importado pelo usuário, com referência ao Prompt/Frame/Elementos de origem, compondo o catálogo.
 - **SugestaoDeElemento**: um elemento que a IA identificou num capítulo (fase 1 do item 4.4), persistido — não um resultado descartável. Aponta para um `Elemento` real quando resolvida (automaticamente, por nome, ou manualmente, pelo usuário). Ver item 3.4e.
 - **SugestaoDeCena** / **SugestaoDeParticipante**: o equivalente, do lado da cena sugerida (`tipo=CENA`) — um frame candidato e os elementos sugeridos que participam dele. Ver item 3.4e.
+- **HistoricoIdentidadeElemento**: o que um capítulo específico revela/acrescenta sobre a *identidade* de um Elemento (quem ele é, não sua aparência) — ver item 3.4f. Ao contrário de `EstadoElemento`, é cumulativo: um registro não substitui o anterior, soma-se a ele.
 
 ### 3.2 Relacionamentos
 
@@ -385,6 +386,7 @@ Esse mesmo arquivo também traz metadados de **outro livro** — declara-se *Dea
 - Um Frame referencia um ou mais Elementos (com o Estado vigente de cada um naquele ponto) — exatamente um, se `tipo=PERSONAGEM`.
 - Um Prompt está associado a um Frame (e, por meio dele, aos Elementos/Estados usados como contexto) e a uma Imagem.
 - Um Capítulo tem várias SugestaoDeElemento e várias SugestaoDeCena (uma rodada de `POST /capitulos/{id}/sugestoes`). Uma SugestaoDeCena referencia várias SugestaoDeElemento (via SugestaoDeParticipante) do **mesmo** capítulo (item 3.4e).
+- Um Elemento tem vários HistoricoIdentidadeElemento ao longo da história (um por capítulo em que algo novo foi revelado sobre quem ele é — nem todo capítulo gera um registro, ver item 3.4f).
 
 ### 3.3 Decisões de modelagem (justificativas)
 
@@ -393,6 +395,7 @@ Esse mesmo arquivo também traz metadados de **outro livro** — declara-se *Dea
 - **Frame com atributos situacionais embutidos**: evita criar uma entidade "Contexto" isolada para informações (horário, clima) que já são naturalmente parte do próprio frame.
 - **PerfilRenderizacao em vez de campo único de "estilo"**: permite reutilizar combinações de estilo/iluminação/paleta entre livros, e adaptar à ferramenta de geração de imagem usada (cada uma tem sintaxe própria).
 - **Relações entre elementos e Grupos com membros explícitos**: ideia boa, mas adiada para uma v2 — exige tabela de relacionamento tipo grafo e telas extras no app; não é essencial para o MVP (Elemento + Estado + Frame + Prompt + Imagem).
+- **HistoricoIdentidadeElemento como tabela própria, em vez de sobrescrever `Elemento.descricao`**: identidade e aparência têm semânticas de tempo opostas. Aparência é um retrato num ponto da narrativa — sobrescrever é correto, porque o personagem realmente está diferente agora (`EstadoElemento`, item 3.3 acima). Identidade é cumulativa — o que o capítulo 8 revela (um segredo, uma origem) continua verdade no capítulo 20; sobrescrever perderia o que já foi revelado antes. Por isso identidade precisa de histórico somado, não de um campo único reescrito a cada leitura. Ver item 3.4f e 4.4 (fase 2b).
 
 ### 3.4 Campos das entidades
 
@@ -403,8 +406,9 @@ Esta seção detalha as colunas de cada tabela. Foi preenchida em partes:
 - **(c)** `Frame`, `PerfilRenderizacao`, `Prompt` e `Imagem` — a geração e o catálogo. **Implementada.**
 - **(d)** `Configuracao` — a integração com IA. **Implementada.**
 - **(e)** `SugestaoDeElemento`, `SugestaoDeCena`, `SugestaoDeParticipante` — sugestões da IA persistidas. **Implementada.**
+- **(f)** `HistoricoIdentidadeElemento` — identidade evolutiva do Elemento, capítulo a capítulo. **Implementada** — resolve a pendência de prioridade alta da Etapa 8.
 
-O modelo do MVP tem 14 tabelas, criadas por migrations que encadeiam a partir de um banco vazio.
+O modelo do MVP tem 15 tabelas, criadas por migrations que encadeiam a partir de um banco vazio.
 
 Decisões que valem para todas as tabelas:
 
@@ -642,6 +646,9 @@ Substitui `Capitulo.sugestoes_ia`/`sugestoes_modelo` (nota no item 3.4a). Cada s
 | `manter_estado_atual` | booleano | não | julgamento da IA: o estado conhecido continua valendo |
 | `modelo` | texto (200) | não | o modelo que gerou esta sugestão especificamente |
 | `elemento_id` | inteiro | sim | o Elemento real a que esta sugestão corresponde — preenchido automaticamente (nome normalizado casando, como já acontece hoje) ou manualmente pelo usuário |
+| `casamento_automatico` | booleano | não | **implementado** — `true` quando `elemento_id` veio só do casamento automático por nome (passo 5 do item 6.7), nunca revisado por uma pessoa; vira `false` quando o usuário confirma ou corrige esta sugestão especificamente (item 6.3, pendência de correção de casamento). Ver "Casamento automático de participante" no item 4.4 |
+
+**`estado_id`, na resposta (não é coluna no banco) — implementado.** `elemento_id` preenchido só diz que a sugestão está ligada a um Elemento; não diz se aquele **capítulo específico** já virou um `EstadoElemento`. Achado com um caso real: a sugestão do capítulo 5 de "Sextus Hospius" já estava casada com o elemento, mas só o Estado do capítulo 3 existia — o elemento ficava "congelado" na primeira aparição até alguém notar e chamar `POST /elementos/{id}/estados-de-sugestoes` manualmente, sem nada na resposta indicando isso. `GET /livros/{id}/sugestoes-elemento` e `POST /capitulos/{id}/sugestoes` (item 6.7) passam a calcular, para cada sugestão com `elemento_id` preenchido, se já existe um `EstadoElemento` com aquele `elemento_id` e `capitulo_id` — devolvendo o id do estado (o mais recente, se houver mais de um; item 3.4b já admite dois estados no mesmo capítulo) ou `null`. É a mesma lógica de campo calculado que `estado_vigente` já usa (item 6.3) — nada de novo no banco.
 
 **SugestaoDeCena**
 
@@ -688,6 +695,33 @@ As três tabelas, mais `GET /livros/{id}/sugestoes-elemento`, `sugestoes_element
 
 **Divergência registrada, achada validando contra o banco real.** A migration que cria as tabelas novas e apaga `sugestoes_ia`/`sugestoes_modelo` (`694c20b4e5d2`) inicialmente não tratava `Capitulo.sugestoes_geradas_em` — a coluna sobrevive à troca, com o mesmo nome. Capítulos que já tinham sugestão gerada pelo sistema antigo ficaram com essa data preenchida e nenhuma linha nas tabelas novas: a rota lia "já tem sugestão salva" e nunca mais chamava a IA para aqueles capítulos, devolvendo lista vazia para sempre. A migration ganhou um `UPDATE capitulos SET sugestoes_geradas_em = NULL` como parte da própria mudança de schema — sem isso, qualquer ambiente que já tivesse usado a versão anterior ficaria com capítulos "mudos" depois do deploy.
 
+#### (f) HistoricoIdentidadeElemento — implementado
+
+Resolve a pendência de prioridade alta da Etapa 8: `Elemento.descricao` (identidade) é escrito uma vez, na confirmação, e nunca mais revisitado — diferente de `EstadoElemento.descricao` (aparência), que a leitura profunda (fase 2, item 4.4) atualiza a cada capítulo relevante.
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | chave primária |
+| `elemento_id` | inteiro | não | referência ao Elemento; indexado |
+| `capitulo_id` | inteiro | não | capítulo que revelou este incremento; indexado |
+| `descricao` | texto longo | não | só o que **este** capítulo especificamente acrescenta sobre a identidade — não um resumo acumulado |
+| `confirmado_pela_leitura_profunda` | booleano | não | mesmo espírito do campo homônimo em `EstadoElemento`: se este registro já passou pela leitura profunda de identidade (fase 2b, item 4.4), ou é ainda rascunho |
+| `data_criacao` | data/hora com fuso | não | preenchido pelo banco |
+
+**Cumulativo, não "última vale".** Diferente da consulta de "estado vigente" (item 3.4b, que pega só o registro mais recente), a "identidade vigente até um capítulo" é a **união** de `Elemento.descricao` (identidade inicial, registrada na confirmação — item 4.4) com todos os `HistoricoIdentidadeElemento` cujo `Capitulo.ordem` seja menor ou igual ao do capítulo em questão, em ordem narrativa crescente:
+
+```
+identidade vigente do elemento X até o capítulo N
+  Elemento.descricao (identidade inicial)
+  + registros de HistoricoIdentidadeElemento do elemento X
+      onde Capitulo.ordem <= ordem do capítulo N
+      ordenados por Capitulo.ordem asc
+```
+
+Isso reaproveita o mesmo princípio já validado para `EstadoElemento` (item 3.4b: ordem narrativa via `Capitulo.ordem`, não ordem de processamento) — o que resolve, de graça, o processamento fora de ordem: se o usuário processa o capítulo 10 antes do 4, a identidade vigente usada ao gerar algo no capítulo 4 nunca inclui o que só o capítulo 10 revelou (evita um "spoiler" retroativo contaminar um ponto anterior da narrativa).
+
+**Não cria registro quando não há nada de novo.** A leitura profunda de identidade (fase 2b, item 4.4) só grava uma linha quando o capítulo realmente acrescenta algo — evita um histórico poluído de "nada mudou" a cada leitura.
+
 #### (c) As duas chaves estrangeiras pendentes
 
 Com as tabelas acima criadas, os dois campos deixados de lado nas partes (a) e (b) passam a ser possíveis:
@@ -714,6 +748,7 @@ Ambas aceitam nulo, e ambas usam `SET NULL`: apagar um perfil de estilo não pod
 Camada de abstração `ProvedorIA` com quatro métodos:
 - `extrair_elementos(texto_capitulo, estados_conhecidos, modelo) -> lista estruturada` — identifica **quem/o que aparece** no capítulo, e sugere frames do tipo `CENA` (passo 6, fase 1 — ver item 4.4).
 - `sugerir_estado(texto_capitulo, elemento, estado_atual, modelo) -> descrição de aparência` — a **leitura profunda** de um elemento específico (fase 2 — ver item 4.4).
+- `sugerir_identidade(texto_capitulo, elemento, identidade_vigente_ate_aqui, modelo) -> incremento de identidade ou nulo` — **implementado**: a leitura profunda de *identidade* de um elemento específico (fase 2b — ver item 4.4). Instruída a só acrescentar fatos novos, nunca contradizer ou remover o que já é conhecido; devolve nulo quando o capítulo não revela nada novo sobre aquele elemento.
 - `fundamentar_frame(texto_capitulo, titulo, descricao, horario, clima, humor, participantes, modelo) -> contexto` — confere "quem, onde, o quê" de um frame do tipo `CENA` contra o capítulo, sem sobrescrever o que o usuário escreveu (fase 3 — ver item 4.4).
 - `montar_prompt(descricao_do_frame, elementos, perfil_renderizacao, modelo, contexto_do_livro, comentario_do_usuario) -> texto do prompt` — passo 8, combinando as fontes acima por ordem de prioridade (item 4.4).
 
@@ -728,7 +763,7 @@ Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_mo
 Tela de configuração permitindo:
 - Cadastro da API key do OpenRouter, nunca hardcoded.
 - Seleção de modelo para extração de elementos (passo 6) e para montagem de prompt (passo 8), com opção "usar o mesmo modelo para os dois" marcada por padrão.
-- Lista de modelos obtida dinamicamente do endpoint `/models` do OpenRouter (com filtro opcional para mostrar só os gratuitos).
+- Lista de modelos obtida dinamicamente do endpoint `/models` do OpenRouter (com filtro opcional para mostrar só os gratuitos, e mais três sinais — item 4.3, "Mais filtros" abaixo, implementado).
 - **Prioridade de IA** (`prioridade_ia`): `ECONOMIA` (padrão) ou `QUALIDADE` — controla se a leitura profunda do item 4.4 relê o capítulo toda vez que um prompt é montado, ou só da primeira vez por estado. Ver item 4.4 para o efeito exato. É um campo pensado para valer também em futuras decisões de custo-vs-qualidade no sistema, não só nesta.
 
 #### De onde vem a chave
@@ -762,6 +797,18 @@ Quantos capítulos **não** caberiam, deixando 2.000 tokens de folga para instru
 Conferido contra o endpoint `/models`: dos 21 modelos gratuitos disponíveis, **todos têm 32 mil de contexto ou mais**, vários com um milhão. Então **não há divisão de capítulo em partes** neste sistema: o texto vai inteiro, e a rota verifica o `context_length` do modelo escolhido antes de chamar — se não couber, a resposta diz qual é o problema em vez de deixar a API do modelo recusar com uma mensagem genérica.
 
 Essa checagem prévia é o que evita o pior caso: descobrir que o capítulo não cabe **depois** de gastar a chamada.
+
+#### Mais filtros em `GET /configuracao/modelos` (implementado)
+
+Hoje só existem `somente_gratuitos` e `contexto_minimo`. Confirmado ao vivo contra o `/models` do OpenRouter (endpoint público, sem chave — 460 modelos na resposta) que os três candidatos identificados na pendência da Etapa 8 existem exatamente como suspeitado:
+
+- **`supported_parameters`** (lista de strings) — contém `"response_format"` e/ou `"structured_outputs"` quando o modelo aceita resposta estruturada/JSON. Ataca direto o erro `"O modelo não devolveu JSON"`, visto com modelos pequenos/gratuitos: testado um modelo gratuito real (`inclusionai/ling-3.0-flash-sante:free`) sem nenhum dos dois na lista — exatamente o tipo de modelo que esse filtro evitaria escolher para extração/prompt.
+- **`pricing.completion`** (string, preço por token de saída) — presente em **todos** os 460 modelos, inclusive gratuitos (`"0"`).
+- **`top_provider.is_moderated`** (booleano) — presente em todos; 134 dos 460 modelos vieram `true`.
+
+`ModeloDisponivel` (item 4.3, `ia/provedor.py`) ganha três campos: `suporta_json: bool` (derivado de `supported_parameters`), `custo_saida: float` (de `pricing.completion`) e `moderado: bool` (de `top_provider.is_moderated`) — sempre presentes na resposta de cada modelo, não só quando filtrado, porque o custo é informação útil mesmo sem filtrar por ele.
+
+`GET /configuracao/modelos` ganha dois filtros novos, mesmo padrão booleano de `somente_gratuitos`: `somente_com_json` e `somente_nao_moderados` — e um `ordenar_por_custo` (booleano) para ordenar a lista por `custo_saida` crescente, já que "mais barato primeiro" é o caso de uso mais comum ao comparar modelos.
 
 #### O que foi implementado
 
@@ -809,6 +856,17 @@ Antes de montar o prompt, para **cada** estado ligado ao frame, o servidor relê
 
 Vale tanto para um frame `PERSONAGEM` quanto para um `CENA` — os dois têm elementos com estado, e os dois se beneficiam de uma aparência bem descrita.
 
+#### Fase 2b — Leitura profunda de identidade (implementado)
+
+Resolve a pendência de prioridade alta da Etapa 8. No mesmo ponto em que a fase 2 relê o capítulo de origem de cada estado, o servidor chama também `sugerir_identidade`, passando a **identidade vigente até aquele capítulo** (item 3.4f — `Elemento.descricao` mais a união de `HistoricoIdentidadeElemento` em ordem narrativa) como contexto.
+
+- **Não sobrescreve nada** — ao contrário da fase 2 (aparência), o resultado, quando existe, vira uma **linha nova** em `HistoricoIdentidadeElemento`, presa ao capítulo relido. É a diferença de semântica registrada no item 3.3: identidade acumula, não substitui.
+- Quando o capítulo não revela nada de novo sobre aquele elemento (o caso comum — a maioria dos capítulos não acrescenta identidade a todo personagem que aparece), `sugerir_identidade` devolve nulo e nenhuma linha é criada.
+- Reaproveita a mesma chamada de IA que já lê o capítulo para a fase 2, com a mesma instrução de "não inventar" — sem chamada de IA extra por elemento, só um retorno a mais na mesma resposta.
+- Respeita `prioridade_ia` do mesmo jeito que as fases 2 e 3 (`confirmado_pela_leitura_profunda` de cada `HistoricoIdentidadeElemento`, ver item 4.4 abaixo).
+
+**Por que junto da fase 2, e não da fase 1 (identificação).** Na fase 1, o elemento pode nem existir no banco ainda — não há "identidade vigente" para comparar. A fase 2 já roda depois da confirmação, um elemento por vez, relendo o capítulo de origem: é o ponto natural para também perguntar "isso revela algo novo sobre quem ele é", sem introduzir um terceiro momento de releitura.
+
 #### Fase 3 — Fundamentação do frame (só para `tipo=CENA`)
 
 Um retrato (`tipo=PERSONAGEM`) não tem "quem, onde, o quê" para conferir — é sempre um elemento só. Uma cena (`tipo=CENA`) tem, e é aqui que o teste com IA real expôs um problema de origem: a entidade que hoje é `Frame` chamava-se `Cena` e servia para os dois casos, então a descrição livre de uma cena (que podia citar outros elementos por nome) sempre entrava no prompt de um retrato — mesmo quando a intenção era um retrato solo.
@@ -820,12 +878,12 @@ Por isso, para `tipo=CENA` com pelo menos um elemento ligado, o servidor também
 
 Testado com IA real: a fundamentação de uma cena chegou a reler o trecho **errado** do capítulo (um momento bem posterior ao que a cena descrevia) — e o prompt final saiu correto mesmo assim, porque a prioridade protegeu a descrição do usuário. É a ordem de prioridade funcionando como rede de segurança contra a própria leitura automática errar.
 
-#### Releitura tem custo: `prioridade_ia` controla as duas fases
+#### Releitura tem custo: `prioridade_ia` controla as fases
 
-Repetir a fase 2 e a fase 3 toda vez que um prompt é montado para o mesmo frame tem custo: cada chamada de `sugerir_estado`/`fundamentar_frame` é uma chamada de IA a mais, em cima da chamada que monta o prompt em si. Por isso existe `prioridade_ia` (item 4.3), valendo igualmente para as duas:
+Repetir a fase 2, a fase 2b e a fase 3 toda vez que um prompt é montado para o mesmo frame tem custo: cada chamada de `sugerir_estado`/`sugerir_identidade`/`fundamentar_frame` é uma chamada de IA a mais, em cima da chamada que monta o prompt em si. Por isso existe `prioridade_ia` (item 4.3), valendo igualmente para todas:
 
-- **`QUALIDADE`**: relê o capítulo de origem de cada estado, e fundamenta o frame de novo, toda vez que `POST /frames/{id}/prompts` é chamado.
-- **`ECONOMIA`** (padrão): relê só a primeira vez. `EstadoElemento.confirmado_pela_leitura_profunda` marca se aquele estado já passou pela fase 2; `Frame.confirmado_pela_leitura_profunda` marca o mesmo para a fase 3 do frame. Enquanto marcados, chamadas seguintes reaproveitam o que já foi lido, sem gastar outra chamada de IA.
+- **`QUALIDADE`**: relê o capítulo de origem de cada estado (fases 2 e 2b), e fundamenta o frame de novo (fase 3), toda vez que `POST /frames/{id}/prompts` é chamado.
+- **`ECONOMIA`** (padrão): relê só a primeira vez. `EstadoElemento.confirmado_pela_leitura_profunda` marca se aquele estado já passou pela fase 2; `HistoricoIdentidadeElemento.confirmado_pela_leitura_profunda` marca o mesmo para a fase 2b (item 3.4f); `Frame.confirmado_pela_leitura_profunda` marca o mesmo para a fase 3 do frame. Enquanto marcados, chamadas seguintes reaproveitam o que já foi lido, sem gastar outra chamada de IA.
 
 #### Ordem de prioridade na montagem final do prompt
 
@@ -863,6 +921,32 @@ Revisão feita a partir de material técnico externo (um documento de boas prát
 - **Fallback por gênero/tom do livro** quando um capítulo não descreve a aparência de um elemento (a sugestão era "deduzir a estética a partir do gênero"). Rejeitado: é a mesma classe de erro que produziu a "carroça de suprimentos" inventada no teste com `gemini-2.5-flash` (item 4.2). A regra do projeto continua sendo devolver a descrição já registrada e não inventar nada — o livro é a fonte de verdade, não o gênero.
 - **Geração de imagem automatizada via OpenRouter** (modelos como FLUX.1/SDXL, com um padrão `Strategy`/`Adapter` para trocar de provedor). É uma mudança de arquitetura real — o passo 9 do fluxo (item 2.1) é deliberadamente manual, e automatizar geração envolve custo por imagem, escolha de provedor e um fluxo de UI diferente do que a Etapa 7 já esboçou. Fica como ideia registrada para uma decisão futura, não decidida nesta rodada.
 - **Prefixo de texto para colar direto no Gemini** ("Crie uma imagem fotorrealista horizontal..."). É uma questão de UX do app (Etapa 7), e o app ainda não existe — fica anotado no item 7.7 (tela de Prompt) como algo a considerar quando a tela for implementada, não no backend.
+
+### 4.6 Confirmação incentivada, nunca forçada (implementado)
+
+O público-alvo do app é o leitor lendo o livro **pela primeira vez**, gerando sugestões capítulo a capítulo — mas nada garante que ele confirme todas antes de seguir em frente. Discussão registrada aqui porque mudou o desenho de duas pendências da Etapa 8 ao mesmo tempo.
+
+**Por que não forçar processamento sequencial (não pular capítulo).** Foi cogitado e descartado. `Capitulo.ordem` (item 3.4b) já garante consistência de dado mesmo fora de ordem — pular capítulo não corrompe nada tecnicamente. O que pular prejudica é só a **qualidade do casamento automático**, porque `estados_conhecidos` (o contexto que a IA usa para reconhecer um elemento já visto) depende de **quanto já foi confirmado**, não de quantos capítulos já foram lidos ou processados. Forçar sequência também quebraria de propósito um uso legítimo: alguém que já leu o livro e quer gerar imagens de cenas favoritas fora de ordem.
+
+**Por que não exigir "ler antes de analisar".** Inverificável — o servidor não tem como saber se o usuário leu o capítulo antes de tocar em "Analisar com IA". Forçar isso na tela (ex.: exigir rolar até o fim do texto) é fácil de contornar e não ataca o problema real: mesmo tendo lido, o usuário pode confiar demais numa sugestão específica e não conferir — foi o que aconteceu no caso real que motivou esta discussão (ver abaixo).
+
+**O problema real encontrado**, testando o fluxo de confirmar uma cena sugerida: o casamento automático de **participante** (item 6.7, passo 6 — mesma normalização de nome usada para elementos) associou um personagem a um `Elemento` errado, e confirmar a cena (`sugestao_cena_id`, item 6.4) levou esse erro direto para um Frame de verdade, sem nenhum ponto em que o usuário fosse obrigado a revisar aquele casamento específico — a confirmação em lote da cena (deliberadamente rápida, para não repetir título/descrição) não distingue "elemento_id veio de confirmação explícita" de "elemento_id veio só do casamento por nome, nunca revisado".
+
+**Decisões:**
+
+1. **`SugestaoDeElemento.casamento_automatico`** (item 3.4e) sinaliza, por participante, quando o `elemento_id` veio só do casamento automático por nome — sem bloquear nada, só tornando visível o que hoje é silencioso. A tela de Capítulo (7.5) destaca participantes com `casamento_automatico=true` antes do usuário confirmar a cena.
+2. **`POST /capitulos/{id}/sugestoes` sinaliza sugestões pendentes em capítulos anteriores** do mesmo livro (contagem de `SugestaoDeElemento`/`SugestaoDeCena` com `elemento_id`/`frame_id` nulo, capítulos com `Capitulo.ordem` menor que o capítulo analisado). Não bloqueia a análise do capítulo atual — só avisa, porque é exatamente esse cenário (analisar um capítulo novo com pendências acumuladas) que deixa `estados_conhecidos` mais pobre e o casamento automático mais arriscado. A tela de Livro (7.4) também mostra, por capítulo, um indicador de quantas sugestões ainda faltam confirmar.
+3. **Corrigir só o casamento, sem criar Estado junto** (pendência já registrada na Etapa 8, puxada para este mesmo escopo): hoje, toda forma de mudar `elemento_id` de uma sugestão cria um `EstadoElemento` como efeito colateral (item 3.4e) — o que serve bem ao caso comum (reconhecer o personagem de novo), mas não ao caso de o casamento automático ter errado e o usuário só querer desfazer. Nova rota `PATCH /sugestoes-elemento/{id}` (item 6.3) ajusta só `elemento_id` (inclusive para `null`, desfazendo o casamento), marca `casamento_automatico=false` (é uma correção explícita) e não grava Estado nenhum.
+
+Juntas, essas três decisões substituem "impedir o erro" (impossível de garantir 100%, com uma IA não determinística) por "tornar o erro visível e barato de corrigir" — a auditoria continua sendo do usuário, mas com sinal de onde olhar e um jeito de um clique só para desfazer quando algo passar batido.
+
+#### O que foi implementado
+
+Toda a rodada desta seção, junto da identidade evolutiva (item 3.4f/4.4 fase 2b) e das duas pendências técnicas menores (`GET /estados/{id}`, filtros de `GET /configuracao/modelos`) — **31 testes novos, 304 no total, todos passando**. Migration `f3a7c9d1b2e4` (nova tabela `historico_identidade_elemento`, coluna `casamento_automatico`).
+
+**O que foi verificado nesta rodada:** o comportamento de cada rota/campo novo contra o `ProvedorFalso` e o SQLite de teste (casamento automático marcando `casamento_automatico=true`, `PATCH /sugestoes-elemento/{id}` corrigindo sem criar Estado, confirmar a mesma cena duas vezes respondendo 409 com o `frame_id` existente, `estado_id` nulo quando casado mas sem Estado no capítulo, `sugestoes_pendentes_anteriores` contando elementos e cenas de capítulos anteriores, a fase 2b criando `HistoricoIdentidadeElemento` só quando há algo novo e só uma vez por par elemento/capítulo mesmo em `QUALIDADE`), e os três nomes de campo do OpenRouter (`supported_parameters`, `pricing.completion`, `top_provider.is_moderated`) confirmados ao vivo contra o `/models` real antes de implementar.
+
+**Ainda não verificado:** nenhuma chamada de IA real ainda testou `sugerir_identidade` — a instrução (`_INSTRUCAO_DE_IDENTIDADE`) segue o mesmo padrão já validado de `_INSTRUCAO_DE_ESTADO`, mas o comportamento de "não inventar quando não há nada de novo" e "não contradizer o que já é conhecido" só foi exercitado com o `ProvedorFalso`. Vale rodar contra o corpus de validação (*A Vontade de Muitos*, capítulos de "Vis") antes de considerar a fase 2b madura — é o mesmo tipo de validação que revelou a mistura de atributos na fase 1 original (item 4.2).
 
 ---
 
@@ -933,6 +1017,15 @@ Revisão feita a partir de material técnico externo (um documento de boas prát
 | `tipo`/`nome` de `ElementoNovo` viram opcionais (com padrão vindo da primeira sugestão referenciada), revertendo a decisão original do item 3.4e | Exigir os dois sempre, mesmo confirmando uma sugestão só (sem ambiguidade nenhuma), era atrito sem necessidade — a ambiguidade só existe combinando sugestões com nomes diferentes entre si, caso em que digitar continua obrigatório |
 | Sugestão de perfil de renderização por IA (`POST /livros/{id}/perfis-renderizacao/sugestao`, item 6.5) manda só título/autor/idioma, nunca o texto de um capítulo | Diferente de toda outra operação de IA do sistema, que lê o texto real do livro: aqui não há como saber em que capítulo a narrativa de fato começa (prólogos, epígrafes e sumários residuais antecedem o "Capítulo I" em vários livros do corpus de validação), então ler "o primeiro capítulo" arriscava basear o estilo em conteúdo que não representa o livro. A alternativa aceita foi deixar a IA reconhecer a obra pelos metadados |
 | Plugin de busca do OpenRouter (`plugins: [{"id": "web"}]`) ligado só em `sugerir_perfil_renderizacao`, nenhuma outra operação | É a única chamada desta camada que não manda nenhum texto do livro para a IA se basear — sem isso, a IA dependeria só do próprio conhecimento prévio, com mais chance de errar a obra ou inventar um estilo genérico para o gênero. Testado com IA real: `perplexity/sonar-pro` (busca nativa) e `anthropic/claude-sonnet-4.5`/`claude-haiku-4.5` deram sugestões visivelmente mais específicas que `openai/gpt-4o-mini` sem busca |
+| `HistoricoIdentidadeElemento` cumulativo (soma registros), em vez de sobrescrever `Elemento.descricao` como a fase 2 já faz com `EstadoElemento` | Identidade e aparência têm semânticas de tempo opostas: aparência é um retrato num ponto da narrativa (sobrescrever é correto), identidade é cumulativa (o que o capítulo 8 revela continua verdade no capítulo 20; sobrescrever perderia isso). Ver item 3.3 e 4.4 (fase 2b) |
+| "Identidade vigente" calculada por união de registros com `Capitulo.ordem <=` o capítulo em questão, reaproveitando o mesmo princípio de ordem narrativa já validado em `EstadoElemento` (item 3.4b) | Resolve o processamento fora de ordem de graça: identidade revelada só num capítulo posterior nunca vaza para um ponto anterior da narrativa, mesmo que esse capítulo posterior tenha sido processado primeiro |
+| Não forçar processamento sequencial de capítulos, nem exigir "leitura antes de análise" | O primeiro reverteria uma decisão já validada (item 3.4b) sem resolver o problema real (qualidade do casamento depende de confirmação, não de ordem) e quebraria o uso legítimo de gerar cenas fora de ordem num livro já lido. O segundo é inverificável pelo servidor e não ataca o caso real encontrado (confiar demais numa sugestão específica, mesmo tendo lido) — ver item 4.6 |
+| `SugestaoDeElemento.casamento_automatico` e aviso de sugestões pendentes em capítulos anteriores, em vez de bloquear a confirmação em lote de uma cena | Um teste real mostrou o casamento automático de participante errando silenciosamente e chegando a um Frame de verdade sem revisão. Sinalizar (em vez de bloquear) preserva a confirmação em lote já validada como boa UX, só tornando visível o que hoje é silencioso — ver item 4.6 |
+| `PATCH /sugestoes-elemento/{id}` para corrigir só `elemento_id`, sem criar Estado junto | Hoje toda forma de mudar `elemento_id` cria um `EstadoElemento` como efeito colateral (item 3.4e), o que não serve ao caso de só desfazer um casamento automático errado. É o complemento natural da sinalização acima: sem um jeito barato de corrigir, sinalizar o erro sozinho não ajuda muito — ver item 4.6 |
+| Confirmar a mesma cena sugerida duas vezes responde 409 (com o `frame_id` já existente), em vez de criar um Frame duplicado | Mesmo padrão já usado para elemento duplicado (item 6.3) — consistência de resposta a erro em todo o projeto. Vale só para `sugestao_cena_id`; um frame manual com `estados_ids` continua sem restrição, porque duplicar participantes pode ser intencional ali |
+| `estado_id` calculado na resposta de sugestão (não coluna no banco), em vez de um booleano `tem_estado_neste_capitulo` | Dá pro app navegar direto pro Estado já existente, sem uma segunda chamada — mesmo padrão de campo calculado já usado em `estado_vigente` (item 6.3). Exposto em `GET /livros/{id}/sugestoes-elemento` e em `POST /capitulos/{id}/sugestoes`, não só na busca cross-capítulo, porque a tela de Capítulo (7.5) se beneficia do mesmo sinal na hora da análise |
+| `GET /estados/{id}` devolve o estado com o elemento embutido, mesmo padrão de `GET /frames/{id}` | Consistência: a tela não deveria ter que cruzar duas chamadas pra saber de quem é o estado que está mostrando, e o projeto já resolve isso assim em outro lugar |
+| `custo_saida`/`suporta_json`/`moderado` sempre presentes na resposta de cada modelo, com filtros booleanos (`somente_com_json`/`somente_nao_moderados`) e ordenação (`ordenar_por_custo`) em vez de um único parâmetro combinado | Mesmo padrão já usado por `somente_gratuitos`/`contexto_minimo` — filtros simples e compostos pelo app, sem inventar uma linguagem de consulta nova. Nomes de campo (`supported_parameters`, `pricing.completion`, `top_provider.is_moderated`) confirmados ao vivo contra o `/models` do OpenRouter antes de especificar, conforme a pendência exigia |
 | `Configuracao.modelo_perfil` como campo próprio, em vez de reaproveitar `modelo_extracao` | A pedido do Allan, comparando custo real (`claude-haiku-4.5`: US$ 0,0114 vs. `gpt-4o-mini`: US$ 0,00736 na mesma chamada). A sugestão de perfil acontece uma vez por livro; `modelo_extracao` é chamado a cada capítulo — amarrar os dois obrigaria a mesma escolha de custo para frequências de uso muito diferentes |
 | `CategoriaEstilo`, vocabulário fechado de seis famílias de estilo, em vez de deixar a IA escolher livremente | Um prompt gerado a partir de uma sugestão de perfil sem restrição saiu visualmente confuso numa ferramenta de imagem real — a IA tinha misturado "oil on canvas" com "expressionist shadows", dois movimentos artísticos incompatíveis, e usado linguagem temática ("conspiração e revelação") em vez de visual. Restringir a um vocabulário fechado, escolhido pelo usuário ou pela IA dentro do mesmo conjunto, elimina a mistura sem tirar a IA da jogada |
 
@@ -986,6 +1079,8 @@ Medido contra o servidor rodando, com *Tress* (84 capítulos): `GET /livros/{id}
 
 **Importar o mesmo livro duas vezes é permitido**, conforme o item 3.4a. A resposta do `POST /livros` traz o campo `livros_semelhantes` com os livros que já tinham aquele `dc:identifier`, para o app poder avisar — sem impedir.
 
+**`GET /livros/{id}` ganha `sugestoes_pendentes` por capítulo (implementado, item 4.6).** Contagem de `SugestaoDeElemento`/`SugestaoDeCena` daquele capítulo ainda com `elemento_id`/`frame_id` nulo — o que alimenta o indicador de pendência da tela de Livro (7.4), sem exigir uma chamada extra por capítulo.
+
 **Limite de tamanho do arquivo: 60 MB.** O maior dos dezoito livros de validação tem 46 MB (uma história em quadrinhos), então o limite acomoda o caso real com folga e continua protegendo o Raspberry Pi de um arquivo absurdo.
 
 #### O que foi implementado
@@ -1008,15 +1103,19 @@ para ler `multipart/form-data`, e sem ela a rota nem é registrada.
 |---|---|---|
 | `GET /livros/{id}/elementos` | Os elementos do livro, com o estado mais recente de cada | **implementado** |
 | `POST /livros/{id}/elementos` | Cadastra um elemento confirmado pelo usuário (passo 7); aceita `sugestoes_elemento_ids` para criar um Estado por capítulo sugerido, numa chamada só (item 3.4e) | **implementado** |
-| `GET /elementos/{id}` | O elemento com todos os seus estados | **implementado** |
+| `GET /elementos/{id}` | O elemento com todos os seus estados e todo o histórico de identidade (item 3.4f) | **implementado** |
 | `PATCH /elementos/{id}` | Ajusta nome, tipo e descrição | **implementado** |
 | `DELETE /elementos/{id}` | Remove o elemento e seus estados | **implementado** |
 | `POST /elementos/{id}/estados` | Registra um novo estado a partir de um capítulo | **implementado** |
 | `POST /elementos/{id}/estados-de-sugestoes` | Registra um Estado por sugestão escolhida, numa chamada só (item 3.4e) | **implementado** |
+| `GET /estados/{id}` | Um estado isolado, com o elemento a que pertence | **implementado** |
 | `PATCH /estados/{id}` | Ajusta a descrição ou define a imagem-âncora | **implementado** |
 | `DELETE /estados/{id}` | Remove um estado | **implementado** |
 | `GET /capitulos/{id}/estados-vigentes` | O estado vigente de cada elemento naquele ponto da narrativa | **implementado** |
-| `GET /livros/{id}/sugestoes-elemento?nome=...` | Busca sugestões de elemento por nome, em todos os capítulos do livro — acha menções antigas do mesmo personagem para associar (item 3.4e) | **implementado** |
+| `GET /livros/{id}/sugestoes-elemento?nome=...` | Busca sugestões de elemento por nome, em todos os capítulos do livro — acha menções antigas do mesmo personagem para associar (item 3.4e); resposta traz `estado_id` por sugestão (item 3.4e) | **implementado** |
+| `PATCH /sugestoes-elemento/{id}` | Corrige só o `elemento_id` de uma sugestão (inclusive para `null`), sem gravar Estado (item 4.6) | **implementado** |
+
+**`GET /estados/{id}` — implementado.** Achado revisando a coleção `.http`: só existiam `PATCH` e `DELETE` para um estado; não tinha como testar (ou o app mostrar) um estado isolado por id, só abrindo o elemento inteiro (`GET /elementos/{id}`, que traz todos os estados) ou pelo estado vigente (`GET /capitulos/{id}/estados-vigentes`). A resposta traz o estado com nome/tipo do elemento a que pertence, mesmo padrão já usado em `GET /frames/{id}` (item 6.4) — a tela não precisa cruzar duas chamadas pra saber de quem é o estado que está mostrando.
 
 **`GET /livros/{id}/elementos` traz o estado mais recente de cada elemento**, e aceita `?tipo=PERSONAGEM` para a tela poder separar por tipo. "Mais recente" é pela ordem **narrativa**, não pela data de criação: o último estado em ordem de capítulo (item 3.4b).
 
@@ -1033,6 +1132,8 @@ As duas rotas usam uma consulta só, com função de janela, em vez de uma consu
 > **Item 3.4e.** `sugestoes_elemento_ids` em `POST /livros/{id}/elementos` resolve o caso em que a IA sugeriu o mesmo personagem em capítulos diferentes, com nomes diferentes demais para o casamento automático reconhecer (ex.: "Sextus Hospius" no capítulo 3, "Hospius" no capítulo 7) — sem isso, o usuário teria que confirmar cada capítulo numa chamada separada, copiando a descrição à mão. Para um elemento **já existente**, o mesmo em lote é `POST /elementos/{id}/estados-de-sugestoes` — rota própria, não o mesmo campo em `POST /elementos/{id}/estados`, porque aquela cria um estado só e devolve um objeto, não uma lista. `GET /livros/{id}/sugestoes-elemento?nome=...` é o que permite achar essas sugestões antes de confirmar, sem vasculhar capítulo por capítulo.
 >
 > **`tipo`/`nome` são opcionais quando vêm sugestões — segunda divergência sobre a decisão original do item 3.4e.** A primeira versão exigia os dois sempre explícitos, mesmo confirmando uma sugestão só, pelo receio de ambiguidade entre nomes divergentes (o caso Hospius). Revisando na prática, ficou claro que isso é atrito sem necessidade no caso comum (uma sugestão só, sem ambiguidade nenhuma): a rota agora usa `tipo`/`nome` da **primeira** sugestão da lista quando eles não vêm no pedido. Continuam obrigatórios sem nenhuma sugestão referenciada — aí não há de onde tirar um padrão — e digitar continua sendo a única forma de escolher o nome canônico ao combinar sugestões com nomes diferentes entre si.
+
+> **`PATCH /sugestoes-elemento/{id}` — implementado (item 4.6).** Diferente de `POST /elementos/{id}/estados-de-sugestoes`, não grava `EstadoElemento` nenhum — só corrige o vínculo `elemento_id` da sugestão (para um elemento diferente, ou para `null`, desfazendo o casamento). Marca `casamento_automatico=false`, porque é uma correção explícita do usuário. Resolve o caso em que o casamento automático por nome (item 6.7, passo 5/6) associou a sugestão a um elemento errado, sem que o usuário precise apagar um Estado à parte para desfazer o engano.
 
 #### O que foi implementado
 
@@ -1076,6 +1177,8 @@ estado, aparece nos três com `estado_vigente` nulo.
 > **Divergência registrada, pós-uso real.** O campo nasceu obrigatório para os dois tipos, herdado do antigo `Cena` (item 3.4c). Um teste manual expôs que, para `PERSONAGEM`, `titulo` não é usado em lugar nenhum — `_descricao_do_frame` o descarta — e digitá-lo manualmente é retrabalho sem função, já que o único uso real (identificar o frame na listagem, que não traz nomes de elemento) o sistema já sabe preencher sozinho a partir do estado ligado.
 
 > **Item 3.4e.** Com `sugestao_cena_id`, `titulo`/`descricao`/`horario`/`clima`/`humor` vêm da `SugestaoDeCena` referenciada, a não ser que o pedido também traga um valor explícito para aquele campo — o explícito sempre vence, mesmo princípio do `titulo` do retrato acima. Se `estados_ids` não vier, a rota resolve sozinha, participante por participante: precisa que a `SugestaoDeElemento` de cada um já tenha `elemento_id` preenchido (senão 422, listando quem falta confirmar — **confirmar elemento sempre vem antes de confirmar frame**), e usa o **estado vigente** daquele elemento até este capítulo (mesma função já usada no item 6.3), não exige um estado criado *neste* capítulo especificamente. Ao criar com sucesso, marca `SugestaoDeCena.frame_id`.
+
+> **Confirmar a mesma cena sugerida duas vezes responde 409 (implementado).** Achado revisando a API: nada impedia chamar `POST /capitulos/{id}/frames` com o mesmo `sugestao_cena_id` mais de uma vez — cada chamada criava um Frame novo, sobrescrevendo `SugestaoDeCena.frame_id` sem aviso, e o Frame anterior ficava órfão no banco (confirmado testando: três chamadas seguidas, três Frames, só o último referenciado). Mesmo princípio já usado para elemento duplicado (item 6.3): se `sugestao_cena_id` referencia uma `SugestaoDeCena` cujo `frame_id` já está preenchido, a rota responde 409 com o `frame_id` existente, para o app oferecer abrir o Frame já criado em vez de duplicar. Vale **só** quando o pedido usa `sugestao_cena_id` — criar um frame manualmente com `estados_ids` (sem sugestão) continua livre, porque aí duas cenas com os mesmos participantes podem ser legítimas (dois momentos diferentes do capítulo com o mesmo elenco).
 
 ### 6.5 Perfis de renderização
 
@@ -1179,7 +1282,7 @@ O texto do perfil que vai para a IA é montado só com os campos preenchidos (`e
 | Método e caminho | O que faz | Estado |
 |---|---|---|
 | `POST /capitulos/{id}/sugestoes` | Sugere elementos e cenas (passo 6); `?forcar=true` ignora o cache e chama a IA de novo | **implementado** |
-| `GET /configuracao/modelos` | Lista os modelos disponíveis no OpenRouter (item 4.3) | **implementado** |
+| `GET /configuracao/modelos` | Lista os modelos disponíveis no OpenRouter (item 4.3); filtros `somente_com_json`/`somente_nao_moderados`/`ordenar_por_custo` | **implementado** |
 | `GET /configuracao` | A configuração atual: modelos escolhidos, se há chave cadastrada | **implementado** |
 | `PUT /configuracao` | Grava a configuração | **implementado** |
 
@@ -1191,8 +1294,12 @@ O texto do perfil que vai para a IA é montado só com os campos preenchidos (`e
 2. **Se `Capitulo.sugestoes_geradas_em` já está preenchido e o pedido não veio com `?forcar=true`, não chama a IA** — serve o que já está salvo em `SugestaoDeElemento`/`SugestaoDeCena`.
 3. Sem sugestão salva, ou com `forcar=true`: confere se o texto cabe na janela do modelo escolhido (`modelo_extracao` da configuração) **antes** de chamar a IA — gastar a chamada para descobrir que não cabia seria o pior caso (item 4.3).
 4. Chama `provedor.extrair_elementos` — só identificação (fase 1 do item 4.4): tipo, nome, descrição de identidade e `manter_estado_atual`. **Não** devolve mais uma descrição de aparência; essa parte é a leitura profunda (fase 2), que só acontece mais tarde, dentro de `POST /frames/{id}/prompts` (item 6.6). O resultado vira linhas em `SugestaoDeElemento`/`SugestaoDeCena`, substituindo só as sugestões ainda não confirmadas do capítulo (item 3.4e).
-5. Tenta casar cada sugestão (recém-gerada ou já salva) com um elemento já cadastrado do livro, comparando tipo e nome **sem diferenciar maiúsculas/minúsculas nem acentuação** — a IA foi instruída a repetir o nome exato de um elemento conhecido, mas variações de caixa e acento apareceram como algo razoável de tolerar sem risco de casar elementos diferentes por engano. Quando casa, preenche `elemento_id`, persistindo o casamento.
-6. Faz o mesmo casamento para cada participante de cada cena sugerida (item 4.4) — mesma normalização, mesmo campo `elemento_id`.
+5. Tenta casar cada sugestão (recém-gerada ou já salva) com um elemento já cadastrado do livro, comparando tipo e nome **sem diferenciar maiúsculas/minúsculas nem acentuação** — a IA foi instruída a repetir o nome exato de um elemento conhecido, mas variações de caixa e acento apareceram como algo razoável de tolerar sem risco de casar elementos diferentes por engano. Quando casa, preenche `elemento_id` **e marca `casamento_automatico=true`** (item 3.4e/4.6, implementado) — ninguém revisou esse casamento específico ainda.
+6. Faz o mesmo casamento para cada participante de cada cena sugerida (item 4.4) — mesma normalização, mesmo campo `elemento_id`, mesma marcação de `casamento_automatico`.
+
+**Resposta ganha `sugestoes_pendentes_anteriores` (implementado, item 4.6).** Contagem de `SugestaoDeElemento`/`SugestaoDeCena` com `elemento_id`/`frame_id` nulo em capítulos anteriores (`Capitulo.ordem` menor) do mesmo livro — não bloqueia a chamada, só avisa que o contexto (`estados_conhecidos`) usado nesta análise está mais pobre do que poderia estar.
+
+**Cada `SugestaoDeElemento` da resposta também ganha `estado_id` (item 3.4e, implementado).** Mesmo cálculo de `GET /livros/{id}/sugestoes-elemento`: se `elemento_id` já foi casado (passo 5/6 acima) mas não existe `EstadoElemento` daquele elemento **neste** capítulo, `estado_id` vem `null` — sinal de que confirmar a sugestão ainda falta virar um Estado de verdade, mesmo já estando "casada".
 
 Erros do provedor viram HTTP assim: `ChaveDeApiAusente` e `ModeloNaoEscolhido` e `TextoLongoDemais` → 422 (o problema é a configuração, o usuário resolve pela tela de configuração); qualquer outro `ErroDoProvedorIA` (rede, resposta fora do formato) → 502.
 
@@ -1251,7 +1358,7 @@ Não é bem uma tela própria — é o estado de progresso do upload, sobreposto
 Passos 3 a 5: a estrutura de capítulos do livro, e o ponto de entrada para tudo que pertence a ele.
 
 - **Rota**: `GET /livros/{id}` (estrutura, sem texto — item 6.2).
-- **Mostra**: metadados (título, autor, idioma), perfil de renderização padrão (ou "nenhum definido"), lista de capítulos em ordem, com indicação visual dos que estão marcados como ignorados.
+- **Mostra**: metadados (título, autor, idioma), perfil de renderização padrão (ou "nenhum definido"), lista de capítulos em ordem, com indicação visual dos que estão marcados como ignorados, e (implementado, item 4.6) um indicador por capítulo de quantas sugestões ainda faltam confirmar (`sugestoes_pendentes`, item 6.2) — não bloqueia nada, só ajuda o usuário a ver de relance onde falta revisar.
 - **Ações**: tocar num capítulo não-ignorado abre a tela de Capítulo (7.5); alternar o estado "ignorado" de um capítulo direto na lista (`PATCH /capitulos/{id}`, item 2.2); editar metadados e perfil padrão (`PATCH /livros/{id}`); atalho para "Elementos do livro" (7.6) e para "Perfis de renderização" (7.8); apagar o livro (`DELETE /livros/{id}`) com confirmação — é destrutivo e leva capítulos, elementos, frames, prompts e imagens junto (item 3.4).
 
 ### 7.5 Capítulo
@@ -1259,8 +1366,8 @@ Passos 3 a 5: a estrutura de capítulos do livro, e o ponto de entrada para tudo
 O coração dos passos 5 a 7: ler o texto, pedir sugestões à IA, e confirmar o que de fato existe.
 
 - **Rotas**: `GET /capitulos/{id}` (texto completo), `POST /capitulos/{id}/sugestoes` (passo 6, fase 1 do item 4.4), `GET /capitulos/{id}/estados-vigentes`, `POST /livros/{id}/elementos`, `POST /elementos/{id}/estados`.
-- **Mostra**: o texto do capítulo (rolável); um botão "Analisar com IA" que dispara `POST /capitulos/{id}/sugestoes` e traz a lista de elementos identificados (tipo, nome, identidade, `manter_estado_atual`) — **sem** descrição de aparência, porque essa parte só existe na leitura profunda da fase 2 (item 4.4), que acontece mais adiante, na tela de Prompt.
-- **Ações por sugestão**: confirmar (grava `Elemento` + `EstadoElemento` inicial), ajustar tipo/nome antes de confirmar, ou descartar (não faz nada — é só sugestão). Também dá para cadastrar um elemento à mão, sem passar pela IA. A lista de "estados vigentes" (item 3.4b) mostra o que já se sabe de cada elemento do livro até este ponto, útil para o usuário decidir se o que a IA sugeriu já é conhecido.
+- **Mostra**: o texto do capítulo (rolável); um botão "Analisar com IA" que dispara `POST /capitulos/{id}/sugestoes` e traz a lista de elementos identificados (tipo, nome, identidade, `manter_estado_atual`) — **sem** descrição de aparência, porque essa parte só existe na leitura profunda da fase 2 (item 4.4), que acontece mais adiante, na tela de Prompt. Se `sugestoes_pendentes_anteriores` vier maior que zero (implementado, item 4.6), um aviso não-bloqueante: "Você tem N sugestões não confirmadas em capítulos anteriores — confirmar primeiro deixa esta análise mais precisa". Cada participante de cena sugerida com `casamento_automatico=true` (item 4.6) aparece destacado, antes de o usuário confirmar a cena. Uma sugestão já casada (`elemento_id` preenchido) mas com `estado_id` nulo (item 3.4e/6.7) também aparece destacada — "casada, mas ainda não virou Estado neste capítulo".
+- **Ações por sugestão**: confirmar (grava `Elemento` + `EstadoElemento` inicial), ajustar tipo/nome antes de confirmar, ou descartar (não faz nada — é só sugestão). Também dá para cadastrar um elemento à mão, sem passar pela IA. A lista de "estados vigentes" (item 3.4b) mostra o que já se sabe de cada elemento do livro até este ponto, útil para o usuário decidir se o que a IA sugeriu já é conhecido. Para um participante com casamento automático destacado, corrigir o vínculo sem confirmar um Estado usa `PATCH /sugestoes-elemento/{id}` (item 6.3/4.6).
 - **Navega para**: "Novo retrato" cria um frame `tipo=PERSONAGEM` para um elemento específico e abre a tela de Frame (7.6) já com ele; "Nova cena" cria um frame `tipo=CENA` vazio (ou pré-preenchido a partir de um `frames` sugerido pela IA, item 4.4) e abre a mesma tela pronta para escolher quem mais aparece; lista de frames já criados neste capítulo (retratos e cenas, diferenciados visualmente pelo `tipo`), cada um abrindo a tela de Frame existente.
 
 ### 7.6 Frame
@@ -1330,17 +1437,16 @@ Acessível de qualquer tela.
 
 ### Pendências técnicas (achadas revisando a API, ainda sem decisão de implementar)
 
-- [ ] **Não existe `GET /estados/{id}`** — só `PATCH` e `DELETE` (item 6.3). Hoje só dá para ver um estado abrindo o elemento inteiro (`GET /elementos/{id}`, que traz todos os estados) ou pelo estado vigente (`GET /capitulos/{id}/estados-vigentes`). Achado revisando a coleção `.http`: não tinha como testar um estado isolado por id, porque a rota não existe. Avaliar se vale a pena antes do app mobile precisar disso.
+- [x] ~~Não existe `GET /estados/{id}`.~~ **Implementado** (item 6.3) — devolve o estado com o elemento a que pertence, mesmo padrão de `GET /frames/{id}`.
 - [x] **Sugerir o perfil de renderização por IA.** ~~Hoje o usuário cria o perfil (estilo, iluminação, paleta) à mão~~ — rascunho implementado e validado com IA real: `POST /livros/{id}/perfis-renderizacao/sugestao` (item 6.5). Diverge do plano original: em vez de ler o texto do livro, manda só título/autor/idioma e deixa a IA reconhecer a obra (buscando na internet, se precisar) — decisão registrada na Etapa 5, com o motivo (não dá pra saber onde a narrativa realmente começa). Ainda em rascunho: falta decidir se `POST /perfis-renderizacao` deveria aceitar essa sugestão numa chamada só, e como sinalizar quando a IA não reconhece a obra — ver item 6.5 para os detalhes.
-- [ ] **Mais filtros em `GET /configuracao/modelos`.** Hoje só `somente_gratuitos` e `contexto_minimo`. Candidatos identificados: filtrar por suporte a resposta estruturada/JSON (campo `supported_parameters` do OpenRouter, contendo algo como `"response_format"`/`"structured_outputs"`) — ataca direto o erro `"O modelo não devolveu JSON"` já visto nesta sessão com modelos pequenos/gratuitos; ordenar ou filtrar por `pricing.completion` (custo de saída, que costuma ser maior que o de entrada); e um filtro de moderação (`top_provider.is_moderated`), já que texto narrativo (violência, fantasia) pode ser rejeitado por modelos mais restritivos. **Os nomes de campo acima precisam ser confirmados contra uma chamada real e autenticada ao `/models` do OpenRouter antes de implementar** — não foram verificados ao vivo nesta rodada.
-- [ ] **Não existe forma de corrigir só o casamento `elemento_id` de uma `SugestaoDeElemento`, sem criar um Estado junto.** Hoje, toda forma de mudar `elemento_id` de uma sugestão (`POST /elementos/{id}/estados-de-sugestoes`, ou `sugestoes_elemento_ids` em `POST /livros/{id}/elementos`) cria um Estado como efeito colateral — o que cobre bem o caso comum (a IA reconheceu o personagem de novo, faz sentido registrar o estado daquele capítulo), mas não o caso raro de o casamento automático ter errado (associou a um elemento errado por coincidência de nome normalizado) e o usuário só querer desfazer isso, sem estado nenhum. Hoje o jeito é: confirmar a sugestão no elemento certo (o que sobrescreve `elemento_id`, corrigindo) e, se já tinha criado um Estado no elemento errado antes de perceber, apagar esse Estado à parte (`DELETE /estados/{id}`) — dois passos manuais, sem uma ação de "só mover o casamento". Achado revisando um caso real de teste (Hospius casado certo por sorte; o usuário perguntou o que faria se tivesse casado errado).
-- [ ] **`POST /capitulos/{id}/frames` com `sugestao_cena_id` (ou `estados_ids`) não impede confirmar a mesma sugestão duas vezes.** Cada chamada cria um Frame novo, mesmo que `SugestaoDeCena.frame_id` já esteja preenchido — a rota sobrescreve o vínculo antigo sem avisar, e o Frame anterior fica órfão no banco (nenhum erro, nenhum aviso, só uma duplicata solta). Achado testando: confirmar a mesma cena sugerida três vezes seguidas criou três Frames idênticos, e só o mais recente ficou de fato referenciado pela sugestão — os outros dois viraram lixo silencioso. Devia responder algo (409, ou devolver o Frame já existente) em vez de duplicar.
-- [ ] **`GET /livros/{id}/sugestoes-elemento` não diz se a sugestão já virou Estado.** O casamento automático (`elemento_id` preenchido) só liga a sugestão ao elemento — não cria Estado nenhum. Isso significa que, gerando sugestões de vários capítulos ao longo do tempo, uma menção de personagem pode aparecer "casada" (`elemento_id` preenchido) mas sem nenhum Estado correspondente registrado, e não tem como ver isso na resposta da busca — só cruzando com `GET /elementos/{id}` na mão. Achado com um caso real: sugestão do capítulo 5 de "Sextus Hospius" já estava casada com o elemento, mas só o Estado do capítulo 3 existia; o elemento ficava "congelado" na primeira aparição até alguém notar e chamar `POST /elementos/{id}/estados-de-sugestoes` manualmente. Proposta: acrescentar um campo (`tem_estado_neste_capitulo` ou `estado_id`) na resposta da busca, pra ver de cara quais menções já confirmadas ainda faltam virar Estado — sem mudar o comportamento de nada, só tornando visível o que hoje exige cruzar duas rotas.
+- [x] ~~Mais filtros em `GET /configuracao/modelos`.~~ **Implementado** (item 4.3) — `supported_parameters`/`pricing.completion`/`top_provider.is_moderated` confirmados ao vivo contra o `/models` do OpenRouter (460 modelos, endpoint público sem chave). Novos campos `suporta_json`/`custo_saida`/`moderado` em cada modelo da resposta, e filtros `somente_com_json`/`somente_nao_moderados`/`ordenar_por_custo`.
+- [x] ~~Não existe forma de corrigir só o casamento `elemento_id` de uma `SugestaoDeElemento`, sem criar um Estado junto.~~ **Implementado** (item 4.6/6.3) — nova rota `PATCH /sugestoes-elemento/{id}`, junto da rodada de identidade evolutiva e sinalização de casamento automático não revisado.
+- [x] ~~`POST /capitulos/{id}/frames` com `sugestao_cena_id` não impede confirmar a mesma sugestão duas vezes.~~ **Implementado** (item 6.4) — responde 409 com o `frame_id` já existente, mesmo padrão usado para elemento duplicado (item 6.3). Cada chamada criava um Frame novo, mesmo com `SugestaoDeCena.frame_id` já preenchido; achado testando: três confirmações seguidas da mesma cena criaram três Frames, só o último referenciado, os outros dois órfãos. Vale só para `sugestao_cena_id` — `estados_ids` sem sugestão continua livre.
+- [x] ~~`GET /livros/{id}/sugestoes-elemento` não diz se a sugestão já virou Estado.~~ **Implementado** (item 3.4e/6.3/6.7) — campo calculado `estado_id` (o Estado daquele elemento **neste** capítulo, ou `null`), exposto na busca cross-capítulo **e** na resposta de análise por capítulo (`POST /capitulos/{id}/sugestoes`), para a tela de Capítulo (7.5) sinalizar na hora. Achado com um caso real: sugestão do capítulo 5 de "Sextus Hospius" já estava casada com o elemento, mas só o Estado do capítulo 3 existia — congelado na primeira aparição até alguém notar manualmente.
 
 ### Pendência técnica — prioridade alta
 
-- [ ] **A identidade do Elemento (`Elemento.descricao`) não acompanha o que o livro revela sobre quem o personagem é, capítulo a capítulo — só a aparência (`EstadoElemento`) tem esse mecanismo.** Achado com um caso real: nas sugestões de "Vis" nos capítulos 3, 4 e 5, o campo `descricao` (identidade, fase 1 do item 4.4) saiu **idêntico** nos três — porque a rota manda o estado vigente como contexto pra IA (`estados_conhecidos`) e a IA, corretamente instruída a não inventar identidade nova a cada chamada, só repete o que já sabia. Isso é proposital (evita a IA contradizer a identidade de um elemento a cada capítulo) — mas expõe uma lacuna real: `Elemento.descricao` é escrito **uma vez**, na confirmação, e **nunca mais é revisitado por nada** depois disso. Diferente de `EstadoElemento.descricao` (aparência), que tem a leitura profunda (fase 2) pra corrigir com o texto real do capítulo sempre que um prompt é montado, a identidade não tem equivalente — se um capítulo posterior revelar algo novo sobre **quem** o personagem é (um segredo, uma relação, um traço), isso não é capturado em lugar nenhum, mesmo aparecendo na resposta da sugestão.
-  **Prioridade alta, a pedido do Allan**: a identidade do elemento deveria poder ser incrementada capítulo a capítulo, no mesmo espírito de como a aparência já funciona — precisa de uma rodada de especificação própria (Especificar → Documentar → Implementar → Testar) antes de mexer em código: decidir se isso é um mecanismo novo (ex.: um histórico de identidade por capítulo, espelhando `EstadoElemento`) ou uma extensão do que já existe, e como isso se relaciona com a leitura profunda existente (que hoje só olha aparência, nunca identidade).
+- [x] ~~A identidade do Elemento (`Elemento.descricao`) não acompanha o que o livro revela sobre quem o personagem é, capítulo a capítulo — só a aparência (`EstadoElemento`) tem esse mecanismo.~~ **Implementado.** Achado com um caso real: nas sugestões de "Vis" nos capítulos 3, 4 e 5, o campo `descricao` (identidade, fase 1 do item 4.4) saiu **idêntico** nos três — a IA, corretamente instruída a não inventar identidade nova a cada chamada, só repetia o que já sabia, mas `Elemento.descricao` nunca era revisitado depois da confirmação inicial. Resolvido na especificação com a nova entidade `HistoricoIdentidadeElemento` (item 3.4f) e a fase 2b da leitura profunda (item 4.4): identidade passa a acumular por capítulo, do mesmo jeito que a aparência já evolui — mas somando registros em vez de sobrescrever, porque identidade (diferente de aparência) não deixa de valer entre capítulos. A mesma rodada de discussão também resolveu duas pendências vizinhas, registradas no item 4.6: confirmação de sugestão não é forçada nem por ordem de capítulo nem por "leitura antes de analisar", mas o casamento automático de participante ganha sinalização (`casamento_automatico`) e um jeito barato de corrigir (`PATCH /sugestoes-elemento/{id}`, pendência que estava na lista acima). **Implementado e testado** (migration `f3a7c9d1b2e4`, `sugerir_identidade`, as rotas e campos novos — 31 testes novos, ver item 4.6). Ainda falta validar contra o corpus de dezoito livros e contra IA real, como as demais operações desta camada.
 
 **Revisado e confirmado correto** (perguntas do Allan sobre a API, 27/09/2026 — registrado para não reabrir a discussão sem motivo novo):
 
