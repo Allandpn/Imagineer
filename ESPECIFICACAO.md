@@ -29,7 +29,8 @@ Modelo cliente-servidor:
 - **Parsing de EPUB**: `ebooklib` (extração de capítulos via TOC/spine e texto).
 - **Banco de dados**: PostgreSQL, rodando em container próprio.
 - **ORM**: SQLAlchemy.
-- **Mobile**: **assumido** Kotlin + Jetpack Compose (Android nativo), aproveitando a familiaridade com JVM. **Ainda não confirmado formalmente** — ver Etapa 8 (Pendências). Telas esboçadas na Etapa 7.
+- **Mobile**: **Kotlin + Jetpack Compose (Android nativo)** — confirmado (Etapa 5, decisão registrada). Telas esboçadas na Etapa 7.
+- **Distribuição do app**: instalação manual do APK (sideload), sem passar pela Play Store — uso pessoal, só no próprio celular do Allan, ao menos por enquanto. Ver Etapa 5.
 
 ### 1.4 Infraestrutura
 
@@ -955,6 +956,7 @@ Toda a rodada desta seção, junto da identidade evolutiva (item 3.4f/4.4 fase 2
 | Decisão | Motivo |
 |---|---|
 | Python + FastAPI em vez de Java + Spring Boot | `ebooklib` mais maduro que as opções Java para parsing de EPUB; footprint mais leve no Raspberry Pi; chamadas assíncronas naturais para IA; oportunidade de aprendizado (conhecimento básico prévio em Python) |
+| Kotlin + Jetpack Compose (Android nativo) confirmado como stack mobile, em vez de Flutter/React Native | O app é distribuído por instalação manual do APK (sideload), sem Play Store, só para o próprio celular do Allan — sem alcance multiplataforma como objetivo, o custo extra de um framework cross-platform não compra nada. Nativo aproveita a familiaridade já existente com JVM (mesmo motivo do backend em Python/FastAPI: oportunidade de aprendizado sobre uma base que já existe) |
 | OpenRouter como gateway único de IA | Evita multiplicar adapters por fornecedor; ainda permite ao usuário escolher modelo; tem opções gratuitas |
 | Elemento genérico com enum `tipo` | Reduz duplicação de schema entre personagens/ambientes/objetos/criaturas |
 | EstadoElemento separado do Elemento | Elementos mudam de aparência ao longo da narrativa; é essencial para consistência visual entre capítulos |
@@ -1425,7 +1427,7 @@ Acessível de qualquer tela.
 
 ## Etapa 8 — Pendências / Próximos Passos
 
-- [ ] Confirmar formalmente o stack mobile (assumido Kotlin + Jetpack Compose nativo Android).
+- [x] ~~Confirmar formalmente o stack mobile.~~ **Confirmado**: Kotlin + Jetpack Compose (Android nativo). Distribuição por instalação manual do APK, sem Play Store — uso pessoal, só no celular do Allan por enquanto. Ver item 1.3 e a decisão registrada na Etapa 5.
 - [x] ~~Definir estrutura de pastas/módulos do projeto Python (FastAPI).~~ Concluído — ver item **1.5**.
 - [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**, todas as seções (6.2 a 6.7): livros, capítulos, elementos e estados, frames, perfis de renderização, prompts e catálogo de imagens, configuração e sugestões de IA.
 - [x] ~~Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).~~ Concluído — **Etapa 7**: dez telas mapeadas às rotas da Etapa 6, mais o mapa de navegação. Ainda sem código — falta criar o projeto Android, próximo item desta lista.
