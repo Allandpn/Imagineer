@@ -10,7 +10,7 @@
 # de modelo_extracao configurados em 05-configuracao-ia.http, e de
 # primeiroCapituloId (01-livros.http).
 # POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
-POST {{baseUrl}}/capitulos/3/sugestoes
+POST {{baseUrl}}/capitulos/7/sugestoes
 
 > {%
     client.test("Devolveu sugestões", function () {

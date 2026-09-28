@@ -8,7 +8,7 @@
 # solo, só a descrição do próprio elemento. Sem perfil_renderizacao_id no
 # corpo, usa o perfil padrão do livro — defina um em 04-frames-e-perfis.http
 # antes.
-POST {{baseUrl}}/frames/{{frameId}}/prompts
+POST {{baseUrl}}/frames/1/prompts
 Content-Type: application/json
 
 {}

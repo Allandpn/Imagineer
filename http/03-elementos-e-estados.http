@@ -93,14 +93,15 @@ Content-Type: application/json
 # Só precisa disso quando as sugestões escolhidas têm nomes diferentes entre
 # si (o caso acima: "Sextus Hospius" vs. "Hospius") e você quer decidir qual
 # vira o nome do elemento — sem isso, a rota pegaria o da primeira da lista.
-# POST {{baseUrl}}/livros/{{livroId}}/elementos
-# Content-Type: application/json
-#
-# {
-#   "tipo": "PERSONAGEM",
-#   "nome": "Sextus Hospius",
-#   "sugestoes_elemento_ids": [3, 8]
-# }
+POST {{baseUrl}}/livros/1/elementos
+Content-Type: application/json
+
+{
+   "tipo": "PERSONAGEM",
+   "nome": "Vis",
+   "sugestoes_elemento_ids": [2, 14, 19, 23]
+}
+
 
 ### O mesmo, mas para um elemento já cadastrado — rota separada (item 3.4e)
 # Separada de POST /elementos/{id}/estados porque aquela cria um estado só e
