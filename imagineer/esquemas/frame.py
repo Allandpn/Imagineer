@@ -193,6 +193,16 @@ class PerfilRenderizacaoSugestao(BaseModel):
     categoria_estilo: CategoriaEstilo | None = Field(
         description="A categoria usada — a pedida, ou a que a IA escolheu sozinha."
     )
+    reconheceu_a_obra: bool = Field(
+        default=True,
+        description=(
+            "Se a IA identificou o livro com confiança razoável (item 6.5). "
+            "False significa que todos os campos de estilo vieram nulos por "
+            "não reconhecer a obra — diferente de um campo isolado nulo por "
+            "falta de informação específica (ex.: sem artista de referência "
+            "conhecido, mas o livro reconhecido)."
+        ),
+    )
     modelo: str = Field(description="O modelo de IA que gerou esta sugestão.")
 
 

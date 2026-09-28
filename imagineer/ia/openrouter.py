@@ -335,7 +335,14 @@ livro — não o texto dele. Se reconhecer a obra, use o que sabe sobre gênero,
 tom, época e ambientação; se precisar, pesquise na internet para identificar a \
 obra antes de responder. Se não conseguir identificar o livro com confiança a \
 partir do que foi informado, responda com todos os campos usando o valor JSON \
-`null` (nunca a palavra "nulo" como texto) em vez de inventar um estilo genérico.
+`null` (nunca a palavra "nulo" como texto) em vez de inventar um estilo genérico \
+— e "reconheceu_a_obra": false.
+
+`reconheceu_a_obra` é `true` sempre que você identificou a obra com confiança \
+razoável, mesmo que algum campo específico (ex.: um artista de referência) \
+ainda fique `null` por falta de informação — isso é diferente de não \
+reconhecer o livro. Só use `false` quando você genuinamente não sabe de que \
+livro se trata.
 
 ## Categorias de estilo (escolha UMA, nunca misture)
 
@@ -359,6 +366,7 @@ pintor a óleo clássico para a categoria QUADRINHOS, por exemplo).
 Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 
 {{
+  "reconheceu_a_obra": true,
   "estilo": "técnica e tom visual dentro da categoria escolhida, ex.: 'aquarela, traços soltos, sombras marcadas'",
   "artista_referencia": "um artista ou estilo artístico coerente com a categoria, ou nulo",
   "iluminacao": "descrição curta, ex.: 'luz de vela, alto contraste'",
@@ -588,6 +596,10 @@ class ProvedorOpenRouter(ProvedorIA):
             categoria_estilo=_interpretar_categoria(
                 bruto.get("categoria_estilo"), padrao=categoria_estilo
             ),
+            # Ausente na resposta (modelo antigo, ou instrução ignorada) conta
+            # como reconhecida — só vira False com o campo explícito, nunca
+            # por omissão, para não gerar um falso aviso de "não reconheci".
+            reconheceu_a_obra=bool(bruto.get("reconheceu_a_obra", True)),
             modelo=modelo,
         )
 

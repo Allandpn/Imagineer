@@ -219,6 +219,15 @@ class PerfilRenderizacaoSugerido:
     """A categoria usada — a informada no pedido, ou a que a IA escolheu
     sozinha quando nenhuma veio. Devolvida para o usuário saber qual foi,
     mesmo sem ter escolhido explicitamente."""
+    reconheceu_a_obra: bool = True
+    """Se a IA identificou o livro com confiança razoável (item 6.5).
+
+    `True` mesmo que algum campo específico (ex.: artista de referência)
+    tenha ficado nulo por falta de informação — isso é diferente de não
+    reconhecer a obra. Só `False` quando a IA genuinamente não sabe de que
+    livro se trata; nesse caso todos os campos de estilo vêm nulos, e o app
+    deveria avisar o usuário em vez de mostrar um formulário em branco sem
+    explicação."""
     modelo: str = ""
 
 

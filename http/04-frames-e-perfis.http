@@ -40,13 +40,20 @@ Content-Type: application/json
   "iluminacao": "luz de vela, contraste forte"
 }
 
-### Sugere um perfil de renderização por IA — rascunho, pendência da Etapa 8
+### Sugere um perfil de renderização por IA (item 6.5)
 # Não persiste nada: só devolve a sugestão, com base em título/autor/idioma do
 # livro (nunca o texto de um capítulo — o modelo pode buscar na internet pra
 # reconhecer a obra). Usa o "modelo_perfil" configurado em 05-configuracao-ia.http
 # — campo separado do "modelo_extracao", porque essa chamada é única por livro.
 # Sem corpo, a IA escolhe a categoria de estilo sozinha (ainda restrita à lista
 # fechada de CategoriaEstilo — ver o exemplo com corpo, logo abaixo).
+# "reconheceu_a_obra" (false) avisa quando a IA não identificou o livro —
+# nesse caso todos os campos de estilo vêm nulos, e o app deveria mostrar um
+# aviso ("não consegui identificar este livro") em vez de um formulário em
+# branco sem explicação. Sem persistir nada, é sempre uma chamada solta:
+# o usuário decide se usa a resposta pra preencher POST /perfis-renderizacao
+# (chamada separada, de propósito — cada sugestão é revisável antes de virar
+# perfil de verdade) ou ignora.
 POST {{baseUrl}}/livros/4/perfis-renderizacao/sugestao
 
 ### Sugere um perfil de renderização, com a categoria de estilo escolhida

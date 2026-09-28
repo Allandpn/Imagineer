@@ -321,10 +321,37 @@ def teste_sugerir_perfil_devolve_o_que_o_provedor_deu(
         "paleta": "tons terrosos",
         "formato": "retrato",
         "categoria_estilo": None,
+        "reconheceu_a_obra": True,
         "modelo": MODELO_FALSO,
     }
     # Nada foi criado — é só uma sugestão solta.
     assert cliente.get("/perfis-renderizacao").json() == []
+
+
+def teste_sugerir_perfil_avisa_quando_nao_reconhece_a_obra(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Item 6.5: o app precisa distinguir "não reconheci o livro" de um
+    formulário só com campos vazios sem explicação nenhuma."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            perfil_sugerido=PerfilRenderizacaoSugerido(
+                estilo=None,
+                artista_referencia=None,
+                iluminacao=None,
+                paleta=None,
+                formato=None,
+                reconheceu_a_obra=False,
+            )
+        )
+    )
+    livro = _importar(cliente).json()["livro"]
+    cliente.put("/configuracao", json={"modelo_perfil": MODELO_FALSO})
+
+    resposta = cliente.post(f"/livros/{livro['id']}/perfis-renderizacao/sugestao")
+
+    assert resposta.status_code == 200
+    assert resposta.json()["reconheceu_a_obra"] is False
 
 
 def teste_sugerir_perfil_manda_os_metadados_do_livro(

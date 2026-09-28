@@ -770,6 +770,47 @@ def teste_sugerir_perfil_interpreta_o_json() -> None:
     assert sugestao.estilo == "aquarela sombria"
     assert sugestao.artista_referencia == "Alan Lee"
     assert sugestao.modelo == "algum/modelo"
+    assert sugestao.reconheceu_a_obra is True
+
+
+def teste_sugerir_perfil_nao_reconhecer_a_obra_fica_explicito() -> None:
+    """Item 6.5: `reconheceu_a_obra=False` distingue "não sei que livro é
+    este" de "reconheci, mas não sei um artista de referência específico"."""
+    resposta = json.dumps(
+        {
+            "reconheceu_a_obra": False,
+            "estilo": None,
+            "artista_referencia": None,
+            "iluminacao": None,
+            "paleta": None,
+            "formato": None,
+        }
+    )
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_perfil_renderizacao(
+        titulo="Título genérico sem autor",
+        autor=None,
+        idioma=None,
+        categoria_estilo=None,
+        modelo="m",
+    )
+
+    assert sugestao.reconheceu_a_obra is False
+    assert sugestao.estilo is None
+
+
+def teste_sugerir_perfil_sem_o_campo_conta_como_reconhecida() -> None:
+    """Ausência do campo (modelo antigo, ou ignorou parte da instrução) não
+    deveria gerar um falso aviso de "não reconheci" — só `false` explícito conta."""
+    resposta = json.dumps({"estilo": "aquarela sombria"})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_perfil_renderizacao(
+        titulo="X", autor=None, idioma=None, categoria_estilo=None, modelo="m"
+    )
+
+    assert sugestao.reconheceu_a_obra is True
 
 
 def teste_sugerir_perfil_usa_a_categoria_devolvida_pelo_modelo() -> None:

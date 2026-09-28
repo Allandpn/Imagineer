@@ -211,6 +211,7 @@ def sugerir_perfil_renderizacao(
         paleta=sugestao.paleta,
         formato=sugestao.formato,
         categoria_estilo=sugestao.categoria_estilo,
+        reconheceu_a_obra=sugestao.reconheceu_a_obra,
         modelo=sugestao.modelo,
     )
 
