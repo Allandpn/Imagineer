@@ -34,4 +34,7 @@ interface ApiImagineer {
 
     @GET("perfis-renderizacao")
     suspend fun listarPerfis(): List<PerfilRenderizacao>
+
+    @GET("frames/{id}")
+    suspend fun obterFrame(@Path("id") frameId: Int): FrameDetalhe
 }
