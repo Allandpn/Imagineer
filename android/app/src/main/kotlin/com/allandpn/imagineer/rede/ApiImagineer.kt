@@ -17,6 +17,9 @@ interface ApiImagineer {
     @GET("livros/{id}")
     suspend fun obterLivro(@Path("id") livroId: Int): LivroDetalhe
 
+    @GET("capitulos/{id}")
+    suspend fun obterCapitulo(@Path("id") capituloId: Int): CapituloDetalhe
+
     @DELETE("livros/{id}")
     suspend fun apagarLivro(@Path("id") livroId: Int)
 

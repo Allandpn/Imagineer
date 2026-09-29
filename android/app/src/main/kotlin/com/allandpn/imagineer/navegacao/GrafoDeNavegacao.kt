@@ -26,6 +26,9 @@ import com.allandpn.imagineer.armazenamento.PreferenciasApp
 import com.allandpn.imagineer.telas.biblioteca.BibliotecaViewModel
 import com.allandpn.imagineer.telas.biblioteca.FabricaDeBibliotecaViewModel
 import com.allandpn.imagineer.telas.biblioteca.TelaBiblioteca
+import com.allandpn.imagineer.telas.capitulo.CapituloViewModel
+import com.allandpn.imagineer.telas.capitulo.FabricaDeCapituloViewModel
+import com.allandpn.imagineer.telas.capitulo.TelaCapitulo
 import com.allandpn.imagineer.telas.configuracao.TelaConfiguracao
 import com.allandpn.imagineer.telas.livro.FabricaDeLivroViewModel
 import com.allandpn.imagineer.telas.livro.LivroViewModel
@@ -118,7 +121,19 @@ fun GrafoDeNavegacao(
                 aoConfirmarApagar = { viewModel.apagarLivro() },
             )
         }
-        composable<Capitulo> { EmConstrucao("Capítulo") }
+        composable<Capitulo> { entrada ->
+            val capitulo: Capitulo = entrada.toRoute()
+            val viewModel: CapituloViewModel = viewModel(
+                factory = FabricaDeCapituloViewModel(capitulo.capituloId, preferencias),
+            )
+            val estado by viewModel.estado.collectAsState()
+
+            TelaCapitulo(
+                estado = estado,
+                aoVoltar = { controlador.popBackStack() },
+                aoTentarDeNovo = { viewModel.carregar() },
+            )
+        }
         composable<Frame> { EmConstrucao("Frame") }
         composable<Prompt> { EmConstrucao("Prompt") }
         composable<ElementosDoLivro> { EmConstrucao("Elementos do livro") }
