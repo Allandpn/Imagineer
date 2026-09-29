@@ -119,7 +119,7 @@ def criar_prompt(
         resultado = provedor.montar_prompt(
             descricao_do_frame=_descricao_do_frame(frame),
             elementos=_elementos_do_frame(frame),
-            perfil_renderizacao=_descricao_do_perfil(perfil),
+            perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
             modelo=modelo_prompt,
             contexto_do_livro=contexto_do_livro,
             comentario_do_usuario=corpo.comentario,
@@ -525,26 +525,44 @@ def _referencias_visuais(frame: Frame) -> list[Imagem]:
     return [vistas[identificador] for identificador in sorted(vistas)]
 
 
-def _descricao_do_perfil(perfil: PerfilRenderizacao | None) -> str:
+_FORMATO_PADRAO_POR_TIPO = {
+    TipoDeFrame.PERSONAGEM: "2:3, portrait orientation",
+    TipoDeFrame.CENA: "16:9, landscape orientation",
+}
+"""Proporção usada quando o perfil não define uma (item 4.5/4.7).
+
+Proporção não é escolha de estilo, é escolha ligada a **o que está sendo
+retratado** — um retrato solo pede vertical, uma cena pede horizontal, na
+maioria dos casos. Antes, `PerfilRenderizacao.formato` era a única fonte, e
+por ser um campo só, compartilhado entre os dois tipos de frame, não dava
+pra expressar os dois formatos ao mesmo tempo — o que levava a gambiarras
+como digitar `"16:9 (para cenários) ou 2:3 (para retratos)"` num campo só,
+texto que ia parar literal no prompt final sem funcionar como instrução."""
+
+
+def _descricao_do_perfil(perfil: PerfilRenderizacao | None, tipo: TipoDeFrame) -> str:
     """O texto de estilo que vai para a IA, só com os campos preenchidos.
 
     Cada ferramenta de imagem entende um subconjunto diferente de campos
-    (item 3.4c), então só o que o perfil de fato define entra no texto.
+    (item 3.4c), então só o que o perfil de fato define entra no texto —
+    exceto o formato, que sempre entra: com o valor do perfil se o usuário
+    preencheu (override explícito, vale pros dois tipos de frame igualmente),
+    senão com o padrão automático por `tipo` do frame.
     """
-    if perfil is None:
-        return ""
+    partes = []
+    if perfil is not None:
+        partes.append(perfil.nome)
+        if perfil.estilo:
+            partes.append(perfil.estilo)
+        if perfil.artista_referencia:
+            partes.append(f"referência: {perfil.artista_referencia}")
+        if perfil.iluminacao:
+            partes.append(f"iluminação: {perfil.iluminacao}")
+        if perfil.paleta:
+            partes.append(f"paleta: {perfil.paleta}")
 
-    partes = [perfil.nome]
-    if perfil.estilo:
-        partes.append(perfil.estilo)
-    if perfil.artista_referencia:
-        partes.append(f"referência: {perfil.artista_referencia}")
-    if perfil.iluminacao:
-        partes.append(f"iluminação: {perfil.iluminacao}")
-    if perfil.paleta:
-        partes.append(f"paleta: {perfil.paleta}")
-    if perfil.formato:
-        partes.append(f"formato: {perfil.formato}")
+    formato = (perfil.formato if perfil else None) or _FORMATO_PADRAO_POR_TIPO[tipo]
+    partes.append(f"formato: {formato}")
 
     return "; ".join(partes)
 

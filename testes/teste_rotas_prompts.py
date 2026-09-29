@@ -141,6 +141,57 @@ def teste_criar_prompt_usa_perfil_padrao_do_livro_e_modelo_da_configuracao(
     assert "aquarela" in chamada["perfil_renderizacao"]
 
 
+def teste_formato_padrao_e_16_9_para_cena_sem_override(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Item 4.5/4.7: sem formato no perfil, o padrão vem do tipo do frame."""
+    provedor = ProvedorFalso(prompt="pintura")
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor, tipo="CENA")
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    chamada = provedor.chamadas_de_prompt[0]
+    assert "16:9" in chamada["perfil_renderizacao"]
+    assert "landscape" in chamada["perfil_renderizacao"]
+
+
+def teste_formato_padrao_e_2_3_para_personagem_sem_override(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor = ProvedorFalso(prompt="pintura")
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor, tipo="PERSONAGEM")
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    chamada = provedor.chamadas_de_prompt[0]
+    assert "2:3" in chamada["perfil_renderizacao"]
+    assert "portrait" in chamada["perfil_renderizacao"]
+
+
+def teste_formato_do_perfil_sobrepoe_o_padrao_automatico(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """O override do perfil vale pros dois tipos de frame igualmente —
+    mesmo princípio de 'explícito sempre vence' usado no resto do prompt."""
+    provedor = usar_provedor_falso(ProvedorFalso(prompt="pintura"))
+    livro = _livro(cliente)
+    capitulo = livro["capitulos"][0]
+    ned = _elemento_com_estado(cliente, livro["id"], capitulo["id"], "Ned Stark")
+    frame = _frame(cliente, capitulo["id"], [ned["estados"][0]["id"]], tipo="CENA")
+    perfil = _perfil(cliente, formato="1:1, square")
+    cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
+    cliente.put(
+        "/configuracao",
+        json={"modelo_extracao": MODELO_FALSO, "modelo_prompt": MODELO_FALSO},
+    )
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})
+
+    chamada = provedor.chamadas_de_prompt[0]
+    assert "1:1, square" in chamada["perfil_renderizacao"]
+    assert "16:9" not in chamada["perfil_renderizacao"]
+
+
 def teste_criar_prompt_inclui_identidade_do_elemento_no_contexto(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
