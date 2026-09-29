@@ -266,11 +266,7 @@ bloco se não houver informação para ele — nunca invente para preencher):
 low-angle, over-the-shoulder) coerente com a cena ou o retrato.
 2. Sujeito principal, num instante congelado: quem/o que é o foco, numa pose \
 ou gesto específico e parado — nunca uma ação contínua ("ele caminha e olha \
-para trás" vira "mid-stride, glancing back"). Se o gênero de uma pessoa \
-estiver claro pela identidade ou aparência fornecida, deixe isso inequívoco \
-no prompt ("man", "woman", ou o termo que a informação sustentar) — \
-ferramentas de imagem produzem resultados inconsistentes sem essa indicação. \
-Não invente gênero quando a informação não permitir concluir.
+para trás" vira "mid-stride, glancing back").
 3. Vestuário, texturas e expressão física de cada elemento presente.
 4. Cenário imediato e objetos ao redor (só se houver cena — num retrato, pule).
 5. Ambiente de fundo, arquitetura e época (só se houver cena).
@@ -299,6 +295,17 @@ e postura visíveis.
 - Mantenha fielmente a aparência de cada elemento como foi descrita; não invente \
 elementos que não estão na lista.
 - Incorpore o estilo, a iluminação e a paleta do perfil indicado.
+- **Gênero de cada pessoa presente, sempre que a identidade ou a aparência \
+informada permitir concluir com segurança**: deixe isso inequívoco no prompt \
+("man", "woman", ou o termo que a informação sustentar — "young man", "elderly \
+woman" quando a idade também estiver clara). Ferramentas de imagem produzem \
+resultados inconsistentes sem essa indicação explícita. Não invente gênero \
+quando a informação não permitir concluir.
+
+Antes de responder, confira: se o sujeito principal (ou qualquer pessoa \
+presente na cena) tem gênero claro pela identidade/aparência informada, isso \
+aparece marcado sem ambiguidade em algum lugar do texto? Se a resposta for \
+não, corrija antes de responder — não devolva o prompt sem essa checagem.
 
 Ordem de prioridade quando houver conflito entre as fontes abaixo:
 1. Comentário do usuário (se houver) — é uma correção de quem já viu o \

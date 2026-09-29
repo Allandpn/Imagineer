@@ -80,6 +80,16 @@ class LivroDetalhe(LivroResumo):
 
     identificador_epub: str | None
     perfil_renderizacao_padrao_id: int | None
+    metadados_pendentes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Campos mandatórios que a extração não conseguiu obter do EPUB "
+            "e o usuário precisa preencher (item 6.2) — hoje só 'titulo' "
+            "(quando caiu no nome do arquivo como fallback) e 'autor' "
+            "(quando o EPUB não declara). Lista vazia: nada pendente, a "
+            "tela de importação pode se dar por concluída."
+        ),
+    )
     capitulos: list[CapituloResumo]
 
 

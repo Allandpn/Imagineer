@@ -18,7 +18,8 @@ TEXTO_LONGO = "Este é um parágrafo com texto suficiente para não ser descarta
 
 def _epub_de_teste(
     *,
-    titulo: str = "A Guerra dos Tronos",
+    titulo: str | None = "A Guerra dos Tronos",
+    autor: str | None = "George R. R. Martin",
     identificador: str = "urn:isbn:9788580410150",
     capitulos: list[tuple[str, str | None]] | None = None,
 ) -> bytes:
@@ -32,9 +33,11 @@ def _epub_de_teste(
 
     livro = epub.EpubBook()
     livro.set_identifier(identificador)
-    livro.set_title(titulo)
+    if titulo is not None:
+        livro.set_title(titulo)
     livro.set_language("pt-BR")
-    livro.add_author("George R. R. Martin")
+    if autor is not None:
+        livro.add_author(autor)
 
     itens = []
     for indice, (html, titulo_do_indice) in enumerate(capitulos, start=1):
@@ -81,6 +84,40 @@ def teste_importar_devolve_o_livro_com_os_capitulos(cliente: TestClient) -> None
     assert livro["capitulos_ignorados"] == 1
     assert [c["titulo"] for c in livro["capitulos"]] == ["Bran", "Catelyn", "Créditos"]
     assert corpo["livros_semelhantes"] == []
+    assert corpo["livro"]["metadados_pendentes"] == []
+
+
+def teste_importar_sem_titulo_nem_autor_sinaliza_pendentes(cliente: TestClient) -> None:
+    """Item 6.2: título e autor são mandatórios do ponto de vista do usuário —
+    quando a extração não consegue os dois, a tela de importação precisa saber."""
+    resposta = _importar(cliente, titulo=None, autor=None)
+
+    livro = resposta.json()["livro"]
+    assert livro["titulo"] == "guerra"  # cai pro nome do arquivo (guerra.epub)
+    assert livro["autor"] is None
+    assert livro["metadados_pendentes"] == ["titulo", "autor"]
+
+
+def teste_confirmar_titulo_remove_da_lista_de_pendentes(cliente: TestClient) -> None:
+    livro = _importar(cliente, titulo=None).json()["livro"]
+    assert "titulo" in livro["metadados_pendentes"]
+
+    resposta = cliente.patch(f"/livros/{livro['id']}", json={"titulo": "Título Definitivo"})
+
+    assert "titulo" not in resposta.json()["metadados_pendentes"]
+
+
+def teste_confirmar_titulo_com_o_mesmo_valor_ja_inferido_tambem_conta(
+    cliente: TestClient,
+) -> None:
+    """Digitar o título — mesmo que seja igual ao fallback — é uma confirmação
+    explícita do usuário, não precisa ser um valor diferente."""
+    livro = _importar(cliente, titulo=None).json()["livro"]
+    nome_inferido = livro["titulo"]
+
+    resposta = cliente.patch(f"/livros/{livro['id']}", json={"titulo": nome_inferido})
+
+    assert "titulo" not in resposta.json()["metadados_pendentes"]
 
 
 def teste_listagem_de_capitulos_nao_traz_o_texto(cliente: TestClient) -> None:

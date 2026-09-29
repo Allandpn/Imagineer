@@ -120,6 +120,20 @@ def teste_campos_ausentes_ficam_nulos() -> None:
     assert extraido.identificador_epub is None
 
 
+def teste_titulo_confirmado_falso_quando_usa_o_nome_do_arquivo() -> None:
+    """Item 6.2: o fallback pro nome do arquivo não conta como título real —
+    o usuário ainda precisa confirmar/preencher."""
+    extraido = extrair_epub(_montar_epub(titulo=None), "meu-livro-favorito.epub")
+
+    assert extraido.titulo_confirmado is False
+
+
+def teste_titulo_confirmado_verdadeiro_quando_vem_do_epub() -> None:
+    extraido = extrair_epub(_montar_epub(titulo="Título de Verdade"), "arquivo.epub")
+
+    assert extraido.titulo_confirmado is True
+
+
 # --------------------------------------------------------------------------- #
 # Extração dos capítulos
 # --------------------------------------------------------------------------- #
@@ -431,6 +445,42 @@ def teste_epub_realista_com_indice_aninhado_subpastas_e_ancoras() -> None:
 # --------------------------------------------------------------------------- #
 # Casos descobertos rodando contra um EPUB real
 # --------------------------------------------------------------------------- #
+
+
+def teste_indice_com_filho_solto_nao_quebra_o_parsing() -> None:
+    """Achado importando um EPUB real (conversão de terceiros): o `.toc` que o
+    ebooklib devolve na leitura pode trazer uma entrada solta — um `Link`, ou
+    uma seção com um único filho não embrulhado em lista — em vez de sempre
+    vir dentro de uma lista, como os EPUBs montados pelo próprio ebooklib (os
+    outros testes deste arquivo) sempre produzem na escrita.
+
+    Não dá pra reproduzir isso escrevendo com `epub.write_epub` e lendo de
+    volta: a própria escrita do ebooklib sempre normaliza pra lista. Por
+    isso este teste chama `_entradas_do_indice` diretamente, com um objeto
+    que imita o `.toc` malformado — exceção à regra deste arquivo de só
+    testar pela função pública `extrair_epub`, justificada porque o bug
+    mora especificamente em como a função interpreta a forma do `.toc`.
+    """
+    from types import SimpleNamespace
+
+    from imagineer.servicos.importacao_epub import _entradas_do_indice
+
+    epub_falso = SimpleNamespace(
+        # O toc inteiro é um único Link solto, não uma lista com um Link.
+        toc=epub.Link("c1.xhtml", "Capítulo Único", "c1")
+    )
+    entradas = _entradas_do_indice(epub_falso)
+    assert [e.titulo for e in entradas] == ["Capítulo Único"]
+
+    epub_falso_aninhado = SimpleNamespace(
+        toc=(
+            # A seção tem um filho só, entregue solto — não dentro de uma
+            # lista/tupla de filhos, como as outras seções deste arquivo têm.
+            (epub.Section("Parte 1"), epub.Link("c2.xhtml", "Capítulo 2", "c2")),
+        )
+    )
+    entradas_aninhadas = _entradas_do_indice(epub_falso_aninhado)
+    assert [e.titulo for e in entradas_aninhadas] == ["Capítulo 2"]
 
 
 def teste_usa_o_identificador_declarado_e_nao_o_primeiro_da_lista() -> None:

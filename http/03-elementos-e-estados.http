@@ -7,11 +7,11 @@
 # diferente do que a própria sugestão já diz — sem eles, a rota usa os dela.
 # Troque o id abaixo pelo de uma sugestão real (elementos[].id na resposta de
 # POST /capitulos/{id}/sugestoes).
-POST {{baseUrl}}/livros/1/elementos
+POST {{baseUrl}}/livros/2/elementos
 Content-Type: application/json
 
 {
-  "sugestoes_elemento_ids": [6]
+  "sugestoes_elemento_ids": [11]
 }
 
 > {%

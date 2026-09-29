@@ -8,7 +8,7 @@ Content-Type: multipart/form-data; boundary=WebAppBoundary
 Content-Disposition: form-data; name="arquivo"; filename="livro.epub"
 Content-Type: application/epub+zip
 
-< D:\Livros\Robert Frost Selected Early Poems (Robert Frost, Thomas Fasano) (z-library.sk, 1lib.sk, z-lib.sk).epub
+< D:\Livros\Rangers - Ordem dos Arqueiros - Ruínas de Gorlan (John Flanagan) (z-library.sk, 1lib.sk, z-lib.sk).epub
 --WebAppBoundary--
 
 > {%
@@ -26,6 +26,10 @@ GET {{baseUrl}}/livros
 # Cada capítulo traz "sugestoes_pendentes" (item 4.6): quantas sugestões de
 # elemento/cena daquele capítulo ainda não foram confirmadas — indicador
 # não-bloqueante, só pra saber onde falta revisar.
+# "metadados_pendentes" (item 6.2) lista título/autor que a extração não
+# conseguiu — ["titulo", "autor"], algum dos dois, ou []. Título e autor são
+# mandatórios do ponto de vista do usuário: a tela de importação só se dá
+# por concluída quando a lista vem vazia.
 GET {{baseUrl}}/livros/{{livroId}}
 
 ### Abre um livro por id manual — troque pelo id que quiser inspecionar
@@ -35,6 +39,9 @@ GET {{baseUrl}}/livros/1
 
 ### Corrige metadados e/ou define o perfil de renderização padrão
 # perfil_renderizacao_padrao_id vem de 04-frames-e-perfis.http, se já tiver criado um
+# Mandar "titulo" aqui marca titulo_confirmado=true (item 6.2) — some da
+# lista de metadados_pendentes, mesmo que o valor seja igual ao que já
+# estava (digitar é, em si, a confirmação).
 PATCH {{baseUrl}}/livros/{{livroId}}
 Content-Type: application/json
 

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, func, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -22,6 +22,24 @@ class Livro(Base):
     titulo: Mapped[str] = mapped_column(String(500))
     autor: Mapped[str | None] = mapped_column(String(300))
     idioma: Mapped[str | None] = mapped_column(String(20))
+
+    titulo_confirmado: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    """Se `titulo` veio de verdade do `dc:title` do EPUB (`True`) ou é só um
+    fallback (o nome do arquivo, quando o EPUB não declara título — item
+    3.4a). `False` até o usuário confirmar/corrigir via `PATCH /livros/{id}`.
+
+    Título e autor são mandatórios do ponto de vista do usuário (a tela de
+    importação, Etapa 7, só se dá por concluída com os dois preenchidos) —
+    mas o banco continua aceitando o que a extração conseguir, porque o
+    import é síncrono e não pode esperar por uma resposta do usuário no meio
+    da chamada. `autor is None` já sinaliza pendência sozinho, sem precisar
+    de um campo espelho — só `titulo` precisa de um, porque o fallback já
+    sobrescreve a coluna com um valor não-nulo indistinguível de um título
+    real. Ver `metadados_pendentes` (item 6.2).
+
+    Server default `True`: livros já importados antes desta coluna existir
+    não devem ser retroativamente marcados como pendentes.
+    """
 
     identificador_epub: Mapped[str | None] = mapped_column(String(200), index=True)
     """O ``dc:identifier`` do EPUB (ISBN ou UUID).

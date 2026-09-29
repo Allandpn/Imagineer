@@ -142,6 +142,11 @@ def ajustar_livro(
     for campo, valor in campos.items():
         setattr(livro, campo, valor)
 
+    # Digitar um título é confirmá-lo — deixa de contar como pendente
+    # (item 6.2), mesmo que o valor mandado seja igual ao que já estava lá.
+    if "titulo" in campos:
+        livro.titulo_confirmado = True
+
     sessao.commit()
     sessao.refresh(livro)
     return _detalhe_do_livro(sessao, livro)
@@ -357,7 +362,22 @@ def _detalhe_do_livro(sessao: Session, livro: Livro) -> LivroDetalhe:
         **_campos_do_livro(livro),
         identificador_epub=livro.identificador_epub,
         perfil_renderizacao_padrao_id=livro.perfil_renderizacao_padrao_id,
+        metadados_pendentes=_metadados_pendentes(livro),
         total_de_capitulos=len(capitulos),
         capitulos_ignorados=sum(1 for c in capitulos if c.ignorado),
         capitulos=capitulos,
     )
+
+
+def _metadados_pendentes(livro: Livro) -> list[str]:
+    """Campos mandatórios que a extração não conseguiu obter (item 6.2).
+
+    Lista, não booleanos separados: acrescentar outro campo obrigatório no
+    futuro é só somar uma checagem aqui, sem coluna nem campo de resposta novo.
+    """
+    pendentes = []
+    if not livro.titulo_confirmado:
+        pendentes.append("titulo")
+    if livro.autor is None:
+        pendentes.append("autor")
+    return pendentes

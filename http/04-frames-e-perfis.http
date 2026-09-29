@@ -6,13 +6,14 @@ POST {{baseUrl}}/perfis-renderizacao
 Content-Type: application/json
 
 {
-  "nome": "O império final - Estilo Oleo",
-  "estilo": "óleo com pinceladas dinâmicas, atmosfera dramática e sombria, texturas densas de cinza e névoa",
-  "artista_referencia": "Marc Simonetti",
-  "iluminacao": "crepuscular, luz filtrada através de brumas, alto contraste entre sombras e clarões metálicos",
-  "paleta": "cinzas, pretos profundos, tons oxidados de ferro e cobre, ocasionais acentos vermelhos quentes",
-  "formato": "16:9 (para cenários) ou 2:3 (para retratos)",
-  "modelo_alvo": "midjourney"
+  "nome": "A musica do Silencio - Pintura a Oleo",
+  "estilo": "pincelada etérea e contemplativa, texturas translúcidas sobrepostas, luminosidade suave emergindo da penumbra, atmosfera onírica e introspectiva",
+  "artista_referencia": "Caspar David Friedrich",
+  "iluminacao": "luz difusa e misteriosa, clarões suaves em meio à escuridão, chiaroscuro delicado",
+  "paleta": "tons profundos de azul-acinzentado, ocre envelhecido, cinza-pérola, pontos de ouro pálido e verde-musgo",
+  "formato": "retrato",
+  "categoria_estilo": "PINTURA_A_OLEO",
+  "modelo": "anthropic/claude-haiku-4.5"
 }
 
 > {%
@@ -37,7 +38,7 @@ PATCH {{baseUrl}}/perfis-renderizacao/{{perfilId}}
 Content-Type: application/json
 
 {
-  "iluminacao": "luz de vela, contraste forte"
+  "formato": "16:9 (para cenários) ou 2:3 (para retratos)"
 }
 
 ### Sugere um perfil de renderização por IA (item 6.5)
@@ -54,7 +55,7 @@ Content-Type: application/json
 # o usuário decide se usa a resposta pra preencher POST /perfis-renderizacao
 # (chamada separada, de propósito — cada sugestão é revisável antes de virar
 # perfil de verdade) ou ignora.
-POST {{baseUrl}}/livros/4/perfis-renderizacao/sugestao
+POST {{baseUrl}}/livros/1/perfis-renderizacao/sugestao
 
 ### Sugere um perfil de renderização, com a categoria de estilo escolhida
 # "categoria_estilo" é opcional: uma das seis famílias de estilo (item 6.5)
@@ -62,7 +63,7 @@ POST {{baseUrl}}/livros/4/perfis-renderizacao/sugestao
 # ARTE_DIGITAL_CONCEITUAL, QUADRINHOS ou CARTOON_ANIMACAO. A IA detalha os
 # atributos dentro dela, em vez de escolher livremente (o que já misturou
 # estilos incompatíveis numa sugestão sem essa restrição).
-POST {{baseUrl}}/livros/4/perfis-renderizacao/sugestao
+POST {{baseUrl}}/livros/1/perfis-renderizacao/sugestao
 Content-Type: application/json
 
 {
@@ -71,11 +72,11 @@ Content-Type: application/json
 
 ### Define este perfil como o padrão do livro
 # Rode 01-livros.http antes, para ter livroId.
-PATCH {{baseUrl}}/livros/4
+PATCH {{baseUrl}}/livros/1
 Content-Type: application/json
 
 {
-  "perfil_renderizacao_padrao_id": 2
+  "perfil_renderizacao_padrao_id": 1
 }
 
 ### Cria um frame do tipo CENA, já ligado ao estado do elemento (passo 6.4)
@@ -88,13 +89,13 @@ Content-Type: application/json
 
 {
   "tipo": "CENA",
-  "titulo": "Cena de teste",
-  "descricao": "Uma descrição qualquer da cena, para servir de contexto ao prompt",
-  "horario": "fim de tarde",
-  "clima": "céu limpo",
-  "humor": "tensão contida",
+  "titulo": "A luz de Foxen acende",
+  "descricao": "Auri deixa cair gotas de um conta-gotas em Foxen, fazendo-o brilhar e iluminando o ambiente do Manto.",
+  "horario": "nublado",
+  "clima": "tranquilo",
+  "humor": "satisfação",
   "estados_ids": [
-    {{estadoId}}
+    1, 2
   ]
 }
 
@@ -113,13 +114,13 @@ Content-Type: application/json
 # elemento>" sozinha — digitar seria repetir uma informação que o próprio
 # pedido já contém em estados_ids (item 6.4). Para tipo=CENA, "titulo"
 # continua obrigatório (422 sem ele).
-POST {{baseUrl}}/capitulos/3/frames
+POST {{baseUrl}}/capitulos/35/frames
 Content-Type: application/json
 
 {
   "tipo": "PERSONAGEM",
   "estados_ids": [
-    1
+    3
   ]
 }
 

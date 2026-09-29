@@ -21,18 +21,17 @@ Content-Type: application/json
 %}
 
 ### O mesmo, mas com perfil e modelo explícitos no pedido
-POST {{baseUrl}}/frames/{{frameId}}/prompts
+POST {{baseUrl}}/frames/4/prompts
 Content-Type: application/json
 
 {
-  "perfil_renderizacao_id": {{perfilId}},
-  "modelo": "nvidia/nemotron-3-super-120b-a12b:free"
+  "perfil_renderizacao_id": 2
 }
 
 ### Monta o prompt de um retrato solo (frame do tipo PERSONAGEM)
 # Usa framePersonagemId (04-frames-e-perfis.http) — a descrição vem só do
 # estado do elemento, sem referenciar outros personagens da cena.
-POST {{baseUrl}}/frames/{{framePersonagemId}}/prompts
+POST {{baseUrl}}/frames/4/prompts
 Content-Type: application/json
 
 {}

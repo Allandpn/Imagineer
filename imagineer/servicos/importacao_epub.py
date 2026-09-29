@@ -218,6 +218,9 @@ class LivroExtraido:
     """A estrutura completa encontrada no EPUB, antes de ir para o banco."""
 
     titulo: str
+    titulo_confirmado: bool
+    """Se `titulo` veio de verdade do `dc:title` (`True`) ou é só o nome do
+    arquivo usado como fallback (`False` — item 3.4a/6.2)."""
     autor: str | None
     idioma: str | None
     identificador_epub: str | None
@@ -247,8 +250,11 @@ def extrair_epub(conteudo: bytes, nome_arquivo: str) -> LivroExtraido:
     if not capitulos:
         raise ArquivoEpubInvalido(_motivo_de_nao_achar_capitulo(epub_lido, nome_arquivo))
 
+    titulo_do_epub = _primeiro_metadado(epub_lido, "title")
+
     return LivroExtraido(
-        titulo=_primeiro_metadado(epub_lido, "title") or _titulo_do_nome(nome_arquivo),
+        titulo=titulo_do_epub or _titulo_do_nome(nome_arquivo),
+        titulo_confirmado=titulo_do_epub is not None,
         autor=_primeiro_metadado(epub_lido, "creator"),
         idioma=_primeiro_metadado(epub_lido, "language"),
         identificador_epub=_identificador_unico(epub_lido),
@@ -296,6 +302,7 @@ def importar_epub(sessao: Session, conteudo: bytes, nome_arquivo: str) -> Livro:
 
     livro = Livro(
         titulo=extraido.titulo,
+        titulo_confirmado=extraido.titulo_confirmado,
         autor=extraido.autor,
         idioma=extraido.idioma,
         identificador_epub=extraido.identificador_epub,
@@ -668,11 +675,21 @@ def _entradas_do_indice(epub_lido: epub.EpubBook) -> list[EntradaIndice]:
     entradas: list[EntradaIndice] = []
 
     def percorrer(itens) -> None:
+        # Achado importando um EPUB real: o `.toc` do ebooklib às vezes
+        # entrega uma entrada solta (um `Link`) em vez de uma lista com uma
+        # entrada — sem normalizar aqui, `for item in itens` tenta iterar
+        # direto sobre o `Link`, que não é iterável, e a importação quebra
+        # com 500. `percorrer` é chamada tanto para o índice inteiro quanto,
+        # recursivamente, para a seção e os filhos de cada entrada aninhada
+        # — a normalização aqui cobre os três casos de uma vez.
+        if not isinstance(itens, (list, tuple)):
+            itens = [itens]
         for item in itens:
             # Uma seção do índice vem como (objeto da seção, lista de filhos).
             if isinstance(item, (tuple, list)):
-                percorrer([item[0]])
-                percorrer(item[1])
+                secao, filhos = item
+                percorrer(secao)
+                percorrer(filhos)
                 continue
 
             href = getattr(item, "href", None)
