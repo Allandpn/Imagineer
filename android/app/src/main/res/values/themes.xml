@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Só o tema mínimo exigido pelo Android antes da Activity montar o
+        conteúdo em Compose. O visual de verdade é Material 3 puro dentro do
+        Compose (item 7.0 da especificação) — nada aqui deve ganhar cor ou
+        estilo customizado.
+    -->
+    <style name="Theme.Imagineer" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

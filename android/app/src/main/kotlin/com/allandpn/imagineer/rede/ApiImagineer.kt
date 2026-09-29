@@ -1,0 +1,12 @@
+package com.allandpn.imagineer.rede
+
+import retrofit2.http.GET
+
+/**
+ * Interface Retrofit da API do Imagineer. Cresce uma rota por vez, junto
+ * com a tela que a usa — sem adiantar rotas que nenhuma tela ainda chama.
+ */
+interface ApiImagineer {
+    @GET("livros")
+    suspend fun listarLivros(): List<LivroResumo>
+}

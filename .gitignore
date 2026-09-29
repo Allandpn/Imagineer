@@ -20,3 +20,14 @@ dados/
 # Sistema operacional
 Thumbs.db
 .DS_Store
+
+# Android (app/)
+android/local.properties
+android/.gradle/
+android/build/
+android/*/build/
+android/.kotlin/
+android/captures/
+android/*.keystore
+android/*.jks
+
