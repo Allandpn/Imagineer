@@ -25,6 +25,14 @@ data class Prompt(val frameId: Int, val promptId: Int? = null)
 @Serializable
 data class ElementosDoLivro(val livroId: Int)
 
+/**
+ * Não está no snippet original do item 7.1 (que só lista os destinos de
+ * topo) — mas o item 7.8 descreve "abrir um elemento" como sua própria
+ * tela, então precisa de um destino aqui.
+ */
+@Serializable
+data class ElementoDetalhe(val elementoId: Int)
+
 @Serializable
 object PerfisDeRenderizacao
 

@@ -28,4 +28,7 @@ interface ApiImagineer {
         @Path("id") capituloId: Int,
         @Body ajuste: CapituloAjusteRequest,
     ): CapituloResumo
+
+    @GET("livros/{id}/elementos")
+    suspend fun listarElementos(@Path("id") livroId: Int): List<ElementoResumo>
 }

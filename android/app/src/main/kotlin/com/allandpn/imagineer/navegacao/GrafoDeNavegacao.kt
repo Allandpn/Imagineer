@@ -30,6 +30,9 @@ import com.allandpn.imagineer.telas.capitulo.CapituloViewModel
 import com.allandpn.imagineer.telas.capitulo.FabricaDeCapituloViewModel
 import com.allandpn.imagineer.telas.capitulo.TelaCapitulo
 import com.allandpn.imagineer.telas.configuracao.TelaConfiguracao
+import com.allandpn.imagineer.telas.elementos.ElementosViewModel
+import com.allandpn.imagineer.telas.elementos.FabricaDeElementosViewModel
+import com.allandpn.imagineer.telas.elementos.TelaElementos
 import com.allandpn.imagineer.telas.livro.FabricaDeLivroViewModel
 import com.allandpn.imagineer.telas.livro.LivroViewModel
 import com.allandpn.imagineer.telas.livro.TelaLivro
@@ -136,7 +139,24 @@ fun GrafoDeNavegacao(
         }
         composable<Frame> { EmConstrucao("Frame") }
         composable<Prompt> { EmConstrucao("Prompt") }
-        composable<ElementosDoLivro> { EmConstrucao("Elementos do livro") }
+        composable<ElementosDoLivro> { entrada ->
+            val destino: ElementosDoLivro = entrada.toRoute()
+            val viewModel: ElementosViewModel = viewModel(
+                factory = FabricaDeElementosViewModel(destino.livroId, preferencias),
+            )
+            val estado by viewModel.estado.collectAsState()
+            val tipoSelecionado by viewModel.tipoSelecionado.collectAsState()
+
+            TelaElementos(
+                estado = estado,
+                tipoSelecionado = tipoSelecionado,
+                aoVoltar = { controlador.popBackStack() },
+                aoFiltrar = { tipo -> viewModel.filtrarPorTipo(tipo) },
+                aoTentarDeNovo = { viewModel.carregar() },
+                aoTocarElemento = { elementoId -> controlador.navigate(ElementoDetalhe(elementoId)) },
+            )
+        }
+        composable<ElementoDetalhe> { EmConstrucao("Elemento") }
         composable<PerfisDeRenderizacao> { EmConstrucao("Perfis de renderização") }
     }
 }
