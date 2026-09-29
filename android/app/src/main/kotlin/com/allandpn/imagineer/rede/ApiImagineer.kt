@@ -1,6 +1,7 @@
 package com.allandpn.imagineer.rede
 
 import retrofit2.http.GET
+import retrofit2.http.Path
 
 /**
  * Interface Retrofit da API do Imagineer. Cresce uma rota por vez, junto
@@ -9,4 +10,7 @@ import retrofit2.http.GET
 interface ApiImagineer {
     @GET("livros")
     suspend fun listarLivros(): List<LivroResumo>
+
+    @GET("livros/{id}")
+    suspend fun obterLivro(@Path("id") livroId: Int): LivroDetalhe
 }

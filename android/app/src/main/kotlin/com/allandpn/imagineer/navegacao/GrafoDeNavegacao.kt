@@ -18,11 +18,15 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.allandpn.imagineer.armazenamento.PreferenciasApp
 import com.allandpn.imagineer.telas.biblioteca.BibliotecaViewModel
 import com.allandpn.imagineer.telas.biblioteca.FabricaDeBibliotecaViewModel
 import com.allandpn.imagineer.telas.biblioteca.TelaBiblioteca
 import com.allandpn.imagineer.telas.configuracao.TelaConfiguracao
+import com.allandpn.imagineer.telas.livro.FabricaDeLivroViewModel
+import com.allandpn.imagineer.telas.livro.LivroViewModel
+import com.allandpn.imagineer.telas.livro.TelaLivro
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -74,7 +78,22 @@ fun GrafoDeNavegacao(
             )
         }
 
-        composable<Livro> { EmConstrucao("Livro") }
+        composable<Livro> { entrada ->
+            val livro: Livro = entrada.toRoute()
+            val viewModel: LivroViewModel = viewModel(
+                factory = FabricaDeLivroViewModel(livro.livroId, preferencias),
+            )
+            val estado by viewModel.estado.collectAsState()
+
+            TelaLivro(
+                estado = estado,
+                aoVoltar = { controlador.popBackStack() },
+                aoTocarCapitulo = { capituloId -> controlador.navigate(Capitulo(capituloId)) },
+                aoTocarElementos = { controlador.navigate(ElementosDoLivro(livro.livroId)) },
+                aoTocarPerfis = { controlador.navigate(PerfisDeRenderizacao) },
+                aoTentarDeNovo = { viewModel.carregar() },
+            )
+        }
         composable<Capitulo> { EmConstrucao("Capítulo") }
         composable<Frame> { EmConstrucao("Frame") }
         composable<Prompt> { EmConstrucao("Prompt") }
