@@ -791,6 +791,8 @@ Quem preferir só a variável de ambiente simplesmente nunca usa a tela, e nada 
 
 **`GET /configuracao` nunca devolve a chave**, só informa se existe e de onde veio. Uma chave que sai do servidor é uma chave que vaza em log, em cache de app ou numa captura de tela.
 
+> **Divergência registrada, ainda não implementada (Etapa 8).** Especificando o armazenamento local do app mobile (item 7.0), a decisão acima ("o banco tem precedência") foi revertida: chave de API não deve ficar guardada remotamente, nem no banco do servidor. `PUT /configuracao` vai deixar de aceitar `chave_api_openrouter`; a variável de ambiente vira a única forma persistente no servidor, e o app passa a mandar a chave por chamada (header `X-Chave-API-OpenRouter`) quando o usuário configurar uma própria — nunca persistida no servidor. Motivo: o cadastro pelo app fazia sentido pro Allan sozinho, mas guardar a chave de qualquer usuário no banco do servidor não escala pra um cenário com mais de uma pessoa usando o mesmo backend — cada um deveria controlar a própria chave, só no próprio celular.
+
 #### Sobre o tamanho do capítulo caber no modelo
 
 Medido nos dezoito livros de validação, em tokens estimados (a 4 caracteres por token):
@@ -1387,6 +1389,48 @@ O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado c
 
 Esboço do fluxo de UI, ainda sem código — o objetivo aqui é fechar **quais telas existem, o que cada uma mostra, quais rotas ela consome e para onde ela navega**, antes de tocar em Kotlin (item 7.10, Etapa 8). Cada tela é numerada e mapeada ao passo correspondente do fluxo da Etapa 2.
 
+### 7.0 Arquitetura do app
+
+Decisões de arquitetura, tomadas antes de escrever qualquer código Kotlin — pendência de prioridade alta da Etapa 8 ("criar o projeto Android"), especificada em rodada própria antes da implementação.
+
+**Padrão de tela: MVVM (Model-View-ViewModel).** É o padrão recomendado pelo próprio Google pra Compose, e o mais bem documentado — cada tela tem um `ViewModel` que guarda o estado (o que a tela mostra) e expõe funções pra UI chamar (ex.: "carregar livro", "confirmar sugestão"). A `View` (a função `@Composable`) só lê esse estado e desenha; nunca fala direto com a rede.
+
+**Injeção de dependência: manual, sem Hilt.** Hilt resolve um problema real em apps grandes com muitas dependências cruzadas — não é o caso aqui: o app inteiro fala com um repositório de API só. Um `ViewModel` recebe o cliente HTTP no construtor, sem framework de DI. Menos uma biblioteca pra aprender antes de precisar dela; adotar Hilt depois é viável se o projeto crescer.
+
+**Camada de rede: Retrofit + OkHttp, com `kotlinx.serialization` para JSON.** Retrofit é o padrão de fato do Android há anos — a API do Imagineer vira uma interface Kotlin com anotações (`@GET`, `@POST`) e funções `suspend`, integrando naturalmente com corrotinas. `kotlinx.serialization` (mantida pelo próprio time do Kotlin, não uma biblioteca de terceiros como Moshi/Gson) faz a conversão JSON ↔ classes Kotlin sem depender de reflexão em tempo de execução — mais rápida, e erros de mapeamento aparecem em tempo de compilação, não em produção. Classes de resposta marcadas com `@Serializable`, espelhando os esquemas Pydantic do backend (item 6, cada rota).
+
+**Endereço do servidor: tela de configuração, salvo localmente.** O app pergunta a URL base (ex.: o endereço Tailscale do Raspberry Pi) numa tela simples — a primeira vez que abre, ou em "Configuração" (mesma tela do item 7.10) — e guarda via DataStore (ver "Armazenamento local", abaixo). Evita recompilar/reinstalar o APK só porque o endereço do servidor mudou; funciona bem com o cenário já decidido (sideload, uso pessoal, item 1.3).
+
+**Acesso fora de casa: Tailscale, não porta aberta no roteador.** O servidor fica só na rede interna (item 1.4) — abrir porta esbarraria no NAT da operadora residencial (CGNAT), que a maioria não permite contornar sem IP público dedicado. O Tailscale resolve isso sem precisar de nada no roteador: cada dispositivo (Raspberry Pi e celular) entra numa VPN mesh privada, com endereço próprio estável dentro dela, e o Tailscale fura o NAT automaticamente (ou cai num relay dele mesmo, quando o NAT é restritivo demais). O endereço salvo no app (parágrafo acima) é esse endereço Tailscale — funciona igual dentro e fora de casa. Configuração do celular é única (instalar o app, logar, autorizar o dispositivo); depois disso a VPN roda em segundo plano e reconecta sozinha ao trocar de rede — só é preciso lembrar de isentar o app do Tailscale da otimização de bateria do Android, pra ele não ser derrubado em segundo plano.
+
+**Autenticação da API: nenhuma, de propósito.** A proteção real é de rede, não de aplicação: só quem está na tailnet consegue sequer alcançar o servidor — quem não está nem chega a tentar uma chamada HTTP. Adicionar login pra um app de uso individual seria complexidade (validar token em toda rota, telas de login) sem ganho real de segurança nesse modelo de ameaça. Reconsiderar se um dia o acesso deixar de ser só o Allan (item 1.3 já registrou essa mesma condição pra decisão do stack mobile).
+
+**Grafo de navegação: Jetpack Navigation Compose, com destinos tipados via `kotlinx.serialization`** (mesma biblioteca já escolhida pra rede, item acima — sem strings de rota soltas):
+
+```kotlin
+@Serializable object Biblioteca                                    // 7.2 — tela inicial
+@Serializable data class Livro(val livroId: Int)                   // 7.4
+@Serializable data class Capitulo(val capituloId: Int)              // 7.5
+@Serializable data class Frame(val frameId: Int)                    // 7.6
+@Serializable data class Prompt(val frameId: Int, val promptId: Int? = null)  // 7.7
+@Serializable data class ElementosDoLivro(val livroId: Int)         // 7.8
+@Serializable object PerfisDeRenderizacao                           // 7.9
+@Serializable object Configuracao                                   // 7.10
+```
+
+"Importar livro" (7.3) não é destino próprio — é estado sobreposto à Biblioteca (barra de progresso/diálogo), não uma tela que empilha na navegação. `Prompt.promptId` é opcional: `null` ao gerar um prompt novo a partir do frame, preenchido ao abrir um prompt já existente do histórico. A pilha é hierárquica e simples — Biblioteca → Livro → Capítulo → Frame → Prompt, cada tela empilha a próxima, sem `popUpTo` especial (exceto Importar → Livro, que substitui o estado de importação em vez de empilhar). Elementos do Livro, Perfis de Renderização e Configuração são acessíveis de vários pontos (ícones na barra superior), fora da pilha hierárquica principal.
+
+**Armazenamento local: Jetpack DataStore (Preferences), só pro que precisa persistir hoje.** O app não cacheia livros/elementos/prompts — tudo vem do servidor a cada chamada, já que ele está sempre a uma chamada de distância via Tailscale (item acima). Dois dados salvos localmente, com sensibilidade diferente:
+
+- **Endereço do servidor** (item acima): dado comum, `DataStore` normal (texto plano) basta.
+- **Chave de API do OpenRouter — nunca armazenada remotamente, de propósito.** Reabre o item 4.3 do backend: hoje `PUT /configuracao` salva a chave no banco do servidor, com precedência sobre a variável de ambiente — isso muda. `PUT /configuracao` deixa de aceitar `chave_api_openrouter` (implementação pendente, fora do escopo desta especificação do app, mas bloqueia o app funcionar de ponta a ponta até ser feita). A única forma persistente de configurar a chave no servidor passa a ser a variável de ambiente do `.env` no próprio Raspberry Pi (via SSH — hoje já existe como opção, item 4.3), pro uso pessoal do Allan. Para um uso futuro com mais de um usuário, cada um guardaria a própria chave só no celular, nunca no servidor. No app, a chave é um **segredo**, não um dado comum — guardada em `EncryptedSharedPreferences` (ou a variante criptografada do DataStore, biblioteca `androidx.security.crypto`, baseada em Tink), não em texto plano. Toda chamada que envolve IA manda a chave no header `X-Chave-API-OpenRouter`, quando o usuário tiver configurado uma no app; o servidor nunca persiste esse valor — nem em banco, nem em log.
+
+**Erro/offline: sem cache local, tela de erro com "tentar de novo".** Coerente com a decisão de não cachear dado nenhum localmente (item acima) — o app sempre depende do servidor, então sem servidor não há o que mostrar mesmo. Qualquer chamada que falhar (timeout, sem conexão, Pi desligado, Tailscale desconectado) mostra uma mensagem clara ("não consegui falar com o servidor") com um botão pra tentar de novo, em vez de simular um modo offline com dado desatualizado — que introduziria sincronização e conflito sem necessidade real pro uso de hoje.
+
+**Design visual: Material 3 puro, sem tema customizado.** Usa os componentes e cores padrão do próprio design system do Android/Compose (`MaterialTheme` sem paleta customizada), incluindo cor dinâmica (Material You — segue o papel de parede do sistema, Android 12+) e tema claro/escuro automático, seguindo a preferência do sistema. Menos decisão de design pra tomar agora, foco no funcional — trocar por um tema customizado depois é direto, o Material 3 foi feito pra isso.
+
+**Build/assinatura: keystore própria, versionamento semântico simples.** Instalação manual (sideload, item 1.3) ainda exige o APK assinado — o Android recusa instalar um `.apk` sem assinatura. Uma keystore local, gerada uma vez e guardada com cuidado fora do repositório (nunca commitada — mesmo princípio do `.env`/segredos já usado no backend, item 5), assina as releases. `versionCode` incrementa a cada build; `versionName` segue semântico simples (`0.1.0`, `0.2.0`...). Importante: reinstalar uma versão nova por cima de uma antiga só funciona se as duas forem assinadas pela **mesma** keystore — perder a keystore significa ter que desinstalar o app inteiro (perdendo o que estiver salvo localmente, item acima) pra instalar de novo.
+
 ### 7.1 Mapa de navegação
 
 ```
@@ -1498,7 +1542,8 @@ Acessível de qualquer tela.
 - [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**, todas as seções (6.2 a 6.7): livros, capítulos, elementos e estados, frames, perfis de renderização, prompts e catálogo de imagens, configuração e sugestões de IA.
 - [x] ~~Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).~~ Concluído — **Etapa 7**: dez telas mapeadas às rotas da Etapa 6, mais o mapa de navegação. Ainda sem código — falta criar o projeto Android, próximo item desta lista.
 - [x] ~~Permitir marcar um capítulo como ignorado.~~ Concluído — campo `Capitulo.ignorado`, pré-sugerido pela importação e confirmado pelo usuário (itens 2.2 e 3.4a). Exposto na API (item 6.2) e na tela de Livro (item 7.4).
-- [ ] Criar o projeto Android (Kotlin + Jetpack Compose) e implementar as telas da Etapa 7.
+- [ ] Criar o projeto Android (Kotlin + Jetpack Compose) e implementar as telas da Etapa 7. **Arquitetura já especificada** (item 7.0: MVVM sem Hilt, Retrofit + kotlinx.serialization, Navigation Compose type-safe, DataStore, Tailscale, sem autenticação de app, Material 3, keystore própria) — falta só o código.
+- [ ] **Reabrir o item 4.3: `PUT /configuracao` deixa de aceitar `chave_api_openrouter`.** Achado especificando o armazenamento local do app (item 7.0): chave de API não deve ficar guardada remotamente, nem no banco do servidor — reverte a decisão original de item 4.3 ("banco tem precedência sobre variável de ambiente"). Depois da mudança, a única forma persistente de configurar a chave no servidor é a variável de ambiente do `.env` (via SSH no Raspberry Pi); toda chamada que envolve IA passa a aceitar um header opcional (`X-Chave-API-OpenRouter`) com prioridade sobre a variável de ambiente, nunca persistido em lugar nenhum do servidor. Bloqueia o app funcionar de ponta a ponta com chave própria até ser implementado — mas não bloqueia o uso pessoal do Allan, que continua usando a variável de ambiente.
 - [x] ~~Refinar a engenharia do prompt de geração de imagens.~~ **Uma rodada implementada** (item 4.5/4.7): bloco de estética do prompt final separado e estruturado em vez de tecido em prosa; reforço contra linguagem temática residual na sugestão de perfil; `Elemento.imagem_ancora_padrao_id` para mitigar variação de consistência visual entre capítulos distantes e entre ferramentas de geração diferentes. Nenhuma das três mudanças de instrução foi validada com IA real ainda — vale rodar contra o corpus de validação antes de considerar madura. Novas rodadas de refinamento continuam abertas, a pedido de Allan.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).
 - [x] ~~Implementar sugestões persistidas (`SugestaoDeElemento`/`SugestaoDeCena`/`SugestaoDeParticipante`), busca por nome cross-capítulo e confirmação em lote.~~ Concluído — item 3.4e, validado com o caso real do "Sextus Hospius"/"Hospius".
