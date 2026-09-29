@@ -37,4 +37,7 @@ interface ApiImagineer {
 
     @GET("frames/{id}")
     suspend fun obterFrame(@Path("id") frameId: Int): FrameDetalhe
+
+    @GET("prompts/{id}")
+    suspend fun obterPrompt(@Path("id") promptId: Int): PromptDetalhe
 }

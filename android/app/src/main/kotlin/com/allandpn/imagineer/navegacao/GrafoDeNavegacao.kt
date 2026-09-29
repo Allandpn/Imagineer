@@ -39,6 +39,9 @@ import com.allandpn.imagineer.telas.frame.TelaFrame
 import com.allandpn.imagineer.telas.perfis.FabricaDePerfisViewModel
 import com.allandpn.imagineer.telas.perfis.PerfisViewModel
 import com.allandpn.imagineer.telas.perfis.TelaPerfis
+import com.allandpn.imagineer.telas.prompt.FabricaDePromptViewModel
+import com.allandpn.imagineer.telas.prompt.PromptViewModel
+import com.allandpn.imagineer.telas.prompt.TelaPrompt
 import com.allandpn.imagineer.telas.livro.FabricaDeLivroViewModel
 import com.allandpn.imagineer.telas.livro.LivroViewModel
 import com.allandpn.imagineer.telas.livro.TelaLivro
@@ -156,7 +159,26 @@ fun GrafoDeNavegacao(
                 aoTentarDeNovo = { viewModel.carregar() },
             )
         }
-        composable<Prompt> { EmConstrucao("Prompt") }
+        composable<Prompt> { entrada ->
+            val destino: Prompt = entrada.toRoute()
+            val promptId = destino.promptId
+            if (promptId == null) {
+                // Gerar um prompt novo (POST /frames/{id}/prompts, com o
+                // indicador de carregamento do item 7.7) é a próxima fatia.
+                EmConstrucao("Gerar prompt")
+            } else {
+                val viewModel: PromptViewModel = viewModel(
+                    factory = FabricaDePromptViewModel(promptId, preferencias),
+                )
+                val estado by viewModel.estado.collectAsState()
+
+                TelaPrompt(
+                    estado = estado,
+                    aoVoltar = { controlador.popBackStack() },
+                    aoTentarDeNovo = { viewModel.carregar() },
+                )
+            }
+        }
         composable<ElementosDoLivro> { entrada ->
             val destino: ElementosDoLivro = entrada.toRoute()
             val viewModel: ElementosViewModel = viewModel(
