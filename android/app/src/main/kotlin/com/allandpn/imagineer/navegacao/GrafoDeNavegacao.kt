@@ -32,6 +32,9 @@ import com.allandpn.imagineer.telas.capitulo.TelaCapitulo
 import com.allandpn.imagineer.telas.configuracao.TelaConfiguracao
 import com.allandpn.imagineer.telas.elementos.ElementosViewModel
 import com.allandpn.imagineer.telas.elementos.FabricaDeElementosViewModel
+import com.allandpn.imagineer.telas.elemento.ElementoViewModel
+import com.allandpn.imagineer.telas.elemento.FabricaDeElementoViewModel
+import com.allandpn.imagineer.telas.elemento.TelaElemento
 import com.allandpn.imagineer.telas.elementos.TelaElementos
 import com.allandpn.imagineer.telas.frame.FabricaDeFrameViewModel
 import com.allandpn.imagineer.telas.frame.FrameViewModel
@@ -196,7 +199,19 @@ fun GrafoDeNavegacao(
                 aoTocarElemento = { elementoId -> controlador.navigate(ElementoDetalhe(elementoId)) },
             )
         }
-        composable<ElementoDetalhe> { EmConstrucao("Elemento") }
+        composable<ElementoDetalhe> { entrada ->
+            val destino: ElementoDetalhe = entrada.toRoute()
+            val viewModel: ElementoViewModel = viewModel(
+                factory = FabricaDeElementoViewModel(destino.elementoId, preferencias),
+            )
+            val estado by viewModel.estado.collectAsState()
+
+            TelaElemento(
+                estado = estado,
+                aoVoltar = { controlador.popBackStack() },
+                aoTentarDeNovo = { viewModel.carregar() },
+            )
+        }
         composable<PerfisDeRenderizacao> {
             val viewModel: PerfisViewModel = viewModel(factory = FabricaDePerfisViewModel(preferencias))
             val estado by viewModel.estado.collectAsState()

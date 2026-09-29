@@ -2,7 +2,7 @@ package com.allandpn.imagineer.telas.biblioteca
 
 import com.allandpn.imagineer.armazenamento.ProvedorDeEnderecoDoServidor
 import com.allandpn.imagineer.dados.RepositorioLivros
-import com.allandpn.imagineer.rede.ApiImagineer
+import com.allandpn.imagineer.rede.ApiImagineerFalsa
 import com.allandpn.imagineer.rede.LivroResumo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -92,15 +92,15 @@ class BibliotecaViewModelTest {
         assertEquals("sem conexão", (estado as EstadoDaBiblioteca.Erro).mensagem)
     }
 
-    private fun apiComLivros(livros: List<LivroResumo>) = object : ApiImagineer {
+    private fun apiComLivros(livros: List<LivroResumo>) = object : ApiImagineerFalsa() {
         override suspend fun listarLivros() = livros
     }
 
-    private fun apiComFalha(mensagem: String) = object : ApiImagineer {
+    private fun apiComFalha(mensagem: String) = object : ApiImagineerFalsa() {
         override suspend fun listarLivros(): List<LivroResumo> = throw RuntimeException(mensagem)
     }
 
-    private fun apiQueNuncaDeveriaSerChamada() = object : ApiImagineer {
+    private fun apiQueNuncaDeveriaSerChamada() = object : ApiImagineerFalsa() {
         override suspend fun listarLivros(): List<LivroResumo> =
             error("Sem servidor configurado, a API nunca deveria ser chamada")
     }

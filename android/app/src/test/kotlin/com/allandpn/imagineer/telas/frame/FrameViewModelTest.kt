@@ -1,16 +1,9 @@
 package com.allandpn.imagineer.telas.frame
 
 import com.allandpn.imagineer.armazenamento.ProvedorDeEnderecoDoServidor
-import com.allandpn.imagineer.rede.ApiImagineer
-import com.allandpn.imagineer.rede.CapituloAjusteRequest
-import com.allandpn.imagineer.rede.CapituloDetalhe
-import com.allandpn.imagineer.rede.CapituloResumo
-import com.allandpn.imagineer.rede.ElementoResumo
+import com.allandpn.imagineer.rede.ApiImagineerFalsa
 import com.allandpn.imagineer.rede.EstadoComElemento
 import com.allandpn.imagineer.rede.FrameDetalhe
-import com.allandpn.imagineer.rede.LivroDetalhe
-import com.allandpn.imagineer.rede.LivroResumo
-import com.allandpn.imagineer.rede.PerfilRenderizacao
 import com.allandpn.imagineer.rede.TipoDeFrame
 import com.allandpn.imagineer.rede.TipoElemento
 import kotlinx.coroutines.Dispatchers
@@ -87,27 +80,11 @@ class FrameViewModelTest {
         assertEquals("sem conexão", (estado as EstadoDoFrame.Erro).mensagem)
     }
 
-    private fun apiCom(frame: FrameDetalhe) = object : ApiImagineer {
-        override suspend fun listarLivros(): List<LivroResumo> = error("não usado neste teste")
-        override suspend fun obterLivro(livroId: Int): LivroDetalhe = error("não usado neste teste")
-        override suspend fun obterCapitulo(capituloId: Int): CapituloDetalhe = error("não usado neste teste")
-        override suspend fun apagarLivro(livroId: Int) = error("não usado neste teste")
-        override suspend fun ajustarCapitulo(capituloId: Int, ajuste: CapituloAjusteRequest): CapituloResumo =
-            error("não usado neste teste")
-        override suspend fun listarElementos(livroId: Int): List<ElementoResumo> = error("não usado neste teste")
-        override suspend fun listarPerfis(): List<PerfilRenderizacao> = error("não usado neste teste")
+    private fun apiCom(frame: FrameDetalhe) = object : ApiImagineerFalsa() {
         override suspend fun obterFrame(frameId: Int) = frame
     }
 
-    private fun apiComFalha(mensagem: String) = object : ApiImagineer {
-        override suspend fun listarLivros(): List<LivroResumo> = error("não usado neste teste")
-        override suspend fun obterLivro(livroId: Int): LivroDetalhe = error("não usado neste teste")
-        override suspend fun obterCapitulo(capituloId: Int): CapituloDetalhe = error("não usado neste teste")
-        override suspend fun apagarLivro(livroId: Int) = error("não usado neste teste")
-        override suspend fun ajustarCapitulo(capituloId: Int, ajuste: CapituloAjusteRequest): CapituloResumo =
-            error("não usado neste teste")
-        override suspend fun listarElementos(livroId: Int): List<ElementoResumo> = error("não usado neste teste")
-        override suspend fun listarPerfis(): List<PerfilRenderizacao> = error("não usado neste teste")
+    private fun apiComFalha(mensagem: String) = object : ApiImagineerFalsa() {
         override suspend fun obterFrame(frameId: Int): FrameDetalhe = throw RuntimeException(mensagem)
     }
 }

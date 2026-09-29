@@ -1,14 +1,9 @@
 package com.allandpn.imagineer.telas.elementos
 
 import com.allandpn.imagineer.armazenamento.ProvedorDeEnderecoDoServidor
-import com.allandpn.imagineer.rede.ApiImagineer
-import com.allandpn.imagineer.rede.CapituloAjusteRequest
-import com.allandpn.imagineer.rede.CapituloDetalhe
-import com.allandpn.imagineer.rede.CapituloResumo
+import com.allandpn.imagineer.rede.ApiImagineerFalsa
 import com.allandpn.imagineer.rede.ElementoResumo
 import com.allandpn.imagineer.rede.EstadoResumo
-import com.allandpn.imagineer.rede.LivroDetalhe
-import com.allandpn.imagineer.rede.LivroResumo
 import com.allandpn.imagineer.rede.TipoElemento
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -133,23 +128,11 @@ class ElementosViewModelTest {
         assertEquals("sem conexão", (estado as EstadoDosElementos.Erro).mensagem)
     }
 
-    private fun apiCom(elementos: List<ElementoResumo>) = object : ApiImagineer {
-        override suspend fun listarLivros(): List<LivroResumo> = error("não usado neste teste")
-        override suspend fun obterLivro(livroId: Int): LivroDetalhe = error("não usado neste teste")
-        override suspend fun obterCapitulo(capituloId: Int): CapituloDetalhe = error("não usado neste teste")
-        override suspend fun apagarLivro(livroId: Int) = error("não usado neste teste")
-        override suspend fun ajustarCapitulo(capituloId: Int, ajuste: CapituloAjusteRequest): CapituloResumo =
-            error("não usado neste teste")
+    private fun apiCom(elementos: List<ElementoResumo>) = object : ApiImagineerFalsa() {
         override suspend fun listarElementos(livroId: Int) = elementos
     }
 
-    private fun apiComFalha(mensagem: String) = object : ApiImagineer {
-        override suspend fun listarLivros(): List<LivroResumo> = error("não usado neste teste")
-        override suspend fun obterLivro(livroId: Int): LivroDetalhe = error("não usado neste teste")
-        override suspend fun obterCapitulo(capituloId: Int): CapituloDetalhe = error("não usado neste teste")
-        override suspend fun apagarLivro(livroId: Int) = error("não usado neste teste")
-        override suspend fun ajustarCapitulo(capituloId: Int, ajuste: CapituloAjusteRequest): CapituloResumo =
-            error("não usado neste teste")
+    private fun apiComFalha(mensagem: String) = object : ApiImagineerFalsa() {
         override suspend fun listarElementos(livroId: Int): List<ElementoResumo> = throw RuntimeException(mensagem)
     }
 }

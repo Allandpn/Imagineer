@@ -40,4 +40,7 @@ interface ApiImagineer {
 
     @GET("prompts/{id}")
     suspend fun obterPrompt(@Path("id") promptId: Int): PromptDetalhe
+
+    @GET("elementos/{id}")
+    suspend fun obterElemento(@Path("id") elementoId: Int): ElementoDetalhe
 }
