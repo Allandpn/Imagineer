@@ -31,4 +31,7 @@ interface ApiImagineer {
 
     @GET("livros/{id}/elementos")
     suspend fun listarElementos(@Path("id") livroId: Int): List<ElementoResumo>
+
+    @GET("perfis-renderizacao")
+    suspend fun listarPerfis(): List<PerfilRenderizacao>
 }

@@ -33,6 +33,9 @@ import com.allandpn.imagineer.telas.configuracao.TelaConfiguracao
 import com.allandpn.imagineer.telas.elementos.ElementosViewModel
 import com.allandpn.imagineer.telas.elementos.FabricaDeElementosViewModel
 import com.allandpn.imagineer.telas.elementos.TelaElementos
+import com.allandpn.imagineer.telas.perfis.FabricaDePerfisViewModel
+import com.allandpn.imagineer.telas.perfis.PerfisViewModel
+import com.allandpn.imagineer.telas.perfis.TelaPerfis
 import com.allandpn.imagineer.telas.livro.FabricaDeLivroViewModel
 import com.allandpn.imagineer.telas.livro.LivroViewModel
 import com.allandpn.imagineer.telas.livro.TelaLivro
@@ -157,7 +160,16 @@ fun GrafoDeNavegacao(
             )
         }
         composable<ElementoDetalhe> { EmConstrucao("Elemento") }
-        composable<PerfisDeRenderizacao> { EmConstrucao("Perfis de renderização") }
+        composable<PerfisDeRenderizacao> {
+            val viewModel: PerfisViewModel = viewModel(factory = FabricaDePerfisViewModel(preferencias))
+            val estado by viewModel.estado.collectAsState()
+
+            TelaPerfis(
+                estado = estado,
+                aoVoltar = { controlador.popBackStack() },
+                aoTentarDeNovo = { viewModel.carregar() },
+            )
+        }
     }
 }
 
