@@ -12,18 +12,31 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontStyle
@@ -33,11 +46,12 @@ import com.allandpn.imagineer.rede.CapituloResumo
 import com.allandpn.imagineer.rede.LivroDetalhe
 
 /**
- * Tela de Livro (item 7.4) — estrutura de capítulos e ponto de entrada
- * pro que pertence ao livro. Só leitura e navegação por enquanto: editar
- * metadados, apagar o livro e alternar "ignorado" por capítulo (menu de
- * três pontos e ícones por linha, já desenhados no wireframe) entram num
- * próximo incremento, pra este ficar pequeno e revisável.
+ * Tela de Livro (item 7.4) — estrutura de capítulos, atalhos pro que
+ * pertence ao livro, e as ações destrutivas atrás do menu de três pontos
+ * (decisão do Allan revisando o wireframe: apagar o livro não deveria
+ * disputar espaço com o dia a dia da tela). "Editar metadados e perfil
+ * padrão" ainda não está aqui — fica pra quando essa tela de edição
+ * existir de verdade.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,7 +62,11 @@ fun TelaLivro(
     aoTocarElementos: () -> Unit,
     aoTocarPerfis: () -> Unit,
     aoTentarDeNovo: () -> Unit,
+    aoAlternarIgnorado: (Int, Boolean) -> Unit,
+    aoConfirmarApagar: () -> Unit,
 ) {
+    var menuAberto by remember { mutableStateOf(false) }
+    var confirmandoApagar by remember { mutableStateOf(false) }
     val titulo = (estado as? EstadoDoLivro.Sucesso)?.livro?.titulo ?: "Livro"
 
     Scaffold(
@@ -67,6 +85,11 @@ fun TelaLivro(
                     IconButton(onClick = aoTocarPerfis) {
                         Icon(Icons.Filled.Palette, contentDescription = "Perfis de renderização")
                     }
+                    if (estado is EstadoDoLivro.Sucesso) {
+                        IconButton(onClick = { menuAberto = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "Mais opções")
+                        }
+                    }
                 },
             )
         },
@@ -75,10 +98,78 @@ fun TelaLivro(
             when (estado) {
                 is EstadoDoLivro.Carregando -> Carregando()
                 is EstadoDoLivro.Erro -> ErroDeConexao(estado.mensagem, aoTentarDeNovo)
-                is EstadoDoLivro.Sucesso -> ConteudoDoLivro(estado.livro, aoTocarCapitulo)
+                is EstadoDoLivro.Sucesso -> ConteudoDoLivro(estado.livro, aoTocarCapitulo, aoAlternarIgnorado)
             }
         }
+
+        if (menuAberto) {
+            MenuDoLivro(
+                aoFechar = { menuAberto = false },
+                aoTocarApagar = {
+                    menuAberto = false
+                    confirmandoApagar = true
+                },
+            )
+        }
+
+        if (confirmandoApagar) {
+            DialogoDeApagar(
+                aoCancelar = { confirmandoApagar = false },
+                aoConfirmar = {
+                    confirmandoApagar = false
+                    aoConfirmarApagar()
+                },
+            )
+        }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MenuDoLivro(aoFechar: () -> Unit, aoTocarApagar: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = aoFechar, sheetState = rememberModalBottomSheetState()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = aoTocarApagar) {
+                Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+            }
+            Text(
+                "Apagar livro",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = 24.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DialogoDeApagar(aoCancelar: () -> Unit, aoConfirmar: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = aoCancelar,
+        title = { Text("Apagar este livro?") },
+        text = {
+            Text(
+                "Essa ação não pode ser desfeita. Junto com o livro, isso apaga todos os " +
+                    "capítulos, elementos e estados, frames, prompts e imagens importadas.",
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = aoConfirmar,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) {
+                Text("Apagar definitivamente")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = aoCancelar) { Text("Cancelar") }
+        },
+    )
 }
 
 @Composable
@@ -104,7 +195,11 @@ private fun ErroDeConexao(mensagem: String, aoTentarDeNovo: () -> Unit) {
 }
 
 @Composable
-private fun ConteudoDoLivro(livro: LivroDetalhe, aoTocarCapitulo: (Int) -> Unit) {
+private fun ConteudoDoLivro(
+    livro: LivroDetalhe,
+    aoTocarCapitulo: (Int) -> Unit,
+    aoAlternarIgnorado: (Int, Boolean) -> Unit,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -118,7 +213,11 @@ private fun ConteudoDoLivro(livro: LivroDetalhe, aoTocarCapitulo: (Int) -> Unit)
             )
         }
         items(livro.capitulos, key = { it.id }) { capitulo ->
-            LinhaDeCapitulo(capitulo, onClick = { aoTocarCapitulo(capitulo.id) })
+            LinhaDeCapitulo(
+                capitulo,
+                onClick = { aoTocarCapitulo(capitulo.id) },
+                aoAlternarIgnorado = { aoAlternarIgnorado(capitulo.id, capitulo.ignorado) },
+            )
         }
     }
 }
@@ -154,36 +253,55 @@ private fun LinhaDeMetadado(rotulo: String, valor: String) {
 }
 
 @Composable
-private fun LinhaDeCapitulo(capitulo: CapituloResumo, onClick: () -> Unit) {
+private fun LinhaDeCapitulo(
+    capitulo: CapituloResumo,
+    onClick: () -> Unit,
+    aoAlternarIgnorado: () -> Unit,
+) {
     val tituloDeExibicao = capitulo.titulo ?: "Capítulo ${capitulo.ordem}"
     val ehReserva = capitulo.titulo == null
 
-    Card(
-        onClick = onClick,
-        enabled = !capitulo.ignorado,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    Card(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("${capitulo.ordem}", style = MaterialTheme.typography.bodySmall)
-            Text(
-                tituloDeExibicao,
-                style = if (ehReserva) {
-                    MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic)
-                } else {
-                    MaterialTheme.typography.bodyLarge
-                },
+            Row(
                 modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (capitulo.ignorado) {
-                Text("ignorado", style = MaterialTheme.typography.labelSmall)
-            } else if (capitulo.sugestoesPendentes > 0) {
-                Text("${capitulo.sugestoesPendentes} pendentes", style = MaterialTheme.typography.labelSmall)
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("${capitulo.ordem}", style = MaterialTheme.typography.bodySmall)
+                Column(modifier = Modifier.weight(1f).padding(vertical = 6.dp)) {
+                    Text(
+                        tituloDeExibicao,
+                        style = if (ehReserva) {
+                            MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic)
+                        } else {
+                            MaterialTheme.typography.bodyLarge
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (capitulo.ignorado) {
+                        Text("ignorado", style = MaterialTheme.typography.labelSmall)
+                    } else if (capitulo.sugestoesPendentes > 0) {
+                        Text("${capitulo.sugestoesPendentes} pendentes", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+            IconButton(onClick = aoAlternarIgnorado) {
+                if (capitulo.ignorado) {
+                    Icon(Icons.Filled.Unarchive, contentDescription = "Remover de ignorados")
+                } else {
+                    Icon(Icons.Filled.Archive, contentDescription = "Marcar como ignorado")
+                }
+            }
+            if (!capitulo.ignorado) {
+                IconButton(onClick = onClick) {
+                    Text("›")
+                }
             }
         }
     }

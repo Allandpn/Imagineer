@@ -1,6 +1,9 @@
 package com.allandpn.imagineer.rede
 
+import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.Path
 
 /**
@@ -13,4 +16,13 @@ interface ApiImagineer {
 
     @GET("livros/{id}")
     suspend fun obterLivro(@Path("id") livroId: Int): LivroDetalhe
+
+    @DELETE("livros/{id}")
+    suspend fun apagarLivro(@Path("id") livroId: Int)
+
+    @PATCH("capitulos/{id}")
+    suspend fun ajustarCapitulo(
+        @Path("id") capituloId: Int,
+        @Body ajuste: CapituloAjusteRequest,
+    ): CapituloResumo
 }

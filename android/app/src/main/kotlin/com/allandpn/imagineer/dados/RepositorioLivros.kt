@@ -15,4 +15,7 @@ class RepositorioLivros(private val api: ApiImagineer) {
     suspend fun listarLivros(): List<LivroResumo> = api.listarLivros()
 
     suspend fun obterLivro(livroId: Int): LivroDetalhe = api.obterLivro(livroId)
+
+    /** Apaga o livro e, em cascata, tudo que só existia por causa dele (item 3.4). */
+    suspend fun apagarLivro(livroId: Int) = api.apagarLivro(livroId)
 }

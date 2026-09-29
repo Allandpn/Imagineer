@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -13,6 +14,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -45,11 +48,23 @@ fun GrafoDeNavegacao(
     val escopo = rememberCoroutineScope()
 
     NavHost(navController = controlador, startDestination = Biblioteca) {
-        composable<Biblioteca> {
+        composable<Biblioteca> { entrada ->
             val viewModel: BibliotecaViewModel = viewModel(
                 factory = FabricaDeBibliotecaViewModel(preferencias),
             )
             val estado by viewModel.estado.collectAsState()
+
+            // Recarrega sempre que esta tela volta a ficar visível — por
+            // exemplo, depois de apagar um livro na tela de Livro (7.4) e
+            // voltar pra cá. `entrada.lifecycle` é o ciclo de vida deste
+            // destino específico na pilha, não da Activity inteira.
+            DisposableEffect(entrada) {
+                val observador = LifecycleEventObserver { _, evento ->
+                    if (evento == Lifecycle.Event.ON_RESUME) viewModel.carregar()
+                }
+                entrada.lifecycle.addObserver(observador)
+                onDispose { entrada.lifecycle.removeObserver(observador) }
+            }
 
             TelaBiblioteca(
                 estado = estado,
@@ -84,6 +99,11 @@ fun GrafoDeNavegacao(
                 factory = FabricaDeLivroViewModel(livro.livroId, preferencias),
             )
             val estado by viewModel.estado.collectAsState()
+            val apagado by viewModel.apagado.collectAsState()
+
+            LaunchedEffect(apagado) {
+                if (apagado) controlador.popBackStack()
+            }
 
             TelaLivro(
                 estado = estado,
@@ -92,6 +112,10 @@ fun GrafoDeNavegacao(
                 aoTocarElementos = { controlador.navigate(ElementosDoLivro(livro.livroId)) },
                 aoTocarPerfis = { controlador.navigate(PerfisDeRenderizacao) },
                 aoTentarDeNovo = { viewModel.carregar() },
+                aoAlternarIgnorado = { capituloId, ignoradoAtual ->
+                    viewModel.alternarIgnorado(capituloId, ignoradoAtual)
+                },
+                aoConfirmarApagar = { viewModel.apagarLivro() },
             )
         }
         composable<Capitulo> { EmConstrucao("Capítulo") }
