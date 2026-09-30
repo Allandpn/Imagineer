@@ -1765,7 +1765,13 @@ As regras abaixo valem para as **duas** telas — a lista principal (que **arqui
 15. **Quando a lista recarrega, a seleção é podada:** um capítulo marcado que deixou de existir ou de estar elegível (foi arquivado por outro caminho, ou removido) é desmarcado sozinho, em vez de gerar uma chamada que falharia.
 16. **Os botões de arquivar/restaurar por linha deixam de existir.**
 17. **O nome no aviso vem da lista, e não da resposta do servidor:** uma frase da tela não deve depender do formato de uma resposta de rede (achado quando um teste com resposta falsa mostrou o nome errado).
-18. **Fora do escopo desta rodada:** "selecionar todos" (é natural acrescentar), o desenho visual da barra de seleção e da linha marcada.
+18. **Selecionar todos** (acrescentado em 30/09/2026, depois de a rodada original deixá-lo de fora): um botão na barra do modo de seleção que **alterna**:
+    - **Marca todos os capítulos elegíveis** do modo (ativos ao arquivar, arquivados ao restaurar) — **menos os que têm chamada em andamento**, pela mesma regra R5: nada em andamento pode ser marcado.
+    - Se **todos já estão marcados**, o mesmo botão **desmarca todos**. Continua no modo (R2); só sai por confirmar, cancelar ou voltar. Se só alguns estão marcados, completa a seleção.
+    - O rótulo diz o que vai acontecer: **"Selecionar todos"** ou **"Desmarcar todos"**.
+    - **Só existe dentro do modo de seleção**: não faz sentido fora dele, e entrar pelo botão do topo já começa com zero marcados, deixando o "todos" a um toque. Com o lote no ar, é ignorado (R8).
+    - Marcar todos **não confirma nada**: o usuário ainda precisa tocar em "Arquivar (N)" / "Restaurar (N)" (R6). É o que torna seguro oferecer um gesto tão amplo.
+19. **Fora do escopo desta rodada:** o desenho visual da barra de seleção e da linha marcada.
 
 ### 7.6 Frame
 
