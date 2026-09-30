@@ -11,6 +11,9 @@ Para subir em desenvolvimento:
 from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 
+# Registra o ouvinte que sobe a revisão do livro a cada gravação (item 6.9). O simples import
+# basta: o decorador do módulo faz o registro.
+from imagineer.banco import revisao  # noqa: F401
 from imagineer.rotas import (
     capitulos,
     configuracao,

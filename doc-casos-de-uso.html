@@ -735,7 +735,7 @@
           <header class="rhead"><span class="method get">GET</span><span class="rpath">/livros/{livro_id}</span><span class="rsummary">Abre um livro</span></header>
           <div class="route-body">
             <h4>Resposta — 200</h4>
-            <p class="desc">O livro com a estrutura completa de capítulos (sem o texto de cada um).</p>
+            <p class="desc">O livro com a estrutura completa de capítulos (sem o texto de cada um). O corpo traz <code>revisao</code>, um contador que sobe a cada mudança no que o leitor mostra do livro, e o cabeçalho <code>ETag</code> é essa revisão: mandando-a em <code>If-None-Match</code>, o servidor responde <code>304</code> sem corpo quando nada mudou (item 6.9).</p>
             <h4>Erros</h4>
             <ul class="errors"><li><span class="status s4">404</span> Livro inexistente</li></ul>
           </div>

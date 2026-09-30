@@ -44,6 +44,15 @@ GET {{baseUrl}}/livros/{{livroId}}/midias
 # por concluída quando a lista vem vazia.
 GET {{baseUrl}}/livros/{{livroId}}
 
+### Abre o livro de novo, dizendo a revisão que o cliente já tem (item 6.9)
+# A resposta acima traz o cabeçalho ETag, que é a "revisao" do livro, e o campo
+# "revisao" no corpo. Mande-a em If-None-Match: se nada mudou, vem 304 SEM corpo
+# (economiza até a lista de capítulos); se algo mudou (arquivar um capítulo, um frame,
+# uma imagem...), vem 200 com o livro inteiro e um ETag novo. Troque o número abaixo
+# pelo que você viu, e teste de novo depois de arquivar um capítulo.
+GET {{baseUrl}}/livros/{{livroId}}
+If-None-Match: "0"
+
 ### Abre um livro por id manual — troque pelo id que quiser inspecionar
 # Útil pra conferir outro livro da biblioteca sem reimportar (veja os ids em
 # GET /livros acima).

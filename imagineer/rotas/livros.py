@@ -5,7 +5,7 @@ Cobrem os passos 1 a 4 do fluxo da Etapa 2.
 
 import mimetypes
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import Integer, case, func, select
 from sqlalchemy.orm import Session
 
@@ -131,9 +131,34 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
 
 
 @rotas.get("/{livro_id}", response_model=LivroDetalhe, summary="Abre um livro")
-def abrir_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> LivroDetalhe:
-    """O livro com a estrutura de capítulos, sem o texto deles."""
-    return _detalhe_do_livro(sessao, _buscar_livro(sessao, livro_id))
+def abrir_livro(
+    livro_id: int,
+    requisicao: Request,
+    resposta: Response,
+    sessao: Session = Depends(obter_sessao),
+) -> LivroDetalhe | Response:
+    """O livro com a estrutura de capítulos, sem o texto deles.
+
+    **`ETag` é a `revisao` do livro** (item 6.9). Um cliente que já tem a revisão atual manda
+    `If-None-Match` e recebe `304`, sem corpo — economiza até esta lista, que já é ~90 vezes menor
+    que os textos.
+    """
+    livro = _buscar_livro(sessao, livro_id)
+    etag = f'"{livro.revisao}"'
+
+    if etag in _etags_aceitos(requisicao.headers.get("if-none-match")):
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+
+    resposta.headers["ETag"] = etag
+    return _detalhe_do_livro(sessao, livro)
+
+
+def _etags_aceitos(cabecalho: str | None) -> set[str]:
+    """Os `ETag` de um `If-None-Match`, que pode trazer vários separados por vírgula e o prefixo
+    `W/` de validador fraco (que aqui vale o mesmo)."""
+    if not cabecalho:
+        return set()
+    return {parte.strip().removeprefix("W/") for parte in cabecalho.split(",")}
 
 
 @rotas.get(
@@ -379,6 +404,7 @@ def _campos_do_livro(livro: Livro) -> dict:
         "idioma": livro.idioma,
         "nome_arquivo": livro.nome_arquivo,
         "data_importacao": livro.data_importacao,
+        "revisao": livro.revisao,
     }
 
 

@@ -77,6 +77,13 @@ class LivroResumo(BaseModel):
     idioma: str | None
     nome_arquivo: str
     data_importacao: datetime
+    revisao: int = Field(
+        default=0,
+        description=(
+            "Sobe a cada mudança no que o leitor mostra deste livro (item 6.9): o app a guarda "
+            "e só relê a lista de capítulos quando ela muda."
+        ),
+    )
     total_de_capitulos: int
     capitulos_ignorados: int = Field(
         description="Quantos capítulos estão marcados como fora da catalogação."

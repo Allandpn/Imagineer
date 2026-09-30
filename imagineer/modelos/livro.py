@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func, true
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -50,6 +50,15 @@ class Livro(Base):
     """
 
     nome_arquivo: Mapped[str] = mapped_column(String(500))
+
+    revisao: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    """Um contador que **sobe a cada mudança no que o leitor mostra** deste livro (item 6.9).
+
+    O app guarda a última revisão que viu e, ao abrir o livro, só relê a lista de capítulos se
+    ela mudou — e o `ETag` de `GET /livros/{id}` é este número. Quem o sobe é o ouvinte de
+    `imagineer/banco/revisao.py`, e não cada rota: uma rota nova que altere dados **não pode
+    esquecer** de fazê-lo.
+    """
 
     data_importacao: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
