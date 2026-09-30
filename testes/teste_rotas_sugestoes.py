@@ -1,4 +1,4 @@
-"""Testes de `POST /capitulos/{id}/sugestoes` (Etapas 6.7 e 3.4e).
+"""Testes de `POST` e `GET /capitulos/{id}/sugestoes` (Etapas 6.7, 6.8 e 3.4e).
 
 A rota não grava Elemento nem Frame — a IA sugere, o usuário confirma depois
 pelas rotas de cadastro (Etapa 6.3/6.4). A sugestão em si, porém, é
@@ -1181,3 +1181,148 @@ def teste_livro_nao_conta_sugestao_ja_confirmada_como_pendente(
 
     capitulo = next(c for c in resposta.json()["capitulos"] if c["id"] == capitulo_id)
     assert capitulo["sugestoes_pendentes"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# GET /capitulos/{id}/sugestoes — só leitura, nunca chama a IA (item 6.8)
+# --------------------------------------------------------------------------- #
+
+
+def teste_ler_sugestoes_de_capitulo_nunca_analisado_devolve_vazio(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor = usar_provedor_falso(ProvedorFalso())
+    livro = _livro_importado(cliente)
+
+    resposta = cliente.get(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    # gerado_em nulo é o sinal de "nunca analisado" que o app usa para oferecer "Analisar".
+    assert corpo["gerado_em"] is None
+    assert corpo["elementos"] == []
+    assert corpo["cenas"] == []
+    assert corpo["sugestoes_pendentes_anteriores"] == 0
+    assert provedor.chamadas_de_extracao == []
+
+
+def teste_ler_sugestoes_nao_chama_a_ia_mesmo_sem_nunca_ter_analisado(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """A razão de existir do GET: o POST cobraria uma análise aqui."""
+    provedor = usar_provedor_falso(
+        ProvedorFalso(elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")])
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+
+    for _ in range(3):
+        cliente.get(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
+
+    assert provedor.chamadas_de_extracao == []
+
+
+def teste_ler_sugestoes_nao_precisa_de_chave_nem_de_modelo_configurados(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """O POST responde 422 sem modelo/chave; o GET não depende de nenhum dos dois,
+    porque nem chega perto do provedor."""
+    usar_provedor_falso(ProvedorFalso(erro=ChaveDeApiAusente("sem chave")))
+    livro = _livro_importado(cliente)  # nenhum modelo de extração escolhido
+
+    resposta = cliente.get(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
+
+    assert resposta.status_code == 200
+
+
+def teste_ler_sugestoes_devolve_o_que_o_post_gerou_sem_nova_chamada(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor = usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
+            cenas_sugeridas=[
+                CenaSugerida(
+                    titulo="A partida",
+                    participantes=[ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
+                )
+            ],
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo_id = livro["capitulos"][0]["id"]
+
+    gerada = cliente.post(f"/capitulos/{capitulo_id}/sugestoes").json()
+    lida = cliente.get(f"/capitulos/{capitulo_id}/sugestoes")
+
+    assert lida.status_code == 200
+    assert lida.json() == gerada
+    assert lida.json()["gerado_em"] is not None
+    assert len(provedor.chamadas_de_extracao) == 1  # só o POST chamou a IA
+
+
+def teste_ler_sugestoes_nao_muda_gerado_em(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(ProvedorFalso())
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo_id = livro["capitulos"][0]["id"]
+    gerado_em = cliente.post(f"/capitulos/{capitulo_id}/sugestoes").json()["gerado_em"]
+
+    lida = cliente.get(f"/capitulos/{capitulo_id}/sugestoes").json()
+
+    assert lida["gerado_em"] == gerado_em
+
+
+def teste_ler_sugestoes_recalcula_o_casamento_como_o_post(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """Cadastrar o elemento depois da análise já aparece casado na leitura."""
+    usar_provedor_falso(
+        ProvedorFalso(elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")])
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo_id = livro["capitulos"][0]["id"]
+    cliente.post(f"/capitulos/{capitulo_id}/sugestoes")
+    antes = cliente.get(f"/capitulos/{capitulo_id}/sugestoes").json()["elementos"][0]
+    assert antes["elemento_id"] is None
+
+    jon = cliente.post(
+        f"/livros/{livro['id']}/elementos", json={"tipo": "PERSONAGEM", "nome": "Jon"}
+    ).json()
+
+    lida = cliente.get(f"/capitulos/{capitulo_id}/sugestoes").json()["elementos"][0]
+    assert lida["elemento_id"] == jon["id"]
+    assert lida["casamento_automatico"] is True
+
+
+def teste_ler_sugestoes_conta_as_pendentes_de_capitulos_anteriores(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[
+                ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon"),
+                ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Robb"),
+            ]
+        )
+    )
+    livro = _livro_com_capitulos(cliente, capitulos=2)
+    _escolher_modelo_de_extracao(cliente)
+    cap1, cap2 = livro["capitulos"]
+    cliente.post(f"/capitulos/{cap1['id']}/sugestoes")
+
+    # O capítulo 2 nunca foi analisado, mas o aviso de pendências anteriores já vale.
+    lida = cliente.get(f"/capitulos/{cap2['id']}/sugestoes").json()
+
+    assert lida["gerado_em"] is None
+    assert lida["sugestoes_pendentes_anteriores"] == 2
+
+
+def teste_ler_sugestoes_de_capitulo_inexistente_responde_404(cliente: TestClient) -> None:
+    resposta = cliente.get("/capitulos/9999/sugestoes")
+
+    assert resposta.status_code == 404

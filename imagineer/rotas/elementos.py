@@ -528,6 +528,41 @@ def sugerir_elementos(
     return _sugestoes_de_capitulo(sessao, capitulo, pendentes_anteriores)
 
 
+@rotas_de_capitulo.get(
+    "/{capitulo_id}/sugestoes",
+    response_model=SugestoesDeCapitulo,
+    summary="Lê as sugestões salvas do capítulo, sem chamar a IA",
+)
+def ler_sugestoes(
+    capitulo_id: int,
+    sessao: Session = Depends(obter_sessao),
+) -> SugestoesDeCapitulo:
+    """Devolve o que está **salvo** das sugestões do capítulo — e nunca chama a IA.
+
+    Existe porque o `POST` da mesma rota **gera** (e cobra) quando o capítulo nunca
+    foi analisado. Um leitor que carrega as sugestões ao abrir o capítulo, ou que
+    reabre o painel depois de sair no meio de uma análise, não pode usá-lo: gastaria
+    IA sem ninguém pedir, e duas chamadas simultâneas seriam duas cobranças. Ler não
+    é gerar (item 6.8).
+
+    **A garantia é estrutural**: esta função não declara a dependência do provedor de
+    IA (`obter_provedor`), então não tem como chamá-lo — nem a chave de API nem o
+    modelo de extração precisam estar configurados para ela responder.
+
+    Nunca analisado: `gerado_em` nulo e listas vazias. Já analisado: a mesma resposta
+    do `POST`, inclusive o casamento com `elemento_id` **recalculado** a cada leitura
+    (idempotente; um elemento cadastrado depois já aparece casado). O recálculo só
+    roda quando há sugestão salva, então um capítulo nunca analisado não gera escrita.
+    """
+    capitulo = _buscar_capitulo(sessao, capitulo_id)
+
+    if capitulo.sugestoes_geradas_em is not None:
+        _casar_sugestoes_pendentes(sessao, capitulo_id, capitulo.livro_id)
+
+    pendentes_anteriores = _sugestoes_pendentes_anteriores(sessao, capitulo)
+    return _sugestoes_de_capitulo(sessao, capitulo, pendentes_anteriores)
+
+
 # --------------------------------------------------------------------------- #
 # Funções internas
 # --------------------------------------------------------------------------- #

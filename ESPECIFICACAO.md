@@ -1405,7 +1405,7 @@ O texto do perfil que vai para a IA é montado só com os campos preenchidos (`e
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `POST /capitulos/{id}/sugestoes` | Sugere elementos e cenas (passo 6); `?forcar=true` ignora o cache e chama a IA de novo | **implementado** |
+| `POST /capitulos/{id}/sugestoes` | Sugere elementos e cenas (passo 6); `?forcar=true` ignora o cache e chama a IA de novo. **Gera (e cobra) se o capítulo nunca foi analisado** — para só ler, use o `GET` da mesma rota (item 6.8) | **implementado** |
 | `GET /configuracao/modelos` | Lista os modelos disponíveis no OpenRouter (item 4.3); filtros `somente_com_json`/`somente_nao_moderados`/`ordenar_por_custo` | **implementado** |
 | `GET /configuracao` | A configuração atual: modelos escolhidos, se o **servidor** tem chave (`"ambiente"`/`"ausente"`) | **implementado** |
 | `PUT /configuracao` | Grava modelos e `prioridade_ia`. **Não aceita mais `chave_api_openrouter`** (422) — item 4.3 | **implementado** |
@@ -1447,7 +1447,7 @@ O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado c
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `GET /capitulos/{id}/sugestoes` | **Só leitura** das sugestões já salvas do capítulo — a mesma resposta do `POST`, **sem nunca chamar a IA** | especificado |
+| `GET /capitulos/{id}/sugestoes` | **Só leitura** das sugestões já salvas do capítulo — a mesma resposta do `POST`, **sem nunca chamar a IA** | **implementado** (30/09/2026, 8 testes; a função nem declara a dependência do provedor de IA, então a garantia é estrutural) |
 | `GET /capitulos/{id}/marcadores` | Tudo que o leitor do capítulo precisa desenhar sobre o texto, numa chamada só — **sem chamar a IA** | especificado |
 | `PATCH /frames/{id}` | Passa a aceitar `posicao_no_texto` (item 3.4g) | especificado |
 | `POST /capitulos/{id}/frames` | Passa a aceitar `posicao_no_texto`; com `sugestao_cena_id`, herda a da sugestão | especificado |

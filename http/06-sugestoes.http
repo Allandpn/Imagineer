@@ -1,4 +1,20 @@
+### LÊ as sugestões já salvas do capítulo — sem chamar a IA (item 6.8)
+# Só leitura: nunca chama a IA, nunca cobra, e não precisa de chave nem de
+# modelo_extracao configurados. Capítulo nunca analisado: "gerado_em" nulo e
+# listas vazias. Já analisado: a mesma resposta do POST abaixo (o casamento com
+# elemento_id é recalculado a cada leitura). É o que o app usa para abrir o painel
+# de IA sem arriscar gastar; o POST abaixo só deve ser usado para GERAR.
+GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
+
+> {%
+    client.test("Leu sem chamar a IA", function () {
+        client.assert(response.status === 200, "esperava 200, veio " + response.status);
+    });
+%}
+
 ### Pede à IA os elementos e cenas sugeridos do capítulo (passo 6)
+# ATENÇÃO: se o capítulo nunca foi analisado, isto CHAMA A IA (e cobra). Para
+# só ver o que já existe, use o GET acima.
 # Não grava Elemento nem Frame — é sugestão. A IA sugere uma CENA, não um
 # Frame — o Frame só existe quando o usuário confirma (item 3.4e, divergência
 # registrada: "frame" na sugestão reintroduzia a confusão Cena/Personagem).

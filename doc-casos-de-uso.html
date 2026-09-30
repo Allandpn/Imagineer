@@ -1260,6 +1260,13 @@
         <p class="group-desc">Fase 1 do item 4.4 — identificação de elementos e cenas candidatas, a partir do texto de um capítulo.</p>
 
         <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/capitulos/{capitulo_id}/sugestoes</span><span class="rsummary">Lê as sugestões salvas, sem chamar a IA</span></header>
+          <div class="route-body">
+            <p class="desc">Só leitura: <strong>nunca chama a IA</strong> e não precisa de chave nem de modelo configurados. Devolve a mesma resposta do <code>POST</code> abaixo. Capítulo nunca analisado: <code>gerado_em</code> nulo e listas vazias. Existe porque o <code>POST</code> gera (e cobra) quando o capítulo nunca foi analisado — um leitor não pode usá-lo só para ler.</p>
+          </div>
+        </article>
+
+        <article class="route">
           <header class="rhead"><span class="method post">POST</span><span class="rpath">/capitulos/{capitulo_id}/sugestoes</span><span class="rsummary">Os elementos e cenas sugeridos do capítulo</span></header>
           <div class="route-body">
             <p class="desc">Não grava Elemento nem Frame — quem confirma é o usuário, pelas rotas de Elementos e Frames. A sugestão em si é persistida, em linhas próprias com <code>id</code> estável (item 3.4e): sem <code>forcar=true</code>, o que já está salvo é devolvido sem chamar a IA de novo (a IA não é determinística — evita respostas divergentes a cada leitura). O casamento com <code>elemento_id</code> é sempre recalculado, mesmo servindo do que já está salvo. A IA sugere uma <strong>cena</strong>, nunca um Frame — o Frame só passa a existir quando o usuário confirma (item 3.4e, divergência registrada).</p>
