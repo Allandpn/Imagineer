@@ -1887,6 +1887,35 @@ Nascida de uma conversa com o Allan em 30/09/2026. Hoje as imagens só aparecem 
 
 **A análise vale também em capítulo arquivado** (decisão do Allan, 30/09/2026): o backend não bloqueia, "arquivado" é só organização (item 7.5a, revisão do incremento 6), e a importação erra ao sugerir arquivamento — o usuário não precisa restaurar um capítulo só para analisá-lo.
 
+#### Incremento 9 do app em detalhe — o painel de IA e a lista de sugestões
+
+Regras de negócio, numeradas como **P1 a P15**. O desenho visual (posição exata, animação, ícones) é refinado depois; aqui valem as regras. **Só leitura e análise**: confirmar, ajustar e descartar são do incremento 10.
+
+**O painel e quando ele carrega**
+- **P1 — O texto nunca espera pelo painel.** O capítulo abre e é lido exatamente como no incremento 8; o painel só carrega o que precisa **na primeira vez que é aberto**, e guarda o resultado enquanto a tela de Capítulo existe (não relê a cada abrir e fechar).
+- **P2 — Abrir o painel é sempre uma leitura**: `GET /capitulos/{id}/sugestoes` (item 6.8), que **nunca gera nem cobra**. Quatro estados: **Lendo**, **Nunca analisado** (`gerado_em` nulo), **Pronto** (há sugestões, ou a análise rodou e não achou nada) e **Erro** (motivo + "Tentar de novo").
+- **P3 — O botão de IA.** Canto inferior direito. **Some ao rolar para baixo e reaparece ao rolar para cima**, e fica visível no topo e no fim do texto (item 7.5b). Só a **direção da rolagem** decide, acima de um pequeno limiar, para um tremor do dedo não esconder o botão.
+- **P4 — Celular × tablet.** *(Decisão do Allan, 30/09/2026: o aside só aparece em **paisagem** no tablet, porque um tablet de ~11" em retrato fica em torno de 800 dp, abaixo do limiar. Mantido assim por enquanto; **revisitar quando as imagens entrarem no texto**, para ver se o aside cabe em retrato.)* Em **tela larga** (a partir de ~840 dp), o painel é um **aside à direita**, dividindo a tela com o texto, que continua rolável. Em tela **estreita**, o painel ocupa a **tela inteira**, e **o botão de IA vira "voltar ao texto"**, no mesmo canto. Se o painel está aberto, isso **sobrevive a girar o aparelho**.
+- **P5 — Capítulo arquivado abre o painel** e pode ser analisado (item 7.5b).
+
+**Analisar e Reanalisar — o único ponto que gasta IA**
+- **P6 — "Analisar com IA" só existe quando o capítulo nunca foi analisado.** Chama `POST` **sem** `forcar`. Enquanto roda: estado **Analisando**, o botão fica desabilitado, e a tela diz que pode levar até um minuto. **Nada mais chama o `POST`.**
+- **P7 — "Reanalisar" só existe depois de analisado**, e pede **confirmação**: *"Isso refaz as sugestões ainda não confirmadas e gasta IA. As já confirmadas ficam."* Só então chama `POST` com `forcar=true`.
+- **P8 — Falha na análise não perde nada.** O erro mostra a **mensagem da API** (422: falta chave ou modelo, ou o texto não cabe no modelo; 502: o provedor falhou) e a tela **volta ao estado de antes** — a lista antiga continua ali, ou "Nunca analisado" continua oferecendo o botão. Nunca há **repetição automática**: repetir sozinho seria cobrar duas vezes sem ninguém pedir.
+- **P9 — Sair da tela no meio de uma análise.** O app cancela a espera, mas **o servidor pode terminar e salvar** (a análise não depende de o app continuar ouvindo). Ao reabrir o painel, o `GET` mostra o resultado, ou "Nunca analisado" se não terminou. *(Limite conhecido, registrado no item 6.8: tocar em "Analisar" de novo enquanto o servidor ainda roda a primeira vez pode disparar duas análises.)*
+- **P10 — Tempo de espera próprio.** Uma análise por IA leva de alguns segundos a mais de um minuto, bem além do tempo de espera comum do app (30 s), que a daria como falha enganosamente. **Só esta chamada** tem um tempo de espera maior (180 s); todas as outras seguem com 30 s, para uma falha de conexão continuar aparecendo depressa.
+
+**O que a lista mostra**
+- **P11 — Aviso de pendências anteriores.** Se `sugestoes_pendentes_anteriores > 0`: *"Você tem N sugestões não confirmadas em capítulos anteriores — confirmar primeiro deixa esta análise mais precisa."* **Não bloqueia nada.** Aparece onde ajuda a decidir: antes de analisar e no diálogo de reanalisar.
+- **P12 — Cada elemento** mostra tipo, nome e a identidade (`descricao`), com os **destaques** do item 7.5, na ordem de importância: (a) **"Casado automaticamente — confira"** quando `casamento_automatico` (ninguém revisou esse casamento, item 4.6); (b) **"Casado, mas ainda sem estado neste capítulo"** quando `elemento_id` existe e `estado_id` é nulo (item 3.4e); (c) **"Já cadastrado"** quando `elemento_id` existe e o casamento foi revisado; e, à parte, (d) "mantém o estado conhecido" quando `manter_estado_atual`.
+- **P13 — Cada cena** mostra título, descrição e, **só quando existem**, horário, clima e humor; e os participantes (tipo e nome), com o mesmo destaque de casamento automático.
+- **P14 — Análise que não achou nada** é um resultado, e não um erro: *"A análise não encontrou elementos nem cenas neste capítulo."*, com Reanalisar disponível.
+- **P15 — Nada aqui altera dado.** A lista é **somente leitura** neste incremento; as ações por sugestão chegam no 10.
+
+**Implementado (30/09/2026):** no servidor, `GET /capitulos/{id}/sugestoes` (8 testes, 332 no total); no app, `rede/Sugestoes.kt` (DTOs), `RepositorioDeSugestoes` (ler × analisar, separados de propósito), o interceptador do tempo de espera (`X-Timeout-Leitura`, removido antes de sair), `telas/capitulo/painel/` (`PainelDeIaViewModel`, `RegrasDoPainel` com os destaques, a visibilidade do botão e a decisão aside × tela cheia, e `PainelDeIa`) e a integração em `TelaCapitulo` (botão de IA, aside no tablet, tela cheia no celular, `BackHandler`). **306 testes de unidade no app** (54 novos). **Falta a verificação manual no tablet, com o servidor reconstruído.**
+
+**Testes:** o `ViewModel` do painel (cada estado e transição, P6 a P10, P14), o texto dos destaques (P12), a lógica de mostrar/esconder o botão ao rolar (P3), a decisão aside × tela cheia (P4), desserialização com JSON **real** do backend, e o `MockWebServer` para o `GET`, o `POST`, o `POST ?forcar=true` e o tempo de espera maior.
+
 ### 7.6 Frame
 
 O recorte de um capítulo que vai virar uma imagem — um retrato solo ou uma cena, passo 6.4.
