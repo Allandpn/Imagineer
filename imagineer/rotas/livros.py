@@ -3,6 +3,8 @@
 Cobrem os passos 1 a 4 do fluxo da Etapa 2.
 """
 
+import mimetypes
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import Integer, case, func, select
 from sqlalchemy.orm import Session
@@ -18,15 +20,27 @@ from imagineer.esquemas.livro import (
     LivroDetalhe,
     LivroResumo,
     RespostaImportacao,
+    TextoDeCapitulo,
 )
+from imagineer.esquemas.prompt import MidiaDeImagem, MidiasDoLivro
 from imagineer.ia.provedor import (
     ChaveDeApiAusente,
     ErroDoProvedorIA,
     ModeloNaoEscolhido,
     ProvedorIA,
 )
-from imagineer.modelos import Capitulo, Livro, PerfilRenderizacao, SugestaoDeCena, SugestaoDeElemento
+from imagineer.modelos import (
+    Capitulo,
+    Frame,
+    Imagem,
+    Livro,
+    PerfilRenderizacao,
+    Prompt,
+    SugestaoDeCena,
+    SugestaoDeElemento,
+)
 from imagineer.rotas.configuracao import obter_provedor
+from imagineer.servicos.catalogo_imagens import caminho_absoluto
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.importacao_epub import (
     ArquivoEpubInvalido,
@@ -120,6 +134,88 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
 def abrir_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> LivroDetalhe:
     """O livro com a estrutura de capítulos, sem o texto deles."""
     return _detalhe_do_livro(sessao, _buscar_livro(sessao, livro_id))
+
+
+@rotas.get(
+    "/{livro_id}/textos",
+    response_model=list[TextoDeCapitulo],
+    summary="O texto de todos os capítulos do livro, numa chamada só",
+)
+def baixar_textos(livro_id: int, sessao: Session = Depends(obter_sessao)) -> list[TextoDeCapitulo]:
+    """Existe para "Baixar para ler offline" (itens 7.0a e 6.9).
+
+    O texto de um livro tem ~0,7 MB em mediana (~0,3 MB comprimido), então uma chamada é
+    melhor que uma por capítulo (a mediana é de 50). É uma **otimização**: o app poderia
+    baixar capítulo por capítulo em `GET /capitulos/{id}`. Inclui os capítulos arquivados —
+    "arquivado" é só organização, e quem baixa o livro quer tudo.
+
+    Em ordem de leitura. **Não** faz parte de `GET /livros/{id}`, que continua devolvendo só os
+    metadados dos capítulos (7,5 KB contra 674 KB de texto, item 6.2).
+    """
+    _buscar_livro(sessao, livro_id)
+
+    linhas = sessao.execute(
+        select(Capitulo.id, Capitulo.ordem, Capitulo.texto)
+        .where(Capitulo.livro_id == livro_id)
+        .order_by(Capitulo.ordem)
+    ).all()
+    return [TextoDeCapitulo(capitulo_id=i, ordem=o, texto=t) for i, o, t in linhas]
+
+
+@rotas.get(
+    "/{livro_id}/midias",
+    response_model=MidiasDoLivro,
+    summary="O manifesto das imagens do livro, com o tamanho de cada uma",
+)
+def listar_midias(livro_id: int, sessao: Session = Depends(obter_sessao)) -> MidiasDoLivro:
+    """O que o app precisa baixar para ler o livro offline, e quanto isso ocupa (item 6.9).
+
+    Permite mostrar **"Baixar — 240 MB" antes de começar** (item 7.0a, A4). Cada imagem traz o
+    tamanho do arquivo **original**.
+
+    O tamanho vem da coluna `Imagem.tamanho_em_bytes`, preenchida na importação. Imagens
+    importadas **antes** da coluna existir não têm valor: o tamanho é calculado do arquivo em
+    disco e **gravado** na primeira vez, então a consulta seguinte já o encontra.
+
+    Uma imagem cujo **arquivo sumiu do disco** fica de fora: listá-la faria o download falhar
+    no meio, e `GET /imagens/{id}/arquivo` já responderia 404 para ela.
+    """
+    _buscar_livro(sessao, livro_id)
+
+    linhas = sessao.execute(
+        select(Imagem, Prompt.frame_id)
+        .join(Prompt, Prompt.id == Imagem.prompt_id)
+        .join(Frame, Frame.id == Prompt.frame_id)
+        .join(Capitulo, Capitulo.id == Frame.capitulo_id)
+        .where(Capitulo.livro_id == livro_id)
+        .order_by(Imagem.id)
+    ).all()
+
+    midias: list[MidiaDeImagem] = []
+    gravou = False
+    for imagem, frame_id in linhas:
+        caminho = caminho_absoluto(imagem.caminho_arquivo)
+        if not caminho.is_file():
+            continue
+        if imagem.tamanho_em_bytes is None:
+            imagem.tamanho_em_bytes = caminho.stat().st_size
+            gravou = True
+        tipo, _ = mimetypes.guess_type(caminho.name)
+        midias.append(
+            MidiaDeImagem(
+                imagem_id=imagem.id,
+                prompt_id=imagem.prompt_id,
+                frame_id=frame_id,
+                tamanho_em_bytes=imagem.tamanho_em_bytes,
+                tipo_do_arquivo=tipo or "application/octet-stream",
+            )
+        )
+    if gravou:
+        sessao.commit()
+
+    return MidiasDoLivro(
+        total_em_bytes=sum(m.tamanho_em_bytes for m in midias), imagens=midias
+    )
 
 
 @rotas.patch("/{livro_id}", response_model=LivroDetalhe, summary="Ajusta um livro")

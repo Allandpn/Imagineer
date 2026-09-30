@@ -1477,11 +1477,14 @@ Suporte do servidor ao item 7.0a. Nada aqui muda o que já existe: são acrésci
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| (todas as respostas) | **Compressão gzip** | especificado |
-| `GET /livros`, `GET /livros/{id}` | Passam a trazer `revisao`; o segundo aceita `If-None-Match` e responde `304` | especificado |
-| `GET /livros/{id}/midias` | Manifesto das imagens do livro, com o tamanho de cada uma | especificado |
-| `GET /livros/{id}/textos` | O texto de **todos** os capítulos numa chamada só | especificado |
-| `GET /imagens/{id}/arquivo?tamanho=` | Passa a aceitar tamanhos nomeados; respostas com cache imutável | especificado |
+| (todas as respostas) | **Compressão gzip** (só acima de ~1 KB; imagens ficam de fora) | **implementado** |
+| `GET /livros`, `GET /livros/{id}` | Passam a trazer `revisao`; o segundo aceita `If-None-Match` e responde `304` | especificado (**a próxima peça**) |
+| `GET /livros/{id}/midias` | Manifesto das imagens do livro, com o tamanho de cada uma | **implementado** |
+| `GET /livros/{id}/textos` | O texto de **todos** os capítulos numa chamada só | **implementado** |
+| `GET /imagens/{id}/arquivo` | Cache imutável (`Cache-Control: immutable`) e `ETag`; `Imagem.tamanho_em_bytes` | **implementado** |
+| `GET /imagens/{id}/arquivo?tamanho=` | Tamanhos nomeados (`miniatura`, `leitura`, `original`) | especificado |
+
+**Implementado em 30/09/2026 (primeira metade do contrato, 16 testes; 348 no backend):** compressão, cache imutável e tamanho das imagens, o manifesto de mídias e os textos do livro. Migration `d6e1a3b5c7f2` (`Imagem.tamanho_em_bytes`, nula nas imagens antigas; o manifesto a calcula do disco e a grava na primeira vez). **Ficam para depois:** a `revisao` do livro e os tamanhos nomeados de imagem (`?tamanho=`, que exige gerar e guardar versões reduzidas).
 
 **Já é assim, e fica registrado para não se perder:** `GET /livros/{id}` devolve só os capítulos e seus metadados (id, ordem, título, arquivado, tamanho do texto, sugestões pendentes), **nunca o texto** — 90 vezes menor que as listagens com texto (item 6.2). O texto só vem em `GET /capitulos/{id}`.
 
@@ -1493,7 +1496,7 @@ Suporte do servidor ao item 7.0a. Nada aqui muda o que já existe: são acrésci
 
 **`GET /livros/{id}/textos`** devolve `[{capitulo_id, texto}]` de **todos** os capítulos. Existe para "Baixar para ler offline": o texto de um livro tem ~0,7 MB em mediana (~0,3 MB comprimido), então uma chamada é melhor que 50. É uma **otimização**: sem ela, o app poderia baixar capítulo por capítulo.
 
-**Imagem: tamanhos nomeados e cache imutável.** `GET /imagens/{id}/arquivo` hoje devolve sempre o original (até 25 MB). Passa a aceitar `?tamanho=`: **`miniatura`** (margem do texto e listas), **`leitura`** (imagem entre os parágrafos) ou **`original`** (o padrão, como hoje e para ampliar). Tamanhos **nomeados e em número fixo**, e não uma largura livre: uma largura livre deixaria qualquer cliente gerar versões sem limite e encher o disco. A versão reduzida é gerada uma vez e guardada em disco (nome derivado do arquivo original). As três respostas levam `Cache-Control: public, max-age=31536000, immutable` — seguro porque o arquivo de uma imagem **nunca** muda — e `ETag`. *(Os valores exatos em pixels, como 400 e 1200, ficam para o momento de implementar, depois de ver imagens reais.)* Isto realiza a pendência "imagens reduzidas" já registrada no item 6.8.
+**Imagem: tamanhos nomeados e cache imutável.** `GET /imagens/{id}/arquivo` hoje devolve sempre o original (até 25 MB). Passa a aceitar `?tamanho=`: **`miniatura`** (margem do texto e listas), **`leitura`** (imagem entre os parágrafos) ou **`original`** (o padrão, como hoje e para ampliar). Tamanhos **nomeados e em número fixo**, e não uma largura livre: uma largura livre deixaria qualquer cliente gerar versões sem limite e encher o disco. A versão reduzida é gerada uma vez e guardada em disco (nome derivado do arquivo original). As três respostas levam `Cache-Control: public, max-age=31536000, immutable` — seguro porque o arquivo de uma imagem **nunca** muda — e `ETag`. *(O `FileResponse` do Starlette envia `ETag` e `Last-Modified`, mas **não** responde `304` a `If-None-Match`: isso só o `StaticFiles` faz. Não é necessário: com `immutable` de um ano, um cliente correto nem chega a revalidar, e os ids de imagem nunca mudam.)* *(Os valores exatos em pixels, como 400 e 1200, ficam para o momento de implementar, depois de ver imagens reais.)* Isto realiza a pendência "imagens reduzidas" já registrada no item 6.8.
 
 ---
 

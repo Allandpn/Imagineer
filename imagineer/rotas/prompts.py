@@ -223,7 +223,7 @@ async def importar_imagem(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
         ) from erro
 
-    imagem = Imagem(prompt_id=prompt.id, caminho_arquivo=caminho)
+    imagem = Imagem(prompt_id=prompt.id, caminho_arquivo=caminho, tamanho_em_bytes=len(conteudo))
     sessao.add(imagem)
     sessao.commit()
     sessao.refresh(imagem)
@@ -237,7 +237,13 @@ async def importar_imagem(
 
 @rotas_de_imagem.get("/{imagem_id}/arquivo", summary="Devolve o arquivo da imagem")
 def baixar_imagem(imagem_id: int, sessao: Session = Depends(obter_sessao)) -> FileResponse:
-    """O arquivo de imagem em si, para exibir ou baixar no app."""
+    """O arquivo de imagem em si, para exibir ou baixar no app.
+
+    **Cache imutável** (item 6.9): o arquivo de uma imagem **nunca** muda — o nome é gerado
+    (UUID) e nunca é sobrescrito; trocar a imagem é criar outra. Por isso o cliente pode
+    guardá-la para sempre (`immutable`) sem nunca revalidar. O `ETag` e o `Last-Modified`
+    vêm do próprio `FileResponse`.
+    """
     imagem = _buscar_imagem(sessao, imagem_id)
     caminho = caminho_absoluto(imagem.caminho_arquivo)
     if not caminho.is_file():
@@ -247,7 +253,11 @@ def baixar_imagem(imagem_id: int, sessao: Session = Depends(obter_sessao)) -> Fi
         )
 
     tipo, _ = mimetypes.guess_type(caminho.name)
-    return FileResponse(caminho, media_type=tipo or "application/octet-stream")
+    return FileResponse(
+        caminho,
+        media_type=tipo or "application/octet-stream",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @rotas_de_imagem.delete(

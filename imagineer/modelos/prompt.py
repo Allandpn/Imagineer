@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -101,6 +101,14 @@ class Imagem(Base):
 
     Relativo, e não absoluto, para que mover a pasta de imagens ou trocar o
     Raspberry Pi não invalide todos os registros de uma vez.
+    """
+
+    tamanho_em_bytes: Mapped[int | None] = mapped_column(Integer)
+    """O tamanho do arquivo, em bytes (item 6.9).
+
+    Existe para o app mostrar "Baixar — 240 MB" **antes** de começar um download, sem precisar
+    olhar o disco. Preenchido na importação. Nulo nas imagens importadas antes desta coluna: o
+    manifesto de mídias calcula a partir do arquivo em disco e grava aqui na primeira vez.
     """
 
     data_importacao: Mapped[datetime] = mapped_column(

@@ -16,7 +16,29 @@ class ImagemResumo(BaseModel):
 
     id: int
     prompt_id: int
+    tamanho_em_bytes: int | None = None
     data_importacao: datetime
+
+
+class MidiaDeImagem(BaseModel):
+    """Uma imagem do livro no manifesto de mídias (item 6.9)."""
+
+    imagem_id: int
+    prompt_id: int
+    frame_id: int
+    tamanho_em_bytes: int = Field(description="O tamanho do arquivo **original**, em bytes.")
+    tipo_do_arquivo: str = Field(description='O tipo de mídia, como "image/png".')
+
+
+class MidiasDoLivro(BaseModel):
+    """O manifesto de mídias de um livro: o que o app precisa baixar para ler offline.
+
+    `total_em_bytes` permite mostrar **"Baixar — 240 MB" antes de começar**, e a lista diz o
+    que falta baixar (item 7.0a, A4).
+    """
+
+    total_em_bytes: int
+    imagens: list[MidiaDeImagem]
 
 
 class PromptResumo(BaseModel):

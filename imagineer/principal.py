@@ -9,6 +9,7 @@ Para subir em desenvolvimento:
 """
 
 from fastapi import FastAPI
+from starlette.middleware.gzip import GZipMiddleware
 
 from imagineer.rotas import (
     capitulos,
@@ -29,6 +30,12 @@ aplicacao = FastAPI(
     ),
     version="0.1.0",
 )
+
+# Compressão das respostas (item 6.9). O texto de um capítulo chega a ~110 KB e comprime bem; só
+# vale a pena acima de ~1 KB (abaixo disso o cabeçalho pesa mais que o ganho). As imagens (PNG,
+# JPEG, WebP, GIF) já vêm comprimidas e ficam de fora sozinhas: a lista de tipos excluídos
+# é o padrão do Starlette, então não há nada a configurar para elas.
+aplicacao.add_middleware(GZipMiddleware, minimum_size=1000)
 
 aplicacao.include_router(saude.rotas)
 aplicacao.include_router(livros.rotas)

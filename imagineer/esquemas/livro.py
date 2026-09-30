@@ -46,6 +46,14 @@ class CapituloDetalhe(CapituloResumo):
     texto: str
 
 
+class TextoDeCapitulo(BaseModel):
+    """O texto de um capítulo, para baixar o livro inteiro de uma vez (item 6.9)."""
+
+    capitulo_id: int
+    ordem: int
+    texto: str
+
+
 class CapituloAjuste(BaseModel):
     """Os campos que o app pode ajustar num capítulo.
 

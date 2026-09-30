@@ -742,6 +742,20 @@
         </article>
 
         <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/livros/{livro_id}/textos</span><span class="rsummary">O texto de todos os capítulos, numa chamada só</span></header>
+          <div class="route-body">
+            <p class="desc">Para "Baixar para ler offline" (item 6.9). Devolve <code>[{capitulo_id, ordem, texto}]</code> em ordem de leitura, incluindo os capítulos arquivados. Não faz parte de <code>GET /livros/{id}</code>, que continua devolvendo só os metadados dos capítulos.</p>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method get">GET</span><span class="rpath">/livros/{livro_id}/midias</span><span class="rsummary">O manifesto das imagens do livro</span></header>
+          <div class="route-body">
+            <p class="desc">Devolve <code>total_em_bytes</code> e, para cada imagem, <code>imagem_id</code>, <code>prompt_id</code>, <code>frame_id</code>, <code>tamanho_em_bytes</code> (o original) e <code>tipo_do_arquivo</code>. Permite mostrar "Baixar — 240 MB" antes de começar. Uma imagem cujo arquivo sumiu do disco fica de fora.</p>
+          </div>
+        </article>
+
+        <article class="route">
           <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/livros/{livro_id}</span><span class="rsummary">Ajusta um livro</span></header>
           <div class="route-body">
             <p class="desc">Só os campos presentes no corpo são aplicados.</p>

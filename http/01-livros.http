@@ -22,6 +22,18 @@ Content-Type: application/epub+zip
 ### Lista a biblioteca
 GET {{baseUrl}}/livros
 
+### O texto de TODOS os capítulos do livro, numa chamada só (item 6.9)
+# Existe para "Baixar para ler offline" no app. O texto de um livro tem ~0,7 MB em
+# mediana (~0,3 MB comprimido, porque o servidor agora comprime as respostas com gzip).
+# Inclui os capítulos arquivados. NÃO faz parte de GET /livros/{id}, que continua
+# devolvendo só os metadados dos capítulos.
+GET {{baseUrl}}/livros/{{livroId}}/textos
+
+### O manifesto das imagens do livro, com o tamanho de cada uma (item 6.9)
+# Dá o "Baixar — 240 MB" antes de começar um download. Livro sem imagens devolve
+# total_em_bytes 0 e lista vazia. Uma imagem cujo arquivo sumiu do disco fica de fora.
+GET {{baseUrl}}/livros/{{livroId}}/midias
+
 ### Abre o livro importado (com a estrutura de capítulos, sem o texto)
 # Cada capítulo traz "sugestoes_pendentes" (item 4.6): quantas sugestões de
 # elemento/cena daquele capítulo ainda não foram confirmadas — indicador
