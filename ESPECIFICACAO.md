@@ -753,13 +753,32 @@ Para o app mostrar cada sugestão e cada ilustração **no ponto do capítulo a 
 
 **Por que a IA devolve uma citação e não um número.** Modelos de linguagem contam caracteres mal: um deslocamento pedido direto viria errado com frequência. Citar um trecho do texto que eles acabaram de ler é bem mais confiável, e o servidor, que tem o texto inteiro, transforma a citação em número.
 
-**Como o servidor localiza a citação** (da mais exata para a mais tolerante, parando na primeira que achar): (1) busca exata; (2) busca normalizada, ignorando diferença de maiúsculas, acentos, aspas tipográficas e quebras de linha; (3) busca pelas primeiras palavras da citação; (4) **só para elemento**, busca pelo próprio nome. Se nenhuma achar, `posicao_no_texto` fica nulo. A posição aponta para o **início do parágrafo** que contém o trecho, porque o app desenha ilustrações entre parágrafos.
+**Como o servidor localiza a posição — a ordem depende do tipo** (revisada em 30/09/2026, depois da medição com IA real abaixo):
+- **Elemento: primeiro pelo nome, depois pela citação.** (1) busca **exata** do próprio nome no texto do capítulo — a primeira ocorrência é, por construção, a "primeira menção" que o marcador quer; (2) a mesma busca **normalizada**; (3) se o nome não aparece, a **citação** da IA: exata, normalizada e pelas primeiras palavras.
+- **Cena: só pela citação** (não há nome a buscar): (1) exata; (2) normalizada; (3) pelas primeiras palavras.
+- Se nada achar, `posicao_no_texto` fica nulo. A posição aponta para o **início do parágrafo** que contém o trecho, porque o app desenha ilustrações entre parágrafos.
+- **Normalizar muda o tamanho do texto** (tirar acento, unificar aspas, juntar quebras de linha em espaço), então a busca normalizada **precisa guardar, para cada caractere normalizado, a posição do original de onde ele veio**. Sem esse mapa, uma citação achada no texto normalizado apontaria para o lugar errado do texto real. Isso vale para nome e para citação.
 
 **Por que caractere e não número do parágrafo.** A regra que separa parágrafos mora no app (`dividirEmParagrafos`); se ela mudasse, as imagens andariam de lugar. O deslocamento não depende dessa regra, e o texto do capítulo não muda depois da importação (`PATCH /capitulos` só altera título e `ignorado`).
 
+**Unidade do deslocamento: unidades UTF-16, não caracteres Unicode.** O servidor (Python) conta por caractere Unicode (*code point*), e o app (Kotlin) por unidade UTF-16; um emoji ou símbolo fora do plano básico conta 1 no primeiro e 2 no segundo, e tudo depois dele divergiria. O contrato é **UTF-16**, a contagem de quem consome o número, e o servidor converte ao gravar. Medido no corpus de validação (1124 capítulos): **nenhum** tem caractere fora do plano básico, então hoje a diferença não aparece — mas o contrato precisa dizer, porque o primeiro livro com um emoji a faria aparecer.
+
 **Imagem mostrada no texto: a mais recente.** Um frame pode ter vários prompts e cada prompt várias imagens (item 3.4c). No texto aparece a imagem importada **mais recentemente** entre todas as do frame. Um campo "imagem principal" escolhida pelo usuário (`Frame.imagem_principal_id`) foi cogitado e **adiado**: só vale a pena se a escolha automática incomodar na prática.
 
-**Ainda não validado:** a taxa de acerto da citação com IA real. É o ponto de maior risco desta seção, e o plano B (posição nula) existe por causa dele.
+**Validado com IA real em 30/09/2026 — o que a medição mostrou.** Experimento isolado (não grava nada no banco): 12 capítulos de 4 livros (*A Música do Silêncio*, *O Alienista*, *Perdido em Marte*, *Mistborn*), 2 modelos, 120 sugestões por modelo; o prompt foi um **de teste**, não o de produção. Custo: US$ 0,01 (`openai/gpt-4o-mini`) e US$ 0,11 (`anthropic/claude-haiku-4.5`).
+
+| | gpt-4o-mini | claude-haiku-4.5 |
+|---|---|---|
+| Cena: posição achada pela citação | 100% | 100% |
+| Elemento: posição achada pela citação | 99% | 89% |
+| Citação literal exata (etapa 1) | 93–96% | 82–92% |
+| Elemento: a citação é a **primeira menção** do nome (mesmo parágrafo) | **64%** | **76%** |
+| Elemento: busca pelo **nome** acha a posição | ~97% | — |
+
+- **A ideia central está validada:** a IA copia o trecho quase sempre de forma literal, e o servidor converte em posição; as etapas de tolerância (sem acento, aspas tipográficas) serviram de rede de segurança. O `claude-haiku-4.5` devolveu `null` em 8 de 72 elementos, obedecendo à instrução "na dúvida, null", e a busca pelo nome resgatou 7.
+- **O que mudou no desenho:** para elementos, a citação **nem sempre é a primeira menção** (em 24 a 36% dos casos ela cai em outro parágrafo), enquanto a busca pelo nome acha o elemento em ~97% e é, por construção, a primeira ocorrência. Por isso a ordem acima: **nome primeiro para elementos, citação só como reserva**; para cenas, citação. Com isso a instrução de `trecho_ancora` para elementos deixa de ser o caminho principal.
+- **Ressalvas:** amostra pequena (só português e inglês); prompt de teste; o critério "mesmo parágrafo" é uma aproximação (o nome completo pode aparecer mais tarde que uma menção por epíteto, como "o Sapador"); e mede se o **servidor acha** a posição, não se ela é a que o usuário esperaria ver. **Reavaliar** com o prompt de produção quando a fase 1 for alterada.
+- **Plano B mantido:** posição nula continua válida, e a sugestão continua valendo sem marcador.
 
 #### (c) As duas chaves estrangeiras pendentes
 
@@ -1428,13 +1447,16 @@ O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado c
 
 | Método e caminho | O que faz | Estado |
 |---|---|---|
-| `GET /capitulos/{id}/marcadores` | Tudo que o leitor do capítulo precisa desenhar sobre o texto, numa chamada só | especificado |
+| `GET /capitulos/{id}/sugestoes` | **Só leitura** das sugestões já salvas do capítulo — a mesma resposta do `POST`, **sem nunca chamar a IA** | especificado |
+| `GET /capitulos/{id}/marcadores` | Tudo que o leitor do capítulo precisa desenhar sobre o texto, numa chamada só — **sem chamar a IA** | especificado |
 | `PATCH /frames/{id}` | Passa a aceitar `posicao_no_texto` (item 3.4g) | especificado |
 | `POST /capitulos/{id}/frames` | Passa a aceitar `posicao_no_texto`; com `sugestao_cena_id`, herda a da sugestão | especificado |
 
 **Por que uma rota só.** Para saber quais imagens mostrar, o app teria de listar os frames do capítulo, depois os prompts de cada frame, depois as imagens de cada prompt — uma chamada por frame e outra por prompt. Uma tela de leitura não pode esperar isso.
 
-**Cada marcador traz:** `tipo` (`ELEMENTO` ou `CENA`), `sugestao_id` (nulo se o marcador nasceu à mão), `frame_id` (nulo até existir um frame), `rotulo` (nome do elemento ou título da cena), `posicao_no_texto` (nulo = sem posição), `situacao` e `imagem_id` (a mais recente do frame, ou nulo).
+**Ler não é gerar: `GET /capitulos/{id}/sugestoes`.** Hoje só existe o `POST /capitulos/{id}/sugestoes` (item 6.7), e ele **chama a IA — e cobra — quando o capítulo nunca foi analisado**. Um leitor que carrega marcadores ao abrir o capítulo, ou que reabre o painel depois de sair no meio de uma análise, não pode usá-lo: gastaria IA sem ninguém pedir, e duas chamadas simultâneas seriam duas cobranças. O `GET` devolve o que está salvo no formato de `SugestoesDeCapitulo` (`gerado_em` **nulo = nunca analisado**, listas vazias), recalcula o casamento com `elemento_id` como o `POST` já faz (idempotente), e **nunca** chama o provedor. O `POST` passa a ser **só** o botão "Analisar" / "Reanalisar" do painel. *(Achado ao especificar o incremento 9 do app, 30/09/2026.)* Pendência: duas análises **simultâneas** do mesmo capítulo continuam possíveis no servidor (o app evita desabilitando o botão e lendo o estado ao voltar); uma trava no servidor fica como melhoria.
+
+**Cada marcador traz:** `tipo` (`ELEMENTO` ou `CENA`), **`tipo_do_elemento`** (`PERSONAGEM`, `AMBIENTE`, `OBJETO`, `CRIATURA`, `GRUPO`, `VEICULO` ou `EDIFICACAO` — só nos marcadores de `ELEMENTO`; nulo nos de `CENA`; é o que escolhe o ícone, ver 7.5b), `sugestao_id` (nulo se o marcador nasceu à mão), `frame_id` (nulo até existir um frame), `rotulo` (nome do elemento ou título da cena), `posicao_no_texto` (nulo = sem posição), `situacao` e `imagem_id` (a mais recente do frame, ou nulo).
 
 **`situacao`**, a mesma para os dois tipos: `SUGERIDO` (a sugestão existe e ainda não foi confirmada) → `CONFIRMADO` (virou elemento ou frame) → `PROMPT_PRONTO` (há prompt, falta imagem) → `ILUSTRADO` (há imagem). É o que faz o ícone mostrar onde o usuário parou quando volta de outro app.
 
@@ -1707,7 +1729,7 @@ Aprofundamento das telas 7.4 (Livro) e 7.5 (Capítulo), no mesmo formato do 7.3a
 6. **Livro, só leitura + ignorar capítulo:** a tela de Livro com metadados, lista de capítulos, alternar "ignorado" e navegar para Capítulo, Elementos e Perfis. **Implementado:** `rede/ProvedorDeApi.kt` (o cliente Retrofit compartilhado, extraído do repositório de livros), `rede/RepositorioDeCapitulos.kt`, `telas/livro/` (`LivroViewModel`, `TelaLivro`, `FormatacaoDoLivro`) e `PATCH /capitulos/{id}` na `ApiImagineer`. 138 testes de unidade no app (25 novos), inclusive JSON real de `GET /livros/{id}` e do `PATCH /capitulos` e a corrida entre uma recarga e um alternar em andamento. Falta a verificação manual no tablet.
 7. **Livro, ajustes:** editar título/autor/idioma, definir o perfil de renderização padrão (precisa da lista de perfis) e apagar o livro pela própria tela. Decisões em "Incremento 7 em detalhe". **Implementado:** `LivroAjuste.paraJson()` (campo ausente, valor ou `null` explícito), `rede/PerfilRenderizacao.kt` e `RepositorioDePerfis` (só leitura), `telas/comum/` (`ControleDeRemocao` e `DialogoDeRemocao`, extraídos da Biblioteca e agora compartilhados), e no `LivroViewModel` a edição, a escolha de perfil e a remoção, com o menu ⋮ e os diálogos em `DialogosDoLivro.kt`. **181 testes de unidade no app** (43 novos neste incremento). Falta a verificação manual no tablet.
 8. **Capítulo, só leitura:** o texto rolável do capítulo. Decisões em "Incremento 8 em detalhe". **Implementado:** `CapituloDetalhe` e `GET /capitulos/{id}`, `abrirCapitulo` no `RepositorioDeCapitulos`, e `telas/capitulo/` (`CapituloViewModel` com `dividirEmParagrafos`, e `TelaCapitulo` com `LazyColumn` de parágrafos e texto selecionável). **199 testes de unidade no app** (18 novos). Falta a verificação manual no tablet, sobretudo com um capítulo longo de verdade — a fluidez da rolagem é o que os testes de unidade não medem.
-9. **Capítulo, análise por IA (leitura):** "Analisar com IA" e a lista de sugestões de elementos e cenas, com os destaques do item 7.5. Primeiro incremento que gasta chamada de IA de verdade.
+9. **(Redefinido pela entrega em etapas do item 7.5b, abaixo: o painel de IA e a lista de sugestões, sem posição no texto. Os incrementos 10 e 11 abaixo também passam a seguir aquela ordem.) Capítulo, análise por IA (leitura):** "Analisar com IA" e a lista de sugestões de elementos e cenas, com os destaques do item 7.5. Primeiro incremento que gasta chamada de IA de verdade.
 10. **Capítulo, confirmar sugestões:** confirmar, ajustar ou descartar; cadastrar elemento à mão; estados vigentes.
 11. **Capítulo, frames:** lista de frames do capítulo e "Novo retrato" / "Nova cena" — a ponte para o Bloco C.
 
@@ -1829,10 +1851,11 @@ Nascida de uma conversa com o Allan em 30/09/2026. Hoje as imagens só aparecem 
 **Ideia central.** O capítulo vira o lugar de tudo: lê-se o texto, vê-se onde há uma cena ou um personagem, toca-se no marcador, gera-se o prompt, importa-se a imagem — e ela passa a fazer parte do texto, naquele ponto.
 
 **O leitor.**
-- **Marcadores numa faixa na margem** do parágrafo (não no meio do texto), com **dois ícones diferentes**: um para **personagem/elemento** (primeira menção dele no capítulo, que leva ao retrato) e outro para **cena**. Vários marcadores no mesmo parágrafo se agrupam em um, com o número. Cada ícone mostra a `situacao` (sugerido, confirmado, prompt pronto, ilustrado). Um interruptor no painel liga e desliga os marcadores.
+- **Marcadores numa faixa na margem** do parágrafo (não no meio do texto), com **um ícone diferente para cada tipo** (decisão do Allan, 30/09/2026): **oito** ao todo — um para cada tipo de elemento (`PERSONAGEM`, `AMBIENTE`, `OBJETO`, `CRIATURA`, `GRUPO`, `VEICULO`, `EDIFICACAO`, item 3.4) e um para **cena**. O marcador de elemento marca a primeira menção dele no capítulo e leva ao retrato. Vários marcadores no mesmo parágrafo se agrupam em um, com o número. Cada ícone mostra a `situacao` (sugerido, confirmado, prompt pronto, ilustrado). Um interruptor no painel liga e desliga os marcadores.
 - **Depois de importada, a imagem é desenhada entre os parágrafos**, na posição do marcador, e **ampliável ao toque** (tela cheia, como no 7.7). Aparece a mais recente do frame (item 3.4g). Carregamento por biblioteca de imagens com cache (decisão na Etapa 5).
 - **Sem posição**: marcadores e frames sem `posicao_no_texto` ficam numa faixa "Sem posição" no topo do capítulo; não se perdem.
 - **Ilustrar à mão**: tocar e segurar um parágrafo → "Ilustrar aqui" cria (ou posiciona) um frame ali, para trechos que a IA não sugeriu.
+- **Ícone, cor e rótulo de acessibilidade:** oito ícones parecidos se confundem, então cada tipo leva **ícone e cor próprios**, e cada marcador tem descrição falada ("personagem: Hospius, prompt pronto"). **Ainda a decidir:** o desenho e a cor de cada um, e o que mostrar quando vários marcadores de tipos diferentes caem no mesmo parágrafo (um ícone "vários" com a contagem é a proposta). **Possível filtro por tipo** no painel (o interruptor único de ligar/desligar pode ficar curto com oito tipos) — só se a poluição aparecer na prática.
 - Quantidade de marcadores não é tratada como problema: nos testes do Allan, os capítulos voltaram com poucos personagens. Reavaliar se isso mudar.
 
 **O botão de IA.** Um botão **fixo no canto inferior direito**. **Some ao rolar para baixo e reaparece ao rolar para cima**; também fica visível ao chegar ao topo ou ao fim do capítulo, para não haver um ponto da tela sem acesso a ele. (Um botão arrastável foi cogitado e descartado: obriga a arrastar, e a posição fixa é mais simples e acessível.)
@@ -1853,11 +1876,16 @@ Nascida de uma conversa com o Allan em 30/09/2026. Hoje as imagens só aparecem 
 
 **Arquitetura no app.** O estado da tela de Capítulo vai crescer, e o `LivroViewModel` já tem mais de 600 linhas. Por isso a tela nasce com **dois ViewModels**: um da **leitura** (texto, parágrafos, marcadores) e outro do **painel de IA** (sugestões, geração, importação), que se falam por um **"item selecionado" compartilhado**, no escopo da tela de Capítulo. Os detalhes ficam para o primeiro incremento.
 
-**Entrega em etapas**, cada uma testável no tablet:
-1. Servidor: `trecho_ancora`, `posicao_no_texto` e `GET /capitulos/{id}/marcadores`; botão de gerar sugestões e lista no painel.
-2. App: marcadores na margem, botão de IA e painel (aside/tela), folha de revisão, "Gerar prompt" e copiar.
-3. App: importar a imagem e desenhá-la no texto (biblioteca de imagens, cache, tela cheia); imagens reduzidas no servidor.
-4. Mais adiante, quando o Allan decidir: "Gerar imagem" de verdade.
+**Entrega em etapas** (substitui a lista antiga; cada uma testável no tablet). As posições no texto dependem de trabalho no servidor, então o app **não espera por elas**: as colunas são opcionais, e a lista de sugestões funciona sem posição.
+
+- **Incremento 9 do app — o painel de IA e a lista de sugestões, sem posição no texto.** *Servidor:* `GET /capitulos/{id}/sugestoes` (item 6.8, pequeno e com teste). *App:* o **botão de IA** (canto inferior direito; some ao rolar para baixo, reaparece ao rolar para cima e nas pontas); o **painel** (aside no tablet, tela própria no celular, com o botão de voltar ao texto no mesmo canto); ao abrir o painel, o app **lê** as sugestões salvas (`GET`, sem custo); **"Analisar com IA"** (só quando `gerado_em` é nulo) e **"Reanalisar"** (com aviso de que refaz as sugestões ainda não confirmadas e gasta IA) chamam o `POST`; a **lista** de elementos e cenas com os destaques do item 7.5 (`casamento_automatico`, "casada mas ainda não virou Estado", `sugestoes_pendentes_anteriores`). Erros do provedor (422 de configuração, 502) aparecem com a mensagem da API. **A leitura do texto continua instantânea e não depende de nada disto.**
+- **Incremento 10 do app — revisar e confirmar.** O modal de revisão (resumo e participantes), confirmar/ajustar/descartar, "Gerar prompt" e copiar.
+- **Servidor, em paralelo ou antes do 11:** `trecho_ancora`, `posicao_no_texto` (com nome primeiro para elementos, item 3.4g), `tipo_do_elemento` nos marcadores e `GET /capitulos/{id}/marcadores`.
+- **Incremento 11 do app — os ícones no texto.** Marcadores na margem (um ícone por tipo), "Ilustrar aqui", tocar num marcador abre o painel naquele item.
+- **Incremento 12 do app — imagens no texto.** Importar a imagem e desenhá-la entre os parágrafos (biblioteca de imagens, cache, tela cheia); imagens reduzidas no servidor.
+- **Mais adiante, quando o Allan decidir:** "Gerar imagem" de verdade.
+
+**A análise vale também em capítulo arquivado** (decisão do Allan, 30/09/2026): o backend não bloqueia, "arquivado" é só organização (item 7.5a, revisão do incremento 6), e a importação erra ao sugerir arquivamento — o usuário não precisa restaurar um capítulo só para analisá-lo.
 
 ### 7.6 Frame
 
@@ -1926,7 +1954,7 @@ Acessível de qualquer tela.
 - [x] ~~**Reabrir o item 4.3: `PUT /configuracao` deixa de aceitar `chave_api_openrouter`.**~~ **Implementado** (item 4.3) — header `X-Chave-API-OpenRouter` com precedência sobre a variável de ambiente, coluna removida (migration `c5d8e2f4a6b1`), `PUT` recusa o campo antigo com 422, header vazio conta como ausente. `origem_da_chave` agora é `"ambiente"` ou `"ausente"`. Testado (unitário da resolução + ligação real do header na rota); ainda não exercitado contra o OpenRouter de verdade. Decisões na Etapa 5. Achado no caminho: a listagem alfabética de `migracoes/versions` não mostra qual é a última migration — usar `alembic heads`.
 - [x] ~~Refinar a engenharia do prompt de geração de imagens.~~ **Uma rodada implementada** (item 4.5/4.7): bloco de estética do prompt final separado e estruturado em vez de tecido em prosa; reforço contra linguagem temática residual na sugestão de perfil; `Elemento.imagem_ancora_padrao_id` para mitigar variação de consistência visual entre capítulos distantes e entre ferramentas de geração diferentes. Nenhuma das três mudanças de instrução foi validada com IA real ainda — vale rodar contra o corpus de validação antes de considerar madura. Novas rodadas de refinamento continuam abertas, a pedido de Allan.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).
-- [ ] **Capítulo ilustrado** (item 7.5b; itens 3.4g, 4.4 e 6.8): marcadores de elemento e de cena no texto, botão e painel de IA, imagem importada embutida na posição. **Especificado em 30/09/2026, nada implementado.** Pendências de validação: (a) a taxa de acerto da citação de âncora com IA real (maior risco); (b) o desenho detalhado das abas do painel; (c) o comportamento do aside no tablet e da tela de IA no celular; (d) imagens reduzidas no servidor; (e) o que o OpenRouter oferece para gerar imagem, antes de tirar o botão "Gerar imagem" do estado reservado.
+- [ ] **Capítulo ilustrado** (item 7.5b; itens 3.4g, 4.4 e 6.8): marcadores de elemento e de cena no texto, botão e painel de IA, imagem importada embutida na posição. **Especificado em 30/09/2026, nada implementado.** Pendências de validação: (a) ~~a taxa de acerto da citação de âncora com IA real (maior risco)~~ — **medida em 30/09/2026** (item 3.4g): a posição é achada em ~99% dos casos, e para elementos o nome é melhor que a citação; reavaliar com o prompt de produção; (b) o desenho detalhado das abas do painel; (c) o comportamento do aside no tablet e da tela de IA no celular; (d) imagens reduzidas no servidor; (e) o que o OpenRouter oferece para gerar imagem, antes de tirar o botão "Gerar imagem" do estado reservado.
 - [x] ~~Implementar sugestões persistidas (`SugestaoDeElemento`/`SugestaoDeCena`/`SugestaoDeParticipante`), busca por nome cross-capítulo e confirmação em lote.~~ Concluído — item 3.4e, validado com o caso real do "Sextus Hospius"/"Hospius".
 
 ### Pendências técnicas (achadas revisando a API, ainda sem decisão de implementar)
