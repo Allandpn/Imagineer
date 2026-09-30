@@ -1093,6 +1093,11 @@ Migration `a92e5f1c8d3b`. 4 testes novos (311 no total). Verificado contra `Prov
 | Chave do OpenRouter aceita duas variáveis de ambiente: `CHAVE_API_OPENROUTER` e `IMAGINEER_KEY_OPEN_ROUTER` | Allan já mantém `IMAGINEER_KEY_OPEN_ROUTER` como variável de conta, fora deste projeto. Aceitar as duas (via `AliasChoices` do Pydantic) evita obrigá-lo a renomear algo que já existe no ambiente dele, sem abrir mão do nome em português como principal — é uma exceção pontual à regra de idioma do `CLAUDE.md`, feita conscientemente e só no nome da variável de ambiente, não no código |
 | Chave do OpenRouter sai do banco: só variável de ambiente no servidor, ou header `X-Chave-API-OpenRouter` por chamada (item 4.3) | Revertida a decisão original ("banco tem precedência"). Guardar a chave de cada usuário no banco do servidor não escala para mais de uma pessoa no mesmo backend, e a chave num backup de banco é um vazamento esperando acontecer. O header vale por chamada e nunca é persistido; a coluna foi removida por migration, sem deixar dado morto. `PUT /configuracao` recusa o campo antigo com 422 em vez de ignorá-lo em silêncio, para ninguém achar que salvou. Descartado: manter a coluna sem uso (chave esquecida em backup); aceitar header vazio como erro 400 (quebraria app que manda o header sempre). Custo aceito: trocar a chave **do servidor** volta a exigir SSH |
 | Ícones do Material: dependência `material-icons-extended`, e não só o `core` (app Android, incremento 6) | O conjunto básico não tem "arquivar" nem "restaurar", que o Allan pediu como botões de um toque (pasta com seta). Antes o `extended` tinha sido evitado "por um só desenho"; agora são dois já, e os blocos C, D e E (imagens, copiar prompt, catálogo) vão precisar de mais. Descartado: desenhar `ImageVector` à mão — risco de um caminho errado e trabalho a refazer para cada ícone novo. Custo aceito: o APK de debug fica maior (~33 MB, e o app é de uso pessoal); a versão de release, com o R8, descarta os ícones não usados |
+| O app passa a **guardar livros no aparelho**: Room para o índice, arquivos para o texto e as imagens, em dois níveis (Leve automático, Baixado pedido) — **reverte** a regra "sem cache local" do item 7.0 (30/09/2026) | O app deixou de ser só um gerador de prompts e está virando um leitor de livros: abrir instantâneo e ler sem conexão são o produto. O conteúdo que se guarda (texto do capítulo, arquivo de imagem) **não muda** depois de importado, então não há conflito; o que muda (arquivar, elementos, frames) continua mandando o servidor. A cópia local é **descartável**, o que dispensa migrações delicadas. Descartado: só o cache de imagens do carregador (Coil), que o sistema pode limpar e portanto não garante leitura offline; e guardar o índice em arquivo JSON (perde consultas e integridade). Custo aceito: o app ganha uma dependência (Room) e uma camada nova atrás dos repositórios que já existem (item 7.0a) |
+| **Offline só de leitura**; escrever offline fica de fora (item 7.0a) | Escrever offline exige fila e resolução de conflito entre aparelhos, que é o que encarece uma sincronização; e as ações de IA precisam do servidor de qualquer jeito. Decisão do Allan, 30/09/2026 |
+| **Contas de usuário adiadas**, com quatro preparações agora (chave do cache com servidor e conta; imagens pelo cliente HTTP do app; telas sem assumir usuário único; perfis compartilhados anotados) | Com um usuário só, contas seriam custo sem retorno (mudar cada rota para filtrar por dono); as preparações são quase de graça e evitam refazer o cache e o carregamento de imagens depois. Decisão do Allan, 30/09/2026 |
+| **`revisao` por livro** (contador) para o app saber se algo mudou sem baixar tudo de novo (item 6.9) | Hoje não há coluna de alteração em quase nada. Alternativa descartada: data de alteração em cada tabela (mais colunas e sem a vantagem de um número único por livro) |
+| Imagens em **tamanhos nomeados** (`miniatura`, `leitura`, `original`), e não uma largura livre (item 6.9) | Uma largura livre deixaria qualquer cliente gerar versões sem limite e encher o disco do Raspberry Pi |
 | Extração de elementos dividida em identificação (fase 1) e leitura profunda (fase 2), em vez de uma chamada só | Testado com IA real (`gpt-4o-mini` e `gemini-2.5-flash`) num capítulo de *A Vontade de Muitos*: pedir a descrição de aparência de vários elementos na mesma resposta produziu mistura de atributos entre personagens e, num dos modelos, um elemento inventado. Descrever um elemento por vez, relendo o capítulo de origem, é o que reduz isso — ver item 4.4 |
 | Leitura profunda sobrescreve `EstadoElemento.descricao`, em vez de só alimentar o prompt daquela vez | O livro é a fonte de verdade, e o usuário pode gerar uma cena antes de ter lido o capítulo pessoalmente — não dá para depender da revisão dele como garantia de qualidade. Sobrescrever também beneficia capítulos futuros, que usam "o último estado conhecido" como contexto da fase 1 |
 | `prioridade_ia` (`ECONOMIA`/`QUALIDADE`) como campo de configuração, não parâmetro por chamada | Decisão de custo-vs-qualidade que o usuário quer controlar uma vez, na tela de configuração, e que deve valer para outras decisões parecidas no futuro — não é específica da leitura profunda |
@@ -1466,6 +1471,30 @@ O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado c
 
 **Imagens reduzidas (pendência).** `GET /imagens/{id}/arquivo` devolve o original, que pode ter vários MB. Para a leitura seria melhor uma versão reduzida (por exemplo, um parâmetro `largura`). Fica como pendência na Etapa 8; não bloqueia a primeira entrega.
 
+### 6.9 Contrato para cache e leitura offline — especificado, ainda não implementado
+
+Suporte do servidor ao item 7.0a. Nada aqui muda o que já existe: são acréscimos.
+
+| Método e caminho | O que faz | Estado |
+|---|---|---|
+| (todas as respostas) | **Compressão gzip** | especificado |
+| `GET /livros`, `GET /livros/{id}` | Passam a trazer `revisao`; o segundo aceita `If-None-Match` e responde `304` | especificado |
+| `GET /livros/{id}/midias` | Manifesto das imagens do livro, com o tamanho de cada uma | especificado |
+| `GET /livros/{id}/textos` | O texto de **todos** os capítulos numa chamada só | especificado |
+| `GET /imagens/{id}/arquivo?tamanho=` | Passa a aceitar tamanhos nomeados; respostas com cache imutável | especificado |
+
+**Já é assim, e fica registrado para não se perder:** `GET /livros/{id}` devolve só os capítulos e seus metadados (id, ordem, título, arquivado, tamanho do texto, sugestões pendentes), **nunca o texto** — 90 vezes menor que as listagens com texto (item 6.2). O texto só vem em `GET /capitulos/{id}`.
+
+**Compressão.** O servidor hoje não comprime nada. Texto em português comprime muito bem, e um capítulo chega a ~110 KB sem compressão. É uma linha de configuração (`GZipMiddleware`, só acima de ~1 KB); o cliente HTTP do app descomprime sozinho. Imagens já são comprimidas e não ganham com isso.
+
+**`revisao` (inteiro, por livro).** Um contador que **sobe a cada mudança no que o leitor mostra** daquele livro: importação, `PATCH` de livro, `PATCH` de capítulo (título, arquivado), elemento, estado, frame, prompt, imagem e sugestões. O app guarda a última revisão vista e, ao abrir o livro, só relê a lista se ela mudou (item 7.0a, A8). `GET /livros/{id}` devolve também `ETag` com a revisão e responde `304` a `If-None-Match`, economizando até a lista. **Como subir o contador** é decisão de implementação, com um risco a conhecer: chamar uma função em cada rota que muda algo é fácil de esquecer numa rota nova; ouvir o momento em que o banco grava (*hook* do SQLAlchemy) é mais robusto. Seja qual for, **um teste por rota que altera dado** deve provar que a revisão subiu. Hoje **não existe** coluna de alteração nas tabelas (só `data_importacao` e `sugestoes_geradas_em`), então a revisão é uma coluna nova em `Livro`.
+
+**`GET /livros/{id}/midias`** devolve, para cada imagem do livro: `imagem_id`, `frame_id`, `tamanho_em_bytes` (o original) e o tipo do arquivo. É o que permite ao app mostrar **"Baixar — 240 MB" antes de começar** (item 7.0a, A4) e saber o que falta baixar. Exige que a `Imagem` passe a guardar `tamanho_em_bytes` — coluna nova, preenchida na importação e, para as imagens existentes, a partir do tamanho do arquivo em disco.
+
+**`GET /livros/{id}/textos`** devolve `[{capitulo_id, texto}]` de **todos** os capítulos. Existe para "Baixar para ler offline": o texto de um livro tem ~0,7 MB em mediana (~0,3 MB comprimido), então uma chamada é melhor que 50. É uma **otimização**: sem ela, o app poderia baixar capítulo por capítulo.
+
+**Imagem: tamanhos nomeados e cache imutável.** `GET /imagens/{id}/arquivo` hoje devolve sempre o original (até 25 MB). Passa a aceitar `?tamanho=`: **`miniatura`** (margem do texto e listas), **`leitura`** (imagem entre os parágrafos) ou **`original`** (o padrão, como hoje e para ampliar). Tamanhos **nomeados e em número fixo**, e não uma largura livre: uma largura livre deixaria qualquer cliente gerar versões sem limite e encher o disco. A versão reduzida é gerada uma vez e guardada em disco (nome derivado do arquivo original). As três respostas levam `Cache-Control: public, max-age=31536000, immutable` — seguro porque o arquivo de uma imagem **nunca** muda — e `ETag`. *(Os valores exatos em pixels, como 400 e 1200, ficam para o momento de implementar, depois de ver imagens reais.)* Isto realiza a pendência "imagens reduzidas" já registrada no item 6.8.
+
 ---
 
 ## Etapa 7 — Telas do App (Mobile)
@@ -1504,12 +1533,12 @@ Decisões de arquitetura, tomadas antes de escrever qualquer código Kotlin — 
 
 "Importar livro" (7.3) não é destino próprio — é estado sobreposto à Biblioteca (barra de progresso/diálogo), não uma tela que empilha na navegação. `Prompt.promptId` é opcional: `null` ao gerar um prompt novo a partir do frame, preenchido ao abrir um prompt já existente do histórico. A pilha é hierárquica e simples — Biblioteca → Livro → Capítulo → Frame → Prompt, cada tela empilha a próxima, sem `popUpTo` especial (exceto Importar → Livro, que substitui o estado de importação em vez de empilhar). Elementos do Livro, Perfis de Renderização e Configuração são acessíveis de vários pontos (ícones na barra superior), fora da pilha hierárquica principal.
 
-**Armazenamento local: Jetpack DataStore (Preferences), só pro que precisa persistir hoje.** O app não cacheia livros/elementos/prompts — tudo vem do servidor a cada chamada, já que ele está sempre a uma chamada de distância via Tailscale (item acima). Dois dados salvos localmente, com sensibilidade diferente:
+**(Parcialmente superado pelo item 7.0a: a decisão de não cachear livros mudou em 30/09/2026, quando o app passou a ser também um leitor. O DataStore continua guardando as preferências.) Armazenamento local: Jetpack DataStore (Preferences), só pro que precisa persistir hoje.** O app não cacheia livros/elementos/prompts — tudo vem do servidor a cada chamada, já que ele está sempre a uma chamada de distância via Tailscale (item acima). Dois dados salvos localmente, com sensibilidade diferente:
 
 - **Endereço do servidor** (item acima): dado comum, `DataStore` normal (texto plano) basta.
 - **Chave de API do OpenRouter — nunca armazenada remotamente, de propósito.** Reabriu o item 4.3 do backend, **já implementado**: `PUT /configuracao` não aceita mais `chave_api_openrouter` (422), a coluna foi removida do banco e o header `X-Chave-API-OpenRouter` passou a valer em toda rota de IA. A única forma persistente de configurar a chave no servidor passa a ser a variável de ambiente do `.env` no próprio Raspberry Pi (via SSH — hoje já existe como opção, item 4.3), pro uso pessoal do Allan. Para um uso futuro com mais de um usuário, cada um guardaria a própria chave só no celular, nunca no servidor. No app, a chave é um **segredo**, não um dado comum — guardada em `EncryptedSharedPreferences` (ou a variante criptografada do DataStore, biblioteca `androidx.security.crypto`, baseada em Tink), não em texto plano. Toda chamada que envolve IA manda a chave no header `X-Chave-API-OpenRouter`, quando o usuário tiver configurado uma no app; o servidor nunca persiste esse valor — nem em banco, nem em log.
 
-**Erro/offline: sem cache local, tela de erro com "tentar de novo".** Coerente com a decisão de não cachear dado nenhum localmente (item acima) — o app sempre depende do servidor, então sem servidor não há o que mostrar mesmo. Qualquer chamada que falhar (timeout, sem conexão, Pi desligado, Tailscale desconectado) mostra uma mensagem clara ("não consegui falar com o servidor") com um botão pra tentar de novo, em vez de simular um modo offline com dado desatualizado — que introduziria sincronização e conflito sem necessidade real pro uso de hoje.
+**(Superado pelo item 7.0a para **leitura**: sem conexão, o que já foi lido ou baixado abre. Vale ainda para as **ações que exigem o servidor**.) Erro/offline: sem cache local, tela de erro com "tentar de novo".** Coerente com a decisão de não cachear dado nenhum localmente (item acima) — o app sempre depende do servidor, então sem servidor não há o que mostrar mesmo. Qualquer chamada que falhar (timeout, sem conexão, Pi desligado, Tailscale desconectado) mostra uma mensagem clara ("não consegui falar com o servidor") com um botão pra tentar de novo, em vez de simular um modo offline com dado desatualizado — que introduziria sincronização e conflito sem necessidade real pro uso de hoje.
 
 **Design visual: Material 3 puro, sem tema customizado.** Usa os componentes e cores padrão do próprio design system do Android/Compose (`MaterialTheme` sem paleta customizada), incluindo cor dinâmica (Material You — segue o papel de parede do sistema, Android 12+) e tema claro/escuro automático, seguindo a preferência do sistema. Menos decisão de design pra tomar agora, foco no funcional — trocar por um tema customizado depois é direto, o Material 3 foi feito pra isso.
 
@@ -1524,6 +1553,85 @@ Decisões de arquitetura, tomadas antes de escrever qualquer código Kotlin — 
 - **Bloco E — Gestão Transversal**: 7.8 (Elementos), 7.9 (Perfis de Renderização), 7.10 (Configuração — já reflete a chave de API como segredo local, item acima).
 
 Os wireframes são clicáveis (Biblioteca → Livro → Capítulo → Frame → Prompt, mais os ícones de Elementos/Perfis/Configuração na barra) — dá pra navegar a jornada inteira dentro do Artifact antes de aprofundar tela por tela. **Próximo passo, ainda não feito**: revisar os wireframes e aprofundar bloco a bloco (detalhes de cada tela, estados de erro/vazio, antes de escrever qualquer Kotlin).
+
+### 7.0a Armazenamento local e sincronização — especificado, ainda não implementado
+
+**Como nasceu (30/09/2026).** O Allan percebeu que o app deixou de ser só um gerador de prompts de imagem: está virando um **leitor de livros completo**, no estilo do Kindle, em que se lê sem conexão e os livros e as imagens acompanham o usuário entre aparelhos. Testando no tablet e no celular ao mesmo tempo, viu que o que se arquiva em um aparece no outro — e pediu que o uso offline e a sincronização fossem alinhados **agora**, antes de as imagens entrarem no texto, para não complicar depois. Esta seção é esse alinhamento. **Nenhum código foi escrito.**
+
+**O que já é verdade hoje** (verificado no código):
+- **O servidor é a única fonte da verdade**, e é por isso que dois aparelhos já enxergam o mesmo estado. Para uso **online** com vários aparelhos, **não há nada a construir**.
+- **As imagens ficam só no servidor**: arquivos em disco (volume do Docker), só o caminho no banco, nome gerado (UUID, nunca sobrescrito), limite de 25 MB por imagem (item 6.6). A tabela `Imagem` **não guarda tamanho** nem dimensões.
+- **O app não guarda nada** além do endereço do servidor (DataStore).
+- **O servidor não tem data de alteração** em quase nada (só `data_importacao` e `sugestoes_geradas_em`) e **não comprime** as respostas.
+- **Medido no corpus de validação (22 livros):** o texto de um livro tem, em mediana, **677 KB** (máximo 2,2 MB), com 50 capítulos em mediana; a biblioteca inteira soma **17,5 MB de texto**. O peso está nas **imagens** (tamanho real ainda não medido; suposição de 1 a 4 MB cada).
+- **`GET /livros/{id}` já devolve só os metadados dos capítulos**, sem o texto (item 6.2, medido: 7,5 KB contra 674 KB de texto num livro de 84 capítulos). O texto só vem em `GET /capitulos/{id}`, ao abrir o capítulo.
+
+**A ideia que organiza tudo: separar o que muda do que não muda.**
+
+| Tipo | Exemplos | Regra |
+|---|---|---|
+| **Imutável e volumoso** | texto do capítulo; arquivo de imagem | Pode ser guardado no aparelho **sem risco de conflito**: o conteúdo não muda depois de importado (`PATCH /capitulos` só altera título e `ignorado`; o arquivo de imagem tem nome único e nunca é sobrescrito) |
+| **Mutável e pequeno** | arquivar, metadados, elementos, frames, prompts, sugestões | **Continua mandando o servidor**; o aparelho só guarda a última cópia vista |
+
+**Decisões do Allan (30/09/2026):**
+1. **Offline é só de leitura.** Não se escreve offline: nada de fila de alterações nem resolução de conflito entre aparelhos — é isso que torna a sincronização cara. As ações de IA (analisar, gerar prompt, importar imagem) precisam do servidor de qualquer jeito.
+2. **O índice local é um banco simples (Room)**, e o texto e as imagens ficam em **arquivos** privados do app. Isto **reverte** a regra "sem Room" do item 7.0 e do `CLAUDE.md` do app.
+3. **Dois níveis**, como o YouTube ou o Spotify (ver abaixo).
+4. **Contas de usuário ficam para depois**, com as quatro preparações abaixo.
+5. **A rota do livro devolve só os capítulos e seus metadados**, sem o conteúdo — o que, como visto, **já é o caso**; o conteúdo vem só ao abrir o capítulo.
+
+**Os dois níveis** (proposta do Allan, refinada):
+
+| | **Leve — automático** | **Baixado — pedido pelo usuário** |
+|---|---|---|
+| Quando | Ao entrar no livro e ao ler | Botão **"Baixar para ler offline"**, por livro |
+| O que guarda | Lista de capítulos e metadados; o **texto** do que se lê (e o do próximo capítulo, antes de o usuário chegar lá); as **miniaturas** das imagens vistas | **Tudo**: o texto de todos os capítulos e **todas as imagens em tamanho real** |
+| Garantia | **Melhor esforço**: pode ser limpo para liberar espaço | **Garantido**: só sai quando o usuário remove |
+| Custo em disco | Pequeno (texto de um livro: ~0,7 MB) | Grande (as imagens; pode passar de 100 MB por livro) |
+
+**Regras (A1 a A15).**
+- **A1 — Abrir um livro é instantâneo.** Mostra na hora o que já está no aparelho e **revalida em segundo plano** pela revisão do livro (item 6.9). Sem conexão, usa o que tem; sem nada local e sem conexão, diz que precisa de conexão. *(Isto atende à sugestão do Allan de baixar o mínimo ao entrar no livro: só a lista de capítulos e metadados, nunca o conteúdo.)*
+- **A2 — Abrir um capítulo: primeiro o aparelho.** Se o texto está no aparelho, abre **sem rede**; senão baixa, guarda e abre. Ao abrir o capítulo N, o app **baixa o N+1 em segundo plano** — o leitor nunca espera na virada de página.
+- **A3 — Imagens: sempre pelo repositório local.** As telas pedem a imagem a um repositório que devolve um **arquivo local**, baixando só se faltar: **miniatura primeiro; o tamanho real só ao ampliar** (ou se o livro estiver "Baixado"). Esta regra precisa valer **desde o primeiro pixel** da exibição de imagens (incremento 12): se a imagem nascer buscando direto da rede, ela teria de ser refeita quando o offline chegar.
+- **A4 — "Baixar para ler offline"** baixa o texto de **todos** os capítulos e **todas as imagens em tamanho real**. **Antes de começar, mostra o tamanho total** ("Baixar — 240 MB"), calculado pelo manifesto de mídias (item 6.9), e por padrão **só em Wi-Fi**. Tem progresso, pode ser **pausado e cancelado**, e **retoma** de onde parou. O livro fica marcado como **"Baixado"**, com a data.
+- **A5 — Cada arquivo é gravado inteiro ou não é gravado.** Um download interrompido nunca deixa um arquivo pela metade que pareça pronto.
+- **A6 — Livro "Baixado" continua baixado.** Se o servidor ganhar imagens novas, elas entram na fila e são baixadas quando houver conexão (em Wi-Fi).
+- **A7 — Sem conexão, só se lê.** Ficam **indisponíveis**, com um aviso claro de "sem conexão": arquivar/restaurar, editar o livro, o perfil padrão, apagar, importar, e todo o painel de IA (analisar, gerar prompt, importar imagem). O app mostra um **indicador de que está offline**, e o que depende do servidor não finge que funcionou.
+- **A8 — Revisão.** Se a revisão do livro mudou, relê **só** a lista de capítulos e os metadados. O texto e as imagens **não precisam de revalidação**: os ids deles são imutáveis.
+- **A9 — Livro apagado no servidor.** Ao revalidar, se o livro não existe mais (404), o app **oferece** apagar a cópia local — **nunca apaga sozinho**.
+- **A10 — A cópia local é descartável.** O servidor guarda tudo; o que está no aparelho pode ser apagado e baixado de novo sem perda. Por isso, se o índice local corromper ou mudar de formato entre versões do app, a resposta é **apagar e reconstruir**, e não escrever migrações delicadas.
+- **A11 — Espaço sob controle.** Uma tela mostra, **por livro**, quanto está no nível Leve e quanto está Baixado, com "Limpar cache" (só o Leve) e "Remover download" (só o Baixado). O nível Leve tem uma **cota** e é limpo do mais antigo para o mais novo; o Baixado nunca é limpo sozinho.
+- **A12 — Fora do backup automático do Android.** Hoje o app permite backup (`allowBackup`); centenas de MB de imagens não podem ir para a nuvem do Google. Os arquivos de texto e imagem entram na regra de exclusão.
+- **A13 — Arquivos privados do app**, inacessíveis a outros aplicativos.
+- **A14 — Importar uma imagem já deixa uma cópia local.** O arquivo que o usuário escolheu na galeria já está no aparelho: depois do envio, o app o guarda como cópia local em vez de baixá-lo de volta.
+- **A15 — Nada aqui altera o que o servidor guarda.**
+
+**Preparação para contas de usuário** (decisão: contas ficam para depois; estas quatro são baratas agora e evitam refazer depois):
+- **a) A chave do cache inclui o servidor e a conta.** Hoje a conta é sempre a mesma; o espaço para ela já existe, então um segundo usuário nunca enxerga os livros do primeiro.
+- **b) As imagens são carregadas pelo cliente HTTP do app**, e não por um endereço solto: uma imagem atrás de login só abre se a requisição levar a credencial. O carregador de imagens usa o mesmo `OkHttpClient` do app.
+- **c) As telas novas não assumem que o usuário é único.**
+- **d) Os perfis de renderização hoje são compartilhados entre livros**; com contas, será preciso decidir de quem eles são. Fica registrado para essa época.
+
+**Riscos e como ficam mitigados.**
+
+| Risco | Mitigação |
+|---|---|
+| Cache desatualizado | Revisão por livro (A8); texto e imagem têm id imutável |
+| Disco cheio | Tamanho por livro e cota do nível Leve (A11) |
+| Download interrompido | Arquivo inteiro ou nada, e retomada (A4, A5) |
+| Livro apagado no servidor | Conferir ao abrir e oferecer apagar a cópia (A9) |
+| Índice local corrompido ou de formato antigo | A cópia é descartável (A10) |
+| Backup automático inchado | Exclusão dos arquivos (A12) |
+| Dois aparelhos importando imagem ao mesmo tempo | Sem conflito: cada importação cria uma imagem nova |
+
+**Ordem de entrega e tamanho relativo** (não são estimativas de tempo; "incremento" é o tamanho dos que já fizemos). Os incrementos 10 e 11 do capítulo ilustrado **não dependem** desta seção e podem seguir em paralelo.
+1. **Servidor (contrato do item 6.9)**: compressão; imagens com cache imutável, tamanhos nomeados e `tamanho_em_bytes`; manifesto de mídias; textos do livro numa chamada; revisão do livro. *Pequeno a médio.*
+2. **App — índice Room e texto no aparelho**, atrás do repositório de capítulos que já existe, **sem mexer nas telas** (A1, A2, A8, A10). *Médio.* Já entrega a abertura **instantânea** do capítulo.
+3. **App — imagens pelo repositório local** (A3), **junto do incremento 12**. *Médio.*
+4. **App — "Baixar para ler offline"**, tamanho em disco e indicador de "sem conexão" (A4 a A7, A9, A11, A12). *Médio a grande.*
+5. **Contas de usuário.** *Grande, no backend; pequeno no app.* Depois.
+
+**Fora do escopo:** escrever offline (fila e conflito); contas (só a preparação); **posição de leitura sincronizada entre aparelhos** (como o Kindle faz — é um campo pequeno e aditivo, que cabe depois); geração de imagem pelo app.
 
 ### 7.1 Mapa de navegação
 
@@ -1983,6 +2091,7 @@ Acessível de qualquer tela.
 - [x] ~~**Reabrir o item 4.3: `PUT /configuracao` deixa de aceitar `chave_api_openrouter`.**~~ **Implementado** (item 4.3) — header `X-Chave-API-OpenRouter` com precedência sobre a variável de ambiente, coluna removida (migration `c5d8e2f4a6b1`), `PUT` recusa o campo antigo com 422, header vazio conta como ausente. `origem_da_chave` agora é `"ambiente"` ou `"ausente"`. Testado (unitário da resolução + ligação real do header na rota); ainda não exercitado contra o OpenRouter de verdade. Decisões na Etapa 5. Achado no caminho: a listagem alfabética de `migracoes/versions` não mostra qual é a última migration — usar `alembic heads`.
 - [x] ~~Refinar a engenharia do prompt de geração de imagens.~~ **Uma rodada implementada** (item 4.5/4.7): bloco de estética do prompt final separado e estruturado em vez de tecido em prosa; reforço contra linguagem temática residual na sugestão de perfil; `Elemento.imagem_ancora_padrao_id` para mitigar variação de consistência visual entre capítulos distantes e entre ferramentas de geração diferentes. Nenhuma das três mudanças de instrução foi validada com IA real ainda — vale rodar contra o corpus de validação antes de considerar madura. Novas rodadas de refinamento continuam abertas, a pedido de Allan.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).
+- [ ] **Armazenamento local e sincronização** (item 7.0a; contrato do servidor no item 6.9). **Especificado em 30/09/2026, nada implementado.** Offline só de leitura; Room para o índice; dois níveis (Leve e Baixado); revisão por livro; imagens em tamanhos nomeados; contas de usuário adiadas com quatro preparações. Ordem: contrato do servidor → índice e texto no aparelho → imagens pelo repositório local (junto do incremento 12) → "Baixar para ler offline". Pendências: tamanho real das imagens geradas (não medido); valores em pixels dos tamanhos nomeados; como subir a `revisao` (função por rota × *hook* do banco); cota padrão do nível Leve.
 - [ ] **Capítulo ilustrado** (item 7.5b; itens 3.4g, 4.4 e 6.8): marcadores de elemento e de cena no texto, botão e painel de IA, imagem importada embutida na posição. **Especificado em 30/09/2026, nada implementado.** Pendências de validação: (a) ~~a taxa de acerto da citação de âncora com IA real (maior risco)~~ — **medida em 30/09/2026** (item 3.4g): a posição é achada em ~99% dos casos, e para elementos o nome é melhor que a citação; reavaliar com o prompt de produção; (b) o desenho detalhado das abas do painel; (c) o comportamento do aside no tablet e da tela de IA no celular; (d) imagens reduzidas no servidor; (e) o que o OpenRouter oferece para gerar imagem, antes de tirar o botão "Gerar imagem" do estado reservado.
 - [x] ~~Implementar sugestões persistidas (`SugestaoDeElemento`/`SugestaoDeCena`/`SugestaoDeParticipante`), busca por nome cross-capítulo e confirmação em lote.~~ Concluído — item 3.4e, validado com o caso real do "Sextus Hospius"/"Hospius".
 
