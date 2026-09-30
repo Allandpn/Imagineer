@@ -83,13 +83,9 @@ class Configuracao(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False, default=ID_UNICO)
 
-    chave_api_openrouter: Mapped[str | None] = mapped_column(String(200))
-    """Chave cadastrada pelo app. Sobrepõe a variável de ambiente (item 4.3).
-
-    Existe porque o servidor roda num Raspberry Pi: trocar de chave não deveria
-    exigir SSH, editar o ``.env`` e reiniciar o container. Quem preferir só a
-    variável de ambiente nunca preenche este campo.
-    """
+    # Não há coluna para a chave de API, de propósito (item 4.3): a chave do
+    # servidor vem só da variável de ambiente, e a de cada usuário chega por
+    # header a cada chamada, sem nunca ser guardada.
 
     modelo_extracao: Mapped[str | None] = mapped_column(String(200))
     """Modelo usado para sugerir elementos e estados (passo 6 do fluxo)."""

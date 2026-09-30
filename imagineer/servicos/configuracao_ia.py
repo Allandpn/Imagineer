@@ -1,14 +1,14 @@
 """De onde vem a chave e qual modelo usar (item 4.3 da especificação).
 
-A chave de API pode vir de dois lugares: da variável de ambiente
-``CHAVE_API_OPENROUTER`` ou do banco, cadastrada pelo app. **O banco tem
-precedência**, porque é a fonte que o usuário acabou de mexer — se ele cadastrou
-uma chave pela tela, é essa que ele espera que valha.
+A chave de API pode vir de dois lugares, nesta ordem de precedência:
 
-A variável de ambiente existe para o sistema subir já configurado e para nunca
-obrigar a chave a passar pelo banco. O cadastro pelo app existe porque o servidor
-roda num Raspberry Pi: trocar de chave não deveria exigir SSH e reiniciar o
-container.
+1. o header ``X-Chave-API-OpenRouter`` da chamada — a chave pessoal de quem usa o
+   app, guardada só no celular;
+2. a variável de ambiente ``CHAVE_API_OPENROUTER`` — a chave do próprio servidor.
+
+**O banco nunca guarda a chave.** Guardar a chave de cada usuário no servidor não
+escala para mais de uma pessoa no mesmo backend, e a chave num backup de banco é
+um vazamento esperando acontecer. O header vale só para a chamada em curso.
 """
 
 from dataclasses import dataclass
@@ -27,7 +27,7 @@ class ChaveResolvida:
 
     valor: str | None
     origem: str
-    """``"banco"``, ``"ambiente"`` ou ``"ausente"`` — nunca a chave em si."""
+    """``"cabecalho"``, ``"ambiente"`` ou ``"ausente"`` — nunca a chave em si."""
 
 
 def obter_ou_criar(sessao: Session) -> Configuracao:
@@ -45,11 +45,16 @@ def obter_ou_criar(sessao: Session) -> Configuracao:
     return configuracao
 
 
-def resolver_chave(sessao: Session) -> ChaveResolvida:
-    """Decide qual chave usar, e informa a origem sem revelar o valor."""
-    do_banco = (obter_ou_criar(sessao).chave_api_openrouter or "").strip()
-    if do_banco:
-        return ChaveResolvida(valor=do_banco, origem="banco")
+def resolver_chave(cabecalho: str | None = None) -> ChaveResolvida:
+    """Decide qual chave usar, e informa a origem sem revelar o valor.
+
+    ``cabecalho`` é o valor de ``X-Chave-API-OpenRouter``. Ausente, vazio ou só
+    com espaços conta como ausente — um app que manda o header sempre, mesmo sem
+    ter chave própria, não pode quebrar por isso.
+    """
+    do_cabecalho = (cabecalho or "").strip()
+    if do_cabecalho:
+        return ChaveResolvida(valor=do_cabecalho, origem="cabecalho")
 
     do_ambiente = (obter_configuracoes().chave_api_openrouter or "").strip()
     if do_ambiente:
@@ -58,11 +63,12 @@ def resolver_chave(sessao: Session) -> ChaveResolvida:
     return ChaveResolvida(valor=None, origem="ausente")
 
 
-def construir_provedor(sessao: Session) -> ProvedorIA:
-    """Monta o provedor de IA com a chave que vale agora.
+def construir_provedor(cabecalho: str | None = None) -> ProvedorIA:
+    """Monta o provedor de IA com a chave que vale para esta chamada.
 
-    As rotas dependem desta função, e não de uma instância global. É o que permite
-    aos testes substituírem o provedor inteiro por um falso, e o que faz uma troca
-    de chave valer no pedido seguinte sem reiniciar o serviço.
+    As rotas dependem desta função (via ``obter_provedor``), e não de uma
+    instância global. É o que permite aos testes substituírem o provedor inteiro
+    por um falso, e o que faz uma troca de chave valer no pedido seguinte sem
+    reiniciar o serviço.
     """
-    return ProvedorOpenRouter(chave_api=resolver_chave(sessao).valor)
+    return ProvedorOpenRouter(chave_api=resolver_chave(cabecalho).valor)

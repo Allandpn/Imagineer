@@ -1020,11 +1020,10 @@ def teste_gravar_prioridade_ia(cliente: TestClient) -> None:
     assert cliente.get("/configuracao").json()["prioridade_ia"] == "QUALIDADE"
 
 
-def teste_gravar_chave_e_modelos(cliente: TestClient) -> None:
+def teste_gravar_modelos(cliente: TestClient) -> None:
     resposta = cliente.put(
         "/configuracao",
         json={
-            "chave_api_openrouter": "sk-de-teste",
             "modelo_extracao": "algum/modelo",
             "modelo_prompt": "outro/modelo",
             "modelo_perfil": "terceiro/modelo",
@@ -1033,8 +1032,6 @@ def teste_gravar_chave_e_modelos(cliente: TestClient) -> None:
 
     assert resposta.status_code == 200
     corpo = resposta.json()
-    assert corpo["tem_chave_api"] is True
-    assert corpo["origem_da_chave"] == "banco"
     assert corpo["modelo_extracao"] == "algum/modelo"
     assert corpo["modelo_prompt"] == "outro/modelo"
     assert corpo["modelo_perfil"] == "terceiro/modelo"
@@ -1053,67 +1050,44 @@ def teste_modelo_perfil_e_independente_do_modelo_de_extracao(cliente: TestClient
     assert corpo["modelo_perfil"] == "caro/modelo"
 
 
-def teste_a_chave_nunca_sai_na_resposta(cliente: TestClient) -> None:
+def teste_put_recusa_o_campo_antigo_da_chave(cliente: TestClient) -> None:
+    """Item 4.3: a chave não passa mais por aqui. Recusar (422) em vez de
+    ignorar em silêncio — senão o usuário acharia que a chave foi salva."""
+    resposta = cliente.put("/configuracao", json={"chave_api_openrouter": "sk-secreta"})
+
+    assert resposta.status_code == 422
+    # E nada foi gravado: a configuração continua sem chave.
+    assert cliente.get("/configuracao").json()["tem_chave_api"] is False
+
+
+def teste_a_chave_do_ambiente_nunca_sai_na_resposta(
+    cliente: TestClient, monkeypatch
+) -> None:
     """Uma chave que sai do servidor vaza em log, em cache ou em captura de tela."""
-    cliente.put("/configuracao", json={"chave_api_openrouter": "sk-secreta"})
+    from imagineer import configuracao as modulo_de_configuracao
 
-    for resposta in (cliente.get("/configuracao"), cliente.put("/configuracao", json={})):
-        assert "sk-secreta" not in resposta.text
-        assert "chave_api_openrouter" not in resposta.json()
+    obter = modulo_de_configuracao.obter_configuracoes
+    obter.cache_clear()
+    monkeypatch.setenv("CHAVE_API_OPENROUTER", "sk-secreta")
+    try:
+        for resposta in (
+            cliente.get("/configuracao"),
+            cliente.put("/configuracao", json={}),
+        ):
+            assert "sk-secreta" not in resposta.text
+            assert "chave_api_openrouter" not in resposta.json()
+    finally:
+        obter.cache_clear()
 
 
-def teste_gravar_so_o_modelo_nao_apaga_a_chave(cliente: TestClient) -> None:
+def teste_gravar_so_um_modelo_nao_apaga_os_outros(cliente: TestClient) -> None:
     """Só o que vem no corpo é aplicado."""
-    cliente.put("/configuracao", json={"chave_api_openrouter": "sk-de-teste"})
+    cliente.put("/configuracao", json={"modelo_prompt": "um/modelo"})
 
     resposta = cliente.put("/configuracao", json={"modelo_extracao": "novo/modelo"})
 
-    assert resposta.json()["tem_chave_api"] is True
+    assert resposta.json()["modelo_prompt"] == "um/modelo"
     assert resposta.json()["modelo_extracao"] == "novo/modelo"
-
-
-def teste_chave_vazia_apaga_o_cadastro(cliente: TestClient) -> None:
-    """É assim que se desfaz um cadastro e devolve a vez à variável de ambiente."""
-    cliente.put("/configuracao", json={"chave_api_openrouter": "sk-de-teste"})
-
-    resposta = cliente.put("/configuracao", json={"chave_api_openrouter": ""})
-
-    assert resposta.json()["tem_chave_api"] is False
-    assert resposta.json()["origem_da_chave"] == "ausente"
-
-
-def teste_chave_do_ambiente_e_usada_quando_o_banco_nao_tem(
-    cliente: TestClient, monkeypatch
-) -> None:
-    """A variável de ambiente faz o sistema subir já configurado."""
-    from imagineer import configuracao as modulo_de_configuracao
-
-    obter = modulo_de_configuracao.obter_configuracoes
-    obter.cache_clear()
-    monkeypatch.setenv("CHAVE_API_OPENROUTER", "sk-do-ambiente")
-    try:
-        resposta = cliente.get("/configuracao")
-        assert resposta.json()["tem_chave_api"] is True
-        assert resposta.json()["origem_da_chave"] == "ambiente"
-        assert "sk-do-ambiente" not in resposta.text
-    finally:
-        obter.cache_clear()
-
-
-def teste_chave_do_banco_tem_precedencia_sobre_o_ambiente(
-    cliente: TestClient, monkeypatch
-) -> None:
-    """É a fonte que o usuário acabou de mexer, então é a que ele espera que valha."""
-    from imagineer import configuracao as modulo_de_configuracao
-
-    obter = modulo_de_configuracao.obter_configuracoes
-    obter.cache_clear()
-    monkeypatch.setenv("CHAVE_API_OPENROUTER", "sk-do-ambiente")
-    try:
-        cliente.put("/configuracao", json={"chave_api_openrouter": "sk-do-banco"})
-        assert cliente.get("/configuracao").json()["origem_da_chave"] == "banco"
-    finally:
-        obter.cache_clear()
 
 
 def teste_chave_aceita_o_nome_alternativo_de_variavel_de_ambiente(
@@ -1142,6 +1116,100 @@ def teste_chave_aceita_o_nome_alternativo_de_variavel_de_ambiente(
         assert "sk-da-conta" not in resposta.text
     finally:
         obter.cache_clear()
+
+
+# --------------------------------------------------------------------------- #
+# Chave por header (item 4.3)
+# --------------------------------------------------------------------------- #
+
+
+def teste_o_header_tem_precedencia_sobre_o_ambiente(monkeypatch) -> None:
+    """A chave pessoal de quem usa o app vale mais que a chave do servidor."""
+    from imagineer import configuracao as modulo_de_configuracao
+    from imagineer.servicos.configuracao_ia import resolver_chave
+
+    obter = modulo_de_configuracao.obter_configuracoes
+    obter.cache_clear()
+    monkeypatch.setenv("CHAVE_API_OPENROUTER", "sk-do-ambiente")
+    try:
+        chave = resolver_chave("sk-do-header")
+        assert chave.valor == "sk-do-header"
+        assert chave.origem == "cabecalho"
+    finally:
+        obter.cache_clear()
+
+
+def teste_sem_header_vale_o_ambiente(monkeypatch) -> None:
+    from imagineer import configuracao as modulo_de_configuracao
+    from imagineer.servicos.configuracao_ia import resolver_chave
+
+    obter = modulo_de_configuracao.obter_configuracoes
+    obter.cache_clear()
+    monkeypatch.setenv("CHAVE_API_OPENROUTER", "sk-do-ambiente")
+    try:
+        chave = resolver_chave(None)
+        assert chave.valor == "sk-do-ambiente"
+        assert chave.origem == "ambiente"
+    finally:
+        obter.cache_clear()
+
+
+def teste_header_vazio_ou_so_espacos_conta_como_ausente(monkeypatch) -> None:
+    """Um app que manda o header sempre, mesmo sem chave própria, não quebra."""
+    from imagineer import configuracao as modulo_de_configuracao
+    from imagineer.servicos.configuracao_ia import resolver_chave
+
+    obter = modulo_de_configuracao.obter_configuracoes
+    obter.cache_clear()
+    monkeypatch.setenv("CHAVE_API_OPENROUTER", "sk-do-ambiente")
+    try:
+        for vazio in ("", "   ", None):
+            assert resolver_chave(vazio).origem == "ambiente"
+    finally:
+        obter.cache_clear()
+
+
+def teste_sem_nenhuma_chave_a_origem_e_ausente() -> None:
+    from imagineer.servicos.configuracao_ia import resolver_chave
+
+    chave = resolver_chave(None)
+
+    assert chave.valor is None
+    assert chave.origem == "ausente"
+
+
+def teste_a_rota_repassa_o_header_para_o_provedor(
+    cliente: TestClient, monkeypatch
+) -> None:
+    """O nome do header e a ligação com ``obter_provedor`` — o que os testes
+    acima (só a função de resolução) não pegam, como um erro de digitação no
+    nome do header."""
+    from imagineer.ia.falso import ProvedorFalso
+    from imagineer.rotas import configuracao as rota
+
+    recebidos: list[str | None] = []
+
+    def falso(cabecalho: str | None = None) -> ProvedorFalso:
+        recebidos.append(cabecalho)
+        return ProvedorFalso()
+
+    monkeypatch.setattr(rota, "construir_provedor", falso)
+
+    cliente.get("/configuracao/modelos", headers={"X-Chave-API-OpenRouter": "sk-do-app"})
+    cliente.get("/configuracao/modelos")
+
+    assert recebidos == ["sk-do-app", None]
+
+
+def teste_get_configuracao_ignora_o_header(cliente: TestClient) -> None:
+    """``GET /configuracao`` só diz o que o *servidor* tem, e nunca ecoa o header."""
+    resposta = cliente.get(
+        "/configuracao", headers={"X-Chave-API-OpenRouter": "sk-do-app"}
+    )
+
+    assert resposta.json()["tem_chave_api"] is False
+    assert resposta.json()["origem_da_chave"] == "ausente"
+    assert "sk-do-app" not in resposta.text
 
 
 # --------------------------------------------------------------------------- #

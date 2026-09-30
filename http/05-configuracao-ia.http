@@ -45,9 +45,19 @@ Content-Type: application/json
   "prioridade_ia": "QUALIDADE"
 }
 
-### Cadastra a chave pelo app, em vez de variável de ambiente
-# Só é preciso se você não usa CHAVE_API_OPENROUTER / IMAGINEER_KEY_OPEN_ROUTER
-# no ambiente. Uma chave vazia apaga o cadastro do banco.
+### Chave de API própria, por chamada (item 4.3)
+# O servidor NÃO guarda chave no banco. A do servidor vem só de
+# CHAVE_API_OPENROUTER / IMAGINEER_KEY_OPEN_ROUTER no ambiente. Quem quiser usar
+# uma chave própria manda o header abaixo em qualquer rota que chama IA (sugestões,
+# prompts, sugestão de perfil, lista de modelos): ele tem precedência sobre a do
+# servidor e nunca é gravado. Header vazio conta como ausente.
+# Exemplo (descomente e troque a chave):
+# GET {{baseUrl}}/configuracao/modelos?somente_gratuitos=true
+# X-Chave-API-OpenRouter: sk-or-v1-...
+
+### Campo antigo, agora recusado com 422
+# `chave_api_openrouter` já foi aceito aqui. Foi removido de propósito: ignorá-lo
+# em silêncio faria parecer que a chave foi salva.
 # PUT {{baseUrl}}/configuracao
 # Content-Type: application/json
 #

@@ -1,7 +1,7 @@
 """Rotas de configuração da integração com IA (Etapas 4.3 e 6.7)."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
@@ -16,14 +16,23 @@ from imagineer.servicos.configuracao_ia import (
 rotas = APIRouter(prefix="/configuracao", tags=["Configuração"])
 
 
-def obter_provedor(sessao: Session = Depends(obter_sessao)) -> ProvedorIA:
+def obter_provedor(
+    chave_api_openrouter: str | None = Header(
+        default=None,
+        alias="X-Chave-API-OpenRouter",
+        description=(
+            "Chave pessoal do OpenRouter, guardada só no app. Tem precedência sobre "
+            "a chave do servidor e nunca é gravada (item 4.3)."
+        ),
+    ),
+) -> ProvedorIA:
     """Dependência que entrega o provedor de IA já configurado.
 
     Existe como dependência do FastAPI, e não como objeto global, para os testes
     poderem substituí-la por um provedor falso — e para uma troca de chave valer
     no pedido seguinte, sem reiniciar o serviço.
     """
-    return construir_provedor(sessao)
+    return construir_provedor(chave_api_openrouter)
 
 
 class ConfiguracaoAtual(BaseModel):
@@ -34,9 +43,11 @@ class ConfiguracaoAtual(BaseModel):
     de tela.
     """
 
-    tem_chave_api: bool
+    tem_chave_api: bool = Field(
+        description="Se o *servidor* tem chave. Não considera o header do app."
+    )
     origem_da_chave: str = Field(
-        description='"banco", "ambiente" ou "ausente" — nunca a chave em si.'
+        description='"ambiente" ou "ausente" — nunca a chave em si.'
     )
     modelo_extracao: str | None
     modelo_prompt: str | None
@@ -58,12 +69,13 @@ class ConfiguracaoAtual(BaseModel):
 class ConfiguracaoNova(BaseModel):
     """O que o app manda para gravar a configuração.
 
-    Só os campos presentes são aplicados. Mandar `chave_api_openrouter` como
-    string vazia **apaga** a chave do banco, fazendo a variável de ambiente voltar
-    a valer — é assim que se desfaz um cadastro.
+    Só os campos presentes são aplicados. Campos desconhecidos são recusados (422)
+    — em especial `chave_api_openrouter`, que já foi aceito: ignorá-lo em silêncio
+    faria o usuário achar que a chave foi salva (item 4.3).
     """
 
-    chave_api_openrouter: str | None = Field(default=None, max_length=200)
+    model_config = ConfigDict(extra="forbid")
+
     modelo_extracao: str | None = Field(default=None, max_length=200)
     modelo_prompt: str | None = Field(default=None, max_length=200)
     modelo_perfil: str | None = Field(default=None, max_length=200)
@@ -95,7 +107,7 @@ class ModeloDaLista(BaseModel):
 def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtual:
     """Diz quais modelos estão escolhidos e se há chave — sem devolver a chave."""
     configuracao = obter_ou_criar(sessao)
-    chave = resolver_chave(sessao)
+    chave = resolver_chave()  # sem header: só o que o servidor tem
 
     return ConfiguracaoAtual(
         tem_chave_api=chave.valor is not None,
@@ -111,10 +123,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
 def gravar_configuracao(
     nova: ConfiguracaoNova, sessao: Session = Depends(obter_sessao)
 ) -> ConfiguracaoAtual:
-    """Cadastra a chave e escolhe os modelos.
-
-    Uma chave vazia apaga o cadastro e devolve a vez à variável de ambiente.
-    """
+    """Escolhe os modelos e a prioridade de IA. A chave não passa por aqui."""
     configuracao = obter_ou_criar(sessao)
 
     for campo, valor in nova.model_dump(exclude_unset=True).items():

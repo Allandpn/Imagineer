@@ -636,14 +636,15 @@ Uma linha única, com a configuração da integração com IA (item 4.3).
 | Coluna | Tipo | Nulo? | Observação |
 |---|---|---|---|
 | `id` | inteiro | não | chave primária; sempre 1 |
-| `chave_api_openrouter` | texto (200) | sim | cadastrada pelo app; sobrepõe a variável de ambiente |
 | `modelo_extracao` | texto (200) | sim | modelo usado no passo 6 do fluxo |
 | `modelo_prompt` | texto (200) | sim | modelo usado no passo 8 |
 | `modelo_perfil` | texto (200) | sim | modelo usado em `POST /livros/{id}/perfis-renderizacao/sugestao` (item 6.5) — campo próprio porque essa chamada é única por livro, não por capítulo, e compensa um modelo mais caro |
 
 **Uma linha só, com `id` fixo em 1.** Não é a modelagem mais elegante, mas é a mais honesta para o que é: não existem "duas configurações" num sistema pessoal de um usuário. A alternativa — uma tabela de pares chave/valor — perderia a tipagem de cada campo e ganharia só flexibilidade que não vai ser usada. Uma restrição `CHECK (id = 1)` impede uma segunda linha aparecer por acidente.
 
-Os quatro campos de texto aceitam nulo porque o sistema precisa subir sem configuração nenhuma: a chave pode estar só na variável de ambiente, e os modelos podem ainda não ter sido escolhidos.
+Os campos de modelo aceitam nulo porque o sistema precisa subir sem configuração nenhuma: os modelos podem ainda não ter sido escolhidos.
+
+> **Divergência registrada (item 4.3):** a primeira versão desta tabela tinha a coluna `chave_api_openrouter`, cadastrada pelo app. Foi **removida** (migration `c5d8e2f4a6b1`): chave de API não fica guardada no banco do servidor. A chave do servidor vem só da variável de ambiente; a de cada usuário vem por header, a cada chamada.
 
 #### (e) SugestaoDeElemento, SugestaoDeCena, SugestaoDeParticipante
 
@@ -776,22 +777,29 @@ Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_mo
 ### 4.3 Configuração de modelos
 
 Tela de configuração permitindo:
-- Cadastro da API key do OpenRouter, nunca hardcoded.
+- Chave da API do OpenRouter, nunca hardcoded e **nunca guardada no banco** (ver "De onde vem a chave" abaixo).
 - Seleção de modelo para extração de elementos (passo 6) e para montagem de prompt (passo 8), com opção "usar o mesmo modelo para os dois" marcada por padrão.
 - Lista de modelos obtida dinamicamente do endpoint `/models` do OpenRouter (com filtro opcional para mostrar só os gratuitos, e mais três sinais — item 4.3, "Mais filtros" abaixo, implementado).
 - **Prioridade de IA** (`prioridade_ia`): `ECONOMIA` (padrão) ou `QUALIDADE` — controla se a leitura profunda do item 4.4 relê o capítulo toda vez que um prompt é montado, ou só da primeira vez por estado. Ver item 4.4 para o efeito exato. É um campo pensado para valer também em futuras decisões de custo-vs-qualidade no sistema, não só nesta.
 
 #### De onde vem a chave
 
-**Da variável de ambiente `CHAVE_API_OPENROUTER`, ou do banco — e o banco tem precedência.**
+**De um header por chamada, ou da variável de ambiente do servidor — e o header tem precedência.** O banco **nunca** guarda a chave.
 
-A variável de ambiente faz o sistema subir já configurado e nunca põe a chave num backup de banco. O cadastro pelo app existe porque o servidor roda num Raspberry Pi: trocar de chave ou de modelo não deveria exigir SSH, editar o `.env` e reiniciar o container.
+1. **Header `X-Chave-API-OpenRouter`** — a chave pessoal de quem está usando o app, guardada só no celular (item 7.0). Vale só para aquela chamada: o servidor a repassa ao OpenRouter e a esquece. Não é gravada em banco, em cache nem em log.
+2. **Variável de ambiente `CHAVE_API_OPENROUTER`** (ou `IMAGINEER_KEY_OPEN_ROUTER`, ver Etapa 5) — a chave do próprio servidor, definida no `.env` (via SSH no Raspberry Pi). É o que o uso pessoal do Allan continua usando, sem mudar nada.
+3. Nenhuma das duas: as rotas que chamam IA respondem o erro "não há chave configurada".
 
-Quem preferir só a variável de ambiente simplesmente nunca usa a tela, e nada muda.
+**Regras do header:**
+- Vale em toda rota que passa pela dependência `obter_provedor` (sugestões, prompts, sugestão de perfil, lista de modelos). Rotas que não usam IA o ignoram.
+- Header ausente, vazio ou só com espaços = ausente: cai para a variável de ambiente. (Um app que manda o header sempre, mesmo sem chave própria, não quebra.)
+- Nunca aparece em resposta nem em mensagem de erro.
 
-**`GET /configuracao` nunca devolve a chave**, só informa se existe e de onde veio. Uma chave que sai do servidor é uma chave que vaza em log, em cache de app ou numa captura de tela.
+**`PUT /configuracao` deixa de aceitar `chave_api_openrouter`.** O campo saiu do schema e o corpo passa a recusar campos desconhecidos: mandar `chave_api_openrouter` devolve **422**, em vez de responder 200 sem gravar e deixar o usuário achar que a chave foi salva.
 
-> **Divergência registrada, ainda não implementada (Etapa 8).** Especificando o armazenamento local do app mobile (item 7.0), a decisão acima ("o banco tem precedência") foi revertida: chave de API não deve ficar guardada remotamente, nem no banco do servidor. `PUT /configuracao` vai deixar de aceitar `chave_api_openrouter`; a variável de ambiente vira a única forma persistente no servidor, e o app passa a mandar a chave por chamada (header `X-Chave-API-OpenRouter`) quando o usuário configurar uma própria — nunca persistida no servidor. Motivo: o cadastro pelo app fazia sentido pro Allan sozinho, mas guardar a chave de qualquer usuário no banco do servidor não escala pra um cenário com mais de uma pessoa usando o mesmo backend — cada um deveria controlar a própria chave, só no próprio celular.
+**`GET /configuracao` nunca devolve a chave**, só informa o que o **servidor** tem: `tem_chave_api` e `origem_da_chave`, que agora é `"ambiente"` ou `"ausente"` (o valor `"banco"` deixou de existir). Não considera o header — quem tem chave própria já sabe, ela está no celular dele. Uma chave que sai do servidor é uma chave que vaza em log, em cache de app ou numa captura de tela.
+
+**Por que mudou** (reverte a decisão original, "o banco tem precedência"): o cadastro pelo app fazia sentido para o Allan sozinho — trocar de chave sem SSH no Raspberry Pi —, mas guardar a chave de qualquer usuário no banco do servidor não escala para mais de uma pessoa usando o mesmo backend. Cada um controla a própria chave, só no próprio celular. O custo: quem quiser trocar a chave **do servidor** volta a precisar de SSH e reinício do container — aceitável, porque é uma troca rara.
 
 #### Sobre o tamanho do capítulo caber no modelo
 
@@ -1039,6 +1047,7 @@ Migration `a92e5f1c8d3b`. 4 testes novos (311 no total). Verificado contra `Prov
 | Material não-narrativo **sugerido** como ignorado, não descartado | Medição em dezoito livros: nenhum dos quatro sinais testados separa narrativa de apêndice com segurança. Esconder narrativa é muito pior que listar um glossário, então nada é descartado — a importação sugere e o usuário confirma |
 | Limite de tamanho **relativo à mediana do livro**, não absoluto, e fixado em 10% | A mediana variou de **mil** caracteres numa coletânea de poemas a **89 mil** num livro que é um capítulo só, então um limite fixo serviria para um e falharia nos outros. Os 10% saíram de uma varredura: acima disso começa a esconder narrativa |
 | Chave do OpenRouter aceita duas variáveis de ambiente: `CHAVE_API_OPENROUTER` e `IMAGINEER_KEY_OPEN_ROUTER` | Allan já mantém `IMAGINEER_KEY_OPEN_ROUTER` como variável de conta, fora deste projeto. Aceitar as duas (via `AliasChoices` do Pydantic) evita obrigá-lo a renomear algo que já existe no ambiente dele, sem abrir mão do nome em português como principal — é uma exceção pontual à regra de idioma do `CLAUDE.md`, feita conscientemente e só no nome da variável de ambiente, não no código |
+| Chave do OpenRouter sai do banco: só variável de ambiente no servidor, ou header `X-Chave-API-OpenRouter` por chamada (item 4.3) | Revertida a decisão original ("banco tem precedência"). Guardar a chave de cada usuário no banco do servidor não escala para mais de uma pessoa no mesmo backend, e a chave num backup de banco é um vazamento esperando acontecer. O header vale por chamada e nunca é persistido; a coluna foi removida por migration, sem deixar dado morto. `PUT /configuracao` recusa o campo antigo com 422 em vez de ignorá-lo em silêncio, para ninguém achar que salvou. Descartado: manter a coluna sem uso (chave esquecida em backup); aceitar header vazio como erro 400 (quebraria app que manda o header sempre). Custo aceito: trocar a chave **do servidor** volta a exigir SSH |
 | Extração de elementos dividida em identificação (fase 1) e leitura profunda (fase 2), em vez de uma chamada só | Testado com IA real (`gpt-4o-mini` e `gemini-2.5-flash`) num capítulo de *A Vontade de Muitos*: pedir a descrição de aparência de vários elementos na mesma resposta produziu mistura de atributos entre personagens e, num dos modelos, um elemento inventado. Descrever um elemento por vez, relendo o capítulo de origem, é o que reduz isso — ver item 4.4 |
 | Leitura profunda sobrescreve `EstadoElemento.descricao`, em vez de só alimentar o prompt daquela vez | O livro é a fonte de verdade, e o usuário pode gerar uma cena antes de ter lido o capítulo pessoalmente — não dá para depender da revisão dele como garantia de qualidade. Sobrescrever também beneficia capítulos futuros, que usam "o último estado conhecido" como contexto da fase 1 |
 | `prioridade_ia` (`ECONOMIA`/`QUALIDADE`) como campo de configuração, não parâmetro por chamada | Decisão de custo-vs-qualidade que o usuário quer controlar uma vez, na tela de configuração, e que deve valer para outras decisões parecidas no futuro — não é específica da leitura profunda |
@@ -1349,10 +1358,12 @@ O texto do perfil que vai para a IA é montado só com os campos preenchidos (`e
 |---|---|---|
 | `POST /capitulos/{id}/sugestoes` | Sugere elementos e cenas (passo 6); `?forcar=true` ignora o cache e chama a IA de novo | **implementado** |
 | `GET /configuracao/modelos` | Lista os modelos disponíveis no OpenRouter (item 4.3); filtros `somente_com_json`/`somente_nao_moderados`/`ordenar_por_custo` | **implementado** |
-| `GET /configuracao` | A configuração atual: modelos escolhidos, se há chave cadastrada | **implementado** |
-| `PUT /configuracao` | Grava a configuração | **implementado** |
+| `GET /configuracao` | A configuração atual: modelos escolhidos, se o **servidor** tem chave (`"ambiente"`/`"ausente"`) | **implementado** |
+| `PUT /configuracao` | Grava modelos e `prioridade_ia`. **Não aceita mais `chave_api_openrouter`** (422) — item 4.3 | **implementado** |
 
-`GET /configuracao` **nunca devolve a chave de API**, só se ela está cadastrada. Uma chave que sai do servidor é uma chave que vaza em log, em cache de app ou em captura de tela.
+**Header `X-Chave-API-OpenRouter`** (opcional) vale em toda rota que chama IA — sugestões, prompts, sugestão de perfil e lista de modelos — e tem precedência sobre a variável de ambiente do servidor (item 4.3).
+
+`GET /configuracao` **nunca devolve a chave de API**, só se o servidor tem uma. Uma chave que sai do servidor é uma chave que vaza em log, em cache de app ou em captura de tela.
 
 **`POST /capitulos/{id}/sugestoes` não grava Elemento nem Frame no banco.** É a IA sugerindo; o usuário confirma depois pelas rotas já existentes da Etapa 6.3 (`POST /elementos`, `POST /elementos/{id}/estados`) e da Etapa 6.4 (`POST /frames`). A sugestão em si, porém, é persistida como linhas (item 3.4e). A rota:
 
@@ -1423,7 +1434,7 @@ Decisões de arquitetura, tomadas antes de escrever qualquer código Kotlin — 
 **Armazenamento local: Jetpack DataStore (Preferences), só pro que precisa persistir hoje.** O app não cacheia livros/elementos/prompts — tudo vem do servidor a cada chamada, já que ele está sempre a uma chamada de distância via Tailscale (item acima). Dois dados salvos localmente, com sensibilidade diferente:
 
 - **Endereço do servidor** (item acima): dado comum, `DataStore` normal (texto plano) basta.
-- **Chave de API do OpenRouter — nunca armazenada remotamente, de propósito.** Reabre o item 4.3 do backend: hoje `PUT /configuracao` salva a chave no banco do servidor, com precedência sobre a variável de ambiente — isso muda. `PUT /configuracao` deixa de aceitar `chave_api_openrouter` (implementação pendente, fora do escopo desta especificação do app, mas bloqueia o app funcionar de ponta a ponta até ser feita). A única forma persistente de configurar a chave no servidor passa a ser a variável de ambiente do `.env` no próprio Raspberry Pi (via SSH — hoje já existe como opção, item 4.3), pro uso pessoal do Allan. Para um uso futuro com mais de um usuário, cada um guardaria a própria chave só no celular, nunca no servidor. No app, a chave é um **segredo**, não um dado comum — guardada em `EncryptedSharedPreferences` (ou a variante criptografada do DataStore, biblioteca `androidx.security.crypto`, baseada em Tink), não em texto plano. Toda chamada que envolve IA manda a chave no header `X-Chave-API-OpenRouter`, quando o usuário tiver configurado uma no app; o servidor nunca persiste esse valor — nem em banco, nem em log.
+- **Chave de API do OpenRouter — nunca armazenada remotamente, de propósito.** Reabriu o item 4.3 do backend, **já implementado**: `PUT /configuracao` não aceita mais `chave_api_openrouter` (422), a coluna foi removida do banco e o header `X-Chave-API-OpenRouter` passou a valer em toda rota de IA. A única forma persistente de configurar a chave no servidor passa a ser a variável de ambiente do `.env` no próprio Raspberry Pi (via SSH — hoje já existe como opção, item 4.3), pro uso pessoal do Allan. Para um uso futuro com mais de um usuário, cada um guardaria a própria chave só no celular, nunca no servidor. No app, a chave é um **segredo**, não um dado comum — guardada em `EncryptedSharedPreferences` (ou a variante criptografada do DataStore, biblioteca `androidx.security.crypto`, baseada em Tink), não em texto plano. Toda chamada que envolve IA manda a chave no header `X-Chave-API-OpenRouter`, quando o usuário tiver configurado uma no app; o servidor nunca persiste esse valor — nem em banco, nem em log.
 
 **Erro/offline: sem cache local, tela de erro com "tentar de novo".** Coerente com a decisão de não cachear dado nenhum localmente (item acima) — o app sempre depende do servidor, então sem servidor não há o que mostrar mesmo. Qualquer chamada que falhar (timeout, sem conexão, Pi desligado, Tailscale desconectado) mostra uma mensagem clara ("não consegui falar com o servidor") com um botão pra tentar de novo, em vez de simular um modo offline com dado desatualizado — que introduziria sincronização e conflito sem necessidade real pro uso de hoje.
 
@@ -1471,6 +1482,80 @@ Não é bem uma tela própria — é o estado de progresso do upload, sobreposto
 - **Ao terminar**: se `livros_semelhantes` vier não-vazio na resposta (item 6.2), mostra um aviso — "já existe um livro parecido" — com a opção de abrir o existente em vez do novo, ou seguir mesmo assim. Não impede a importação (é aviso, não bloqueio, coerente com o item 3.4a).
 - **Se `metadados_pendentes` vier não-vazio (item 6.2), a tela não se dá por concluída.** Título e/ou autor são mandatórios do ponto de vista do usuário — mostra um formulário obrigatório (pré-preenchido com o que a extração conseguiu, ex.: título = nome do arquivo) pedindo pra confirmar/completar antes de navegar pra tela de Livro. `PATCH /livros/{id}` grava a correção; só depois de `metadados_pendentes` vir vazio a importação é considerada concluída. É o único campo obrigatório desta forma por enquanto — mais podem entrar se necessário, sem mudar o mecanismo (a lista já é extensível).
 - **Erro**: EPUB inválido (422) mostra a mensagem que a API devolve; a importação é fiel ao que o arquivo diz, então um erro aqui costuma significar arquivo mesmo corrompido, não um bug.
+
+### 7.3a Bloco A em detalhe — Biblioteca, Importação e Configuração mínima
+
+Aprofundamento do item 7.0 antes do primeiro código Kotlin. É o **primeiro bloco a ser implementado**, e de propósito inclui uma versão mínima da Configuração (7.10): sem o endereço do servidor, nenhuma outra tela consegue chamar a API.
+
+#### Ordem de implementação (incrementos pequenos, cada um roda no celular)
+
+1. **Esqueleto:** projeto Compose vazio, `MaterialTheme`, navegação com os destinos tipados de 7.0 (telas ainda em branco). Critério: abre no tablet. **Implementado:** `navegacao/Destinos.kt` (os oito destinos), `navegacao/GrafoDeNavegacao.kt` e `telas/TelaProvisoria.kt` (uma tela de mentira reutilizável, com botões que provam a navegação, limitada a 600 dp de largura). Compila e o teste de unidade padrão passa; o critério (abrir e navegar no tablet) é verificação manual.
+2. **Configuração mínima:** tela para digitar e salvar a URL do servidor (DataStore). Critério: fechar e reabrir o app mantém a URL.
+3. **Camada de rede:** Retrofit + `kotlinx.serialization`, com `GET /livros`. Critério: a Biblioteca mostra os livros reais do Raspberry Pi/PC.
+4. **Biblioteca completa:** estados de vazio, carregando e erro (abaixo).
+5. **Importar:** seletor de arquivo, upload com progresso, aviso de `livros_semelhantes`, formulário de `metadados_pendentes`.
+
+#### Contratos da API que o Bloco A usa
+
+| Chamada | Usada em | Classe Kotlin (`@Serializable`) |
+|---|---|---|
+| `GET /livros` | Biblioteca | `LivroResumo` — `id`, `titulo`, `autor?`, `idioma?`, `nome_arquivo`, `data_importacao`, `total_de_capitulos`, `capitulos_ignorados` |
+| `POST /livros` (multipart, campo `arquivo`) | Importar | `RespostaImportacao` — `livro: LivroDetalhe`, `livros_semelhantes: List<LivroResumo>` |
+| `PATCH /livros/{id}` | Formulário de metadados | corpo `LivroAjuste` (só `titulo`/`autor` aqui), resposta `LivroDetalhe` |
+| `DELETE /livros/{id}` | Remover livro (menu do item da lista) | 204, sem corpo |
+
+Os nomes dos campos no JSON são os do backend, em português — as classes Kotlin usam **os mesmos nomes**, sem `@SerialName` de tradução, para o espelhamento ser óbvio. Campos opcionais do backend (`str | None`) viram `String? = null` no Kotlin.
+
+#### Biblioteca (7.2) — estados
+
+A tela é uma função do estado do `ViewModel`, um de quatro:
+
+| Estado | O que a tela mostra |
+|---|---|
+| **Carregando** | Indicador de progresso centralizado |
+| **Lista** | Um cartão por livro: título, autor (ou "Autor desconhecido"), "N capítulos" e, só se `capitulos_ignorados > 0`, "M ignorados". Ordem: mais recente primeiro (`data_importacao`). Tocar abre o Livro. Segurar (ou menu de três pontos) oferece **Remover**, com confirmação — apaga o livro e tudo que depende dele |
+| **Vazio** | Convite a importar o primeiro livro. Não é erro |
+| **Erro** | "Não consegui falar com o servidor", o motivo curto e o botão **Tentar de novo**. Vale para timeout, sem conexão, Pi desligado, Tailscale desconectado (item 7.0) |
+
+Puxar para atualizar (`pull-to-refresh`) refaz o `GET /livros`. Como o app não cacheia nada (item 7.0), a lista é sempre recarregada ao voltar para a tela.
+
+**Sem URL configurada** (primeira abertura): a Biblioteca nem chama a API; abre direto a Configuração mínima, com uma frase explicando o que colocar ali.
+
+#### Importar (7.3) — sequência
+
+1. Botão flutuante → seletor de arquivo do sistema (`ActivityResultContracts.OpenDocument`, filtro `application/epub+zip`).
+2. Upload multipart, com barra de progresso. O app **lê o arquivo em fluxo** (não carrega os até 46 MB inteiros na memória) e não tem cancelamento na v1.
+3. Resposta 201:
+   - `livros_semelhantes` não vazio → diálogo "Já existe um livro parecido": **Abrir o existente** ou **Seguir mesmo assim**. Aviso, nunca bloqueio (item 3.4a). Nota: o livro novo **já foi gravado** no servidor; "abrir o existente" não o desfaz — oferecer **Remover o novo** nesse diálogo, para não deixar duplicata sem querer.
+   - `metadados_pendentes` não vazio → formulário obrigatório de título/autor, pré-preenchido; **Salvar** chama `PATCH /livros/{id}`; só com a lista vazia a importação termina e o app navega para o Livro (substituindo o estado de importação, sem empilhar — item 7.0).
+4. Erros: 422 mostra a mensagem que a API devolve; 413 diz que o arquivo passa de 60 MB; falha de rede cai no mesmo estado de erro da Biblioteca. **Se a rede cair no meio do upload**, o app não sabe se o servidor chegou a gravar: ao "tentar de novo" ele **recarrega a lista antes** e só reenvia se o livro não apareceu, para não duplicar em silêncio.
+
+#### Configuração mínima (7.10, parte 1)
+
+- **Um campo:** URL base do servidor (ex.: `http://100.x.y.z:8000`, endereço Tailscale). Botão **Testar** faz `GET /configuracao` e mostra "conectado" ou o erro. Só salva se o teste passar, ou se o usuário confirmar salvar mesmo assim.
+- **Normalização:** aceita com ou sem `http://` e com ou sem barra final; sem esquema, assume `http://`.
+- A chave de API pessoal e a escolha de modelos entram no Bloco E (7.10 completa) — a rota existe, mas nada no Bloco A precisa de IA.
+
+#### Detalhes de plataforma que não são óbvios
+
+- **Tráfego HTTP em texto puro é bloqueado por padrão no Android 9+.** O servidor fala HTTP simples (não HTTPS) e o endereço Tailscale é um IP, então o app precisa de um `network_security_config` liberando *cleartext* — de forma restrita ao possível: o tráfego já vai dentro do túnel criptografado do Tailscale, que é o que justifica aceitar HTTP aqui (item 7.0, "Acesso fora de casa"). Sem isso, toda chamada falha com um erro genérico de rede que engana.
+- **Timeouts:** leitura de 30 s no cliente HTTP em geral; o upload usa um tempo maior, por causa dos arquivos grandes.
+- **Permissão de internet** (`INTERNET`) no manifesto. O seletor de arquivo do sistema dispensa qualquer permissão de armazenamento.
+- **Versão mínima do Android: API 31 (Android 12).** Decidido em 29/09/2026. O dispositivo de teste é um **Galaxy Tab S8 com Android 16**, então a cor dinâmica do Material You (Android 12+) está garantida e não há paleta de reserva para manter. O celular do Allan não foi usado como referência: o alvo real de teste é o tablet.
+- **O dispositivo de teste é um tablet (tela ~11"), e os wireframes foram desenhados para celular.** Consequência para o código: nada de largura fixa; as listas usam a largura disponível, e cartões/formulários têm largura máxima (~600 dp, centralizados) para não ficarem esticados. Layout em duas colunas (lista + detalhe) fica fora do MVP, mas a estrutura das telas não deve impedi-lo depois. Testar também em modo retrato e paisagem (o tablet gira). O app deve funcionar em celular igualmente, por ser o uso final previsto (item 1.3).
+- **Nome do pacote: `com.allan.imagineer`.** Como o pacote é o identificador do app e **não pode mudar depois sem reinstalar**, foi escolhido antes de qualquer código.
+- **Onde mora o código do app: `G:\Git\Apps\Imagineer`**, fora deste repositório (o backend continua em `G:\Git\Imagineer`, e a especificação de **ambos** fica aqui, em `ESPECIFICACAO.md`). Stack criada pelo assistente do Android Studio: AGP 9.4.1, Kotlin 2.2.10, Compose BOM 2026.02.01, Kotlin DSL; dependências acrescentadas no incremento 1: `navigation-compose` 2.9.0, `kotlinx-serialization-json` 1.9.0 e `material-icons-core`.
+
+#### Fora do escopo do Bloco A
+
+Busca/filtro na Biblioteca, ordenação escolhida pelo usuário, capa do livro (o backend não extrai capa), edição de metadados fora do fluxo de importação (isso é da tela de Livro, 7.4) e qualquer chamada de IA.
+
+#### Testes
+
+- **ViewModels:** teste unitário de cada estado da Biblioteca (carregando/lista/vazio/erro) com um repositório falso — a mesma ideia do `ProvedorFalso` do backend: o ViewModel recebe a interface no construtor (item 7.0, DI manual), então o teste troca a rede por uma lista fixa.
+- **Normalização da URL:** teste unitário puro (casos: com/sem `http://`, barra final, espaços).
+- **Desserialização:** teste com um JSON real de `GET /livros` e `POST /livros` colado como fixture, para garantir que as classes Kotlin espelham mesmo o backend (o erro típico é um campo renomeado de um lado só).
+- **Ponta a ponta manual:** no celular, contra o servidor real, checklist do critério de cada incremento acima.
 
 ### 7.4 Livro (detalhe)
 
@@ -1534,8 +1619,8 @@ Lista compartilhada entre livros, acessível tanto pela tela de Livro quanto pel
 Acessível de qualquer tela.
 
 - **Rotas**: `GET/PUT /configuracao`, `GET /configuracao/modelos`.
-- **Mostra**: se há chave cadastrada e de onde ela vem (nunca a chave em si — item 4.3); modelo de extração e de prompt escolhidos; `prioridade_ia` (`ECONOMIA`/`QUALIDADE` — item 4.4).
-- **Ações**: cadastrar/apagar a chave; escolher os modelos a partir da lista dinâmica do OpenRouter (com filtro "só gratuitos"); trocar a prioridade de IA.
+- **Mostra**: se o *servidor* tem chave (`"ambiente"`/`"ausente"`, nunca a chave em si — item 4.3) e, separado, se o app tem uma chave própria guardada no celular; modelo de extração e de prompt escolhidos; `prioridade_ia` (`ECONOMIA`/`QUALIDADE` — item 4.4).
+- **Ações**: cadastrar/apagar a chave **própria, só no celular** (mandada no header `X-Chave-API-OpenRouter`); escolher os modelos a partir da lista dinâmica do OpenRouter (com filtro "só gratuitos"); trocar a prioridade de IA.
 
 ### 7.11 Fora do escopo desta rodada
 
@@ -1552,8 +1637,8 @@ Acessível de qualquer tela.
 - [x] ~~Desenhar as rotas da API (endpoints, contratos de request/response).~~ Concluído — **Etapa 6**, todas as seções (6.2 a 6.7): livros, capítulos, elementos e estados, frames, perfis de renderização, prompts e catálogo de imagens, configuração e sugestões de IA.
 - [x] ~~Esboçar as telas do app (fluxo de UI, especialmente os passos 6-9 de confirmação/ajuste).~~ Concluído — **Etapa 7**: dez telas mapeadas às rotas da Etapa 6, mais o mapa de navegação. Ainda sem código — falta criar o projeto Android, próximo item desta lista.
 - [x] ~~Permitir marcar um capítulo como ignorado.~~ Concluído — campo `Capitulo.ignorado`, pré-sugerido pela importação e confirmado pelo usuário (itens 2.2 e 3.4a). Exposto na API (item 6.2) e na tela de Livro (item 7.4).
-- [ ] Criar o projeto Android (Kotlin + Jetpack Compose) e implementar as telas da Etapa 7. **Arquitetura já especificada** (item 7.0: MVVM sem Hilt, Retrofit + kotlinx.serialization, Navigation Compose type-safe, DataStore, Tailscale, sem autenticação de app, Material 3, keystore própria) — falta só o código. **Wireframes de baixa fidelidade já publicados** (link no item 7.0), organizados nos mesmos 5 blocos de jornada — próximo passo é revisar e aprofundar bloco a bloco antes de codar.
-- [ ] **Reabrir o item 4.3: `PUT /configuracao` deixa de aceitar `chave_api_openrouter`.** Achado especificando o armazenamento local do app (item 7.0): chave de API não deve ficar guardada remotamente, nem no banco do servidor — reverte a decisão original de item 4.3 ("banco tem precedência sobre variável de ambiente"). Depois da mudança, a única forma persistente de configurar a chave no servidor é a variável de ambiente do `.env` (via SSH no Raspberry Pi); toda chamada que envolve IA passa a aceitar um header opcional (`X-Chave-API-OpenRouter`) com prioridade sobre a variável de ambiente, nunca persistido em lugar nenhum do servidor. Bloqueia o app funcionar de ponta a ponta com chave própria até ser implementado — mas não bloqueia o uso pessoal do Allan, que continua usando a variável de ambiente.
+- [ ] Criar o projeto Android (Kotlin + Jetpack Compose) e implementar as telas da Etapa 7. **Arquitetura já especificada** (item 7.0: MVVM sem Hilt, Retrofit + kotlinx.serialization, Navigation Compose type-safe, DataStore, Tailscale, sem autenticação de app, Material 3, keystore própria) — falta só o código. **Wireframes de baixa fidelidade já publicados** (link no item 7.0), organizados nos mesmos 5 blocos de jornada — **Bloco A já aprofundado** (item 7.3a: ordem de implementação em 5 incrementos, contratos, estados de erro/vazio, detalhes de plataforma e testes) — próximo passo é instalar o Android Studio, criar o projeto e implementar o incremento 1; os blocos B a E seguem aprofundados um de cada vez, antes de cada um ser codado.
+- [x] ~~**Reabrir o item 4.3: `PUT /configuracao` deixa de aceitar `chave_api_openrouter`.**~~ **Implementado** (item 4.3) — header `X-Chave-API-OpenRouter` com precedência sobre a variável de ambiente, coluna removida (migration `c5d8e2f4a6b1`), `PUT` recusa o campo antigo com 422, header vazio conta como ausente. `origem_da_chave` agora é `"ambiente"` ou `"ausente"`. Testado (unitário da resolução + ligação real do header na rota); ainda não exercitado contra o OpenRouter de verdade. Decisões na Etapa 5. Achado no caminho: a listagem alfabética de `migracoes/versions` não mostra qual é a última migration — usar `alembic heads`.
 - [x] ~~Refinar a engenharia do prompt de geração de imagens.~~ **Uma rodada implementada** (item 4.5/4.7): bloco de estética do prompt final separado e estruturado em vez de tecido em prosa; reforço contra linguagem temática residual na sugestão de perfil; `Elemento.imagem_ancora_padrao_id` para mitigar variação de consistência visual entre capítulos distantes e entre ferramentas de geração diferentes. Nenhuma das três mudanças de instrução foi validada com IA real ainda — vale rodar contra o corpus de validação antes de considerar madura. Novas rodadas de refinamento continuam abertas, a pedido de Allan.
 - [ ] Relações entre elementos e Grupos com membros explícitos (v2, fora do escopo do MVP).
 - [x] ~~Implementar sugestões persistidas (`SugestaoDeElemento`/`SugestaoDeCena`/`SugestaoDeParticipante`), busca por nome cross-capítulo e confirmação em lote.~~ Concluído — item 3.4e, validado com o caso real do "Sextus Hospius"/"Hospius".

@@ -130,8 +130,8 @@ O modelo do MVP está completo.
 | `GET /perfis-renderizacao/{id}` | Abre um perfil |
 | `PATCH /perfis-renderizacao/{id}` | Ajusta um perfil |
 | `DELETE /perfis-renderizacao/{id}` | Remove um perfil, sem apagar livros nem prompts |
-| `GET /configuracao` | Modelos escolhidos e se há chave cadastrada (nunca a chave) |
-| `PUT /configuracao` | Cadastra a chave do OpenRouter e escolhe os modelos |
+| `GET /configuracao` | Modelos escolhidos e se o servidor tem chave (nunca a chave) |
+| `PUT /configuracao` | Escolhe os modelos e a prioridade de IA (a chave vem do `.env` ou do header `X-Chave-API-OpenRouter`) |
 | `GET /configuracao/modelos` | Modelos disponíveis, com filtros `somente_gratuitos` e `contexto_minimo` |
 
 O desenho completo da API, incluindo as rotas ainda não implementadas, está na Etapa 6 da especificação.

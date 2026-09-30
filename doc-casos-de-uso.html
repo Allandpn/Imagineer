@@ -652,7 +652,7 @@
           <li>Usuário decide entre <code>ECONOMIA</code> (padrão — reaproveita leituras já feitas) e <code>QUALIDADE</code> (relê sempre) para a leitura profunda e a fundamentação de frame.</li>
           <li>Usuário confere a configuração atual — a chave em si nunca é devolvida, só se existe e de onde veio. <span class="call"><span class="method get">GET</span> /configuracao</span></li>
         </ol>
-        <div class="note">Uma chave enviada como texto vazio apaga o cadastro no banco e devolve a vez à variável de ambiente — é assim que se desfaz.</div>
+        <div class="note">A chave não é mais cadastrada pelo app: mandar <code>chave_api_openrouter</code> devolve 422. Vale o header <code>X-Chave-API-OpenRouter</code> (por chamada) ou a variável de ambiente do servidor.</div>
       </div>
     </section>
 
@@ -1222,7 +1222,7 @@
         <article class="route">
           <header class="rhead"><span class="method get">GET</span><span class="rpath">/configuracao</span><span class="rsummary">A configuração atual</span></header>
           <div class="route-body">
-            <p class="desc">Nunca devolve a chave em si — só <code>tem_chave_api</code> e <code>origem_da_chave</code> ("banco", "ambiente" ou "ausente").</p>
+            <p class="desc">Nunca devolve a chave em si — só <code>tem_chave_api</code> e <code>origem_da_chave</code> ("ambiente" ou "ausente") — só o que o servidor tem. A chave pessoal do app vai no header <code>X-Chave-API-OpenRouter</code> de cada chamada que usa IA e nunca é gravada.</p>
           </div>
         </article>
 
@@ -1232,7 +1232,6 @@
             <h4>Corpo (JSON)</h4>
             <table class="fields">
               <tr><th>Campo</th><th>Tipo</th><th></th><th>Observação</th></tr>
-              <tr><td class="field">chave_api_openrouter</td><td class="type">texto (200)</td><td class="opt">opcional</td><td>String vazia apaga o cadastro, volta a valer a variável de ambiente</td></tr>
               <tr><td class="field">modelo_extracao</td><td class="type">texto (200)</td><td class="opt">opcional</td><td>Usado no passo 6 (sugestões)</td></tr>
               <tr><td class="field">modelo_prompt</td><td class="type">texto (200)</td><td class="opt">opcional</td><td>Usado no passo 8 (montar prompt)</td></tr>
               <tr><td class="field">prioridade_ia</td><td class="type">enum</td><td class="opt">opcional</td><td>ECONOMIA (padrão) · QUALIDADE</td></tr>

@@ -659,9 +659,9 @@ class ProvedorOpenRouter(ProvedorIA):
             )
         if not self._chave_api:
             raise ChaveDeApiAusente(
-                "Não há chave de API do OpenRouter configurada. Defina a variável "
-                "de ambiente CHAVE_API_OPENROUTER ou cadastre a chave em "
-                "/configuracao."
+                "Não há chave de API do OpenRouter configurada. Envie a sua no "
+                "header X-Chave-API-OpenRouter ou defina a variável de ambiente "
+                "CHAVE_API_OPENROUTER no servidor."
             )
 
         corpo = {
