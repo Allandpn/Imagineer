@@ -1714,15 +1714,58 @@ A tela de Capítulo (7.5) nasce como **leitor de texto**. A análise por IA, as 
 
 **O modelo novo.**
 - **Arquivar** é a ação; **Arquivados** é a área; **Restaurar** desfaz. Na API continua sendo `ignorado` (`PATCH /capitulos/{id}`); "arquivado" é só o **vocabulário da tela**. Renomear o campo do backend (com migration) foi considerado e **adiado**: mexe em banco e em API por uma questão de rótulo, e a tradução mora num só lugar (a tela). Se o vocabulário incomodar no futuro, é uma migration simples.
-- **A lista do livro mostra só os capítulos ativos.** Cada linha tem, à direita, um **botão de arquivar (ícone de pasta com seta para baixo)**, num toque só — no lugar do interruptor. Começou como um menu ⋮ com "Arquivar" (dois toques); o Allan pediu um toque só, e o botão dispensa confirmação porque **é reversível** (área de arquivados → restaurar). Fica numa área própria, separada do título, então um toque impreciso no título não arquiva, e um no botão não abre o capítulo.
+- **A lista do livro mostra só os capítulos ativos.** **(Superado pela "Segunda revisão" abaixo: o botão por linha deu lugar à seleção em lote.)** Cada linha tinha, à direita, um **botão de arquivar (ícone de pasta com seta para baixo)**, num toque só — no lugar do interruptor. Começou como um menu ⋮ com "Arquivar" (dois toques); o Allan pediu um toque só, e o botão dispensa confirmação porque **é reversível** (área de arquivados → restaurar). Fica numa área própria, separada do título, então um toque impreciso no título não arquiva, e um no botão não abre o capítulo.
 - **"Arquivados (N)":** uma linha logo abaixo do cabeçalho, **só quando N > 0**, como no WhatsApp. Toca-se nela para abrir a área de arquivados.
 - **A área de arquivados é uma tela própria** (`CapitulosArquivados(livroId)`), com a lista dos capítulos arquivados. Cada linha tem o título (que abre o capítulo para **leitura** — o aviso "Este capítulo está arquivado" já aparece lá) e um **botão de restaurar (ícone de pasta com seta para cima)**, separado da área do título. Restaurado, o capítulo some da área de arquivados e volta à lista principal. Sem nenhum arquivado, a tela diz "Nenhum capítulo arquivado."
 - **As duas telas compartilham o mesmo `LivroViewModel`** (escopado à tela de Livro na pilha de navegação): arquivar numa e restaurar na outra sempre enxergam o mesmo livro, sem recarregar nem ficar defasado.
 - **Continua não sendo otimista**: a linha só sai da lista quando o servidor confirma, e enquanto isso o botão vira um indicador de progresso.
+- **"Desfazer" depois de arquivar** *(vale também para o lote — ver a segunda revisão)*. Como nas conversas arquivadas do WhatsApp, arquivar mostra um aviso temporário no rodapé — **"Arquivado: `<título do capítulo>`"**, com a ação **Desfazer**. Pedido do Allan: sem isso, quem arquiva o capítulo errado precisa abrir a área de arquivados e *adivinhar qual foi* para restaurá-lo. Regras:
+  - O aviso **nomeia o capítulo** ("Capítulo N" se não tem título): é o que responde "qual foi?".
+  - **Desfazer chama a mesma rota de restaurar** (`PATCH` com `ignorado = false`), sem caminho especial. Se falhar, mostra o erro como qualquer outra falha.
+  - **Dura 10 segundos** (`Long`). O padrão do Material 3 para um aviso com ação seria **indefinido** — ficaria na tela até alguém tocar —, o que é errado para algo que só deve tirar o usuário de um engano imediato.
+  - **Arquivar de novo troca o aviso.** Só o último arquivamento fica desfazível pelo aviso; os anteriores continuam na área de arquivados. Empilhar um aviso por toque seria ruído.
+  - Só o **arquivar** ganha "Desfazer". **Restaurar** não: o capítulo some da área de arquivados e reaparece na lista, e desfazer um restaurar seria arquivar de novo, que é um toque.
+  - O aviso é um **evento** com dados (`Aviso`: texto e, opcionalmente, os capítulos a restaurar — a lista de ids do lote), e não só uma frase: quem o exibe (as telas de Livro e de Arquivados, que compartilham o mesmo ViewModel) sabe qual capítulo restaurar sem consultar a lista.
 - **As sugestões pendentes viram texto, não balão.** A linha do capítulo mostra "3,4 mil caracteres · 13 sugestões a confirmar" (singular: "1 sugestão a confirmar"; sem pendentes, nada). O número são as sugestões de **elemento e de cena** que a IA encontrou naquele capítulo e o usuário ainda não confirmou nem descartou (item 4.6 — o backend soma `SugestaoDeElemento` sem elemento e `SugestaoDeCena` sem frame). Antes era um balão numérico sem rótulo, e quem o via no tablet não tinha como saber o que era.
 - **As contagens passam a ser de ativos:** o cartão da Biblioteca e o cabeçalho do Livro dizem, por exemplo, "9 capítulos · 3 arquivados", onde 9 são os ativos — e não "12 capítulos · 3 ignorados", que misturava total com ignorados e deixava a soma ambígua. O `total_de_capitulos` da API continua sendo o total; o cliente subtrai.
 - **Implementado:** `arquivar`/`restaurar` no `LivroViewModel` (no-op se o capítulo já está no estado pedido), a linha "Arquivados" e o menu ⋮ por capítulo em `TelaLivro`, a `TelaCapitulosArquivados`, o destino `CapitulosArquivados` e o `livroViewModel(livroId, dono)` que faz as duas telas compartilharem o mesmo ViewModel. `descreverCapitulos` conta os ativos. **204 testes de unidade no app.** Falta a verificação manual no tablet.
 - **Capítulo arquivado abre para leitura** (pela área de arquivados): o aviso da tela de Capítulo passa de "marcado como ignorado" para "arquivado". O que a importação **sugeriu** como ignorado já nasce arquivado; o usuário revisa a área de arquivados para restaurar o que era narrativa de verdade.
+
+#### Segunda revisão do incremento 6 — arquivar e restaurar em lote, por seleção
+
+**O que motivou.** Testando o botão de um toque por linha, o Allan propôs algo melhor para o caso comum: a importação costuma sugerir **vários** capítulos não narrativos de uma vez, e arquivá-los um a um é repetitivo. A ideia: um único botão no topo, caixas de seleção nas linhas, e o usuário marca quais capítulos e confirma. **Esta rodada trata só das regras de negócio; o desenho visual (posição dos botões, ícones, aparência da barra de seleção) é refinado depois.**
+
+As regras abaixo valem para as **duas** telas — a lista principal (que **arquiva**) e a área de arquivados (que **restaura**) — de forma simétrica.
+
+**Entrar e sair do modo de seleção**
+1. **Duas entradas:** tocar no botão do topo (**Arquivar** na lista; **Restaurar** nos arquivados) ou **tocar e segurar** numa linha, que já entra com ela marcada. O botão só faz sentido se há capítulos nessa tela.
+2. **O modo persiste até confirmar ou cancelar.** Desmarcar o último capítulo **não** sai do modo (quem entrou pelo botão do topo começa com zero marcados, então sair sozinho seria incoerente). Sai-se por **Cancelar**, por **confirmar**, ou pelo **botão voltar** do aparelho (que cancela o modo em vez de sair da tela).
+3. **Fora do modo, tocar no título abre o capítulo** (como antes). **Dentro do modo, tocar na linha marca ou desmarca** — não abre nada.
+4. **Enquanto seleciona, as outras ações ficam indisponíveis** (Elementos, Perfis, o menu do livro, a linha "Arquivados"): sair da tela com uma seleção pela metade seria ambíguo.
+5. **Só se marca o que o modo permite:** na lista, capítulos ativos; nos arquivados, capítulos arquivados. Um capítulo cuja chamada ainda está em andamento **não pode** ser marcado.
+
+**Confirmar**
+6. **O próprio botão "Arquivar (N)" é a confirmação** — sem diálogo extra, porque a ação é reversível (Desfazer e a área de arquivados). Fica **desabilitado com zero marcados**. O mesmo vale para "Restaurar (N)".
+7. **Uma chamada `PATCH /capitulos/{id}` por capítulo, em sequência.** Não existe rota em lote, e criar uma foi **adiado**: é uma mudança de API para ganhar tempo de ida e volta, e com dezenas de capítulos em sequência a espera ainda é de poucos segundos. Fica registrado como possível otimização.
+8. **Continua não otimista:** cada capítulo só sai da lista quando o servidor confirma o dele, e os marcados mostram progresso enquanto esperam a vez.
+
+**Quando algo falha**
+9. **Para no primeiro erro.** Se o servidor está fora do ar, continuar tentaria os N capítulos restantes e cada um levaria o *timeout* de conexão (10 s): um lote de 20 esperaria mais de 3 minutos para dar o mesmo erro 20 vezes. Os capítulos **já concluídos ficam** arquivados; os **restantes continuam marcados**, para o usuário tentar de novo com o mesmo botão.
+10. O aviso diz o que aconteceu: **"K de N arquivados. `<motivo>`"**. Se nenhum foi concluído, só o motivo.
+
+**Quando tudo dá certo**
+11. **Sai do modo**, e um aviso temporário nomeia o que foi feito: **"Arquivado: `<nome>`"** para um capítulo, **"N capítulos arquivados"** para vários — com **Desfazer**.
+12. **Desfazer restaura exatamente os capítulos daquele lote**, e mais nenhum (o aviso carrega a lista de ids). Segue o mesmo caminho de restaurar em lote e **não gera outro aviso de sucesso** (senão restaurar geraria um aviso, que ofereceria desfazer, e assim por diante).
+13. **Só arquivar ganha aviso de sucesso.** Restaurar não: os capítulos somem da área de arquivados, que é retorno suficiente; só as **falhas** de restaurar geram aviso.
+14. O aviso dura 10 s, e **um lote novo troca o aviso anterior**: só o último lote fica desfazível pelo aviso; os anteriores continuam na área de arquivados.
+
+**Implementado:** `Selecao`/`ModoDeSelecao`, `iniciarSelecao`/`alternarSelecao`/`cancelarSelecao`/`confirmarSelecao`, o lote sequencial com parada no primeiro erro (`executarLote`), o aviso do lote (`avisoDoLote`), a poda da seleção e o `desfazerArquivamento`, no `LivroViewModel`; na interface, uma linha e uma barra de seleção compartilhadas (`SelecaoDeCapitulos.kt`) pelas duas telas. **238 testes de unidade no app** (28 novos, cada um citando a regra R# que cobre). A interface é provisória, de propósito. Falta a verificação manual no tablet.
+
+**Consistência**
+15. **Quando a lista recarrega, a seleção é podada:** um capítulo marcado que deixou de existir ou de estar elegível (foi arquivado por outro caminho, ou removido) é desmarcado sozinho, em vez de gerar uma chamada que falharia.
+16. **Os botões de arquivar/restaurar por linha deixam de existir.**
+17. **O nome no aviso vem da lista, e não da resposta do servidor:** uma frase da tela não deve depender do formato de uma resposta de rede (achado quando um teste com resposta falsa mostrou o nome errado).
+18. **Fora do escopo desta rodada:** "selecionar todos" (é natural acrescentar), o desenho visual da barra de seleção e da linha marcada.
 
 ### 7.6 Frame
 
