@@ -1491,8 +1491,8 @@ Aprofundamento do item 7.0 antes do primeiro código Kotlin. É o **primeiro blo
 
 1. **Esqueleto:** projeto Compose vazio, `MaterialTheme`, navegação com os destinos tipados de 7.0 (telas ainda em branco). Critério: abre no tablet. **Implementado:** `navegacao/Destinos.kt` (os oito destinos), `navegacao/GrafoDeNavegacao.kt` e `telas/TelaProvisoria.kt` (uma tela de mentira reutilizável, com botões que provam a navegação, limitada a 600 dp de largura). Compila e o teste de unidade padrão passa; o critério (abrir e navegar no tablet) é verificação manual.
 2. **Configuração mínima:** tela para digitar e salvar a URL do servidor (DataStore). Critério: fechar e reabrir o app mantém a URL. **Implementado** (decisões no bloco "Incremento 2 em detalhe", abaixo): `dados/NormalizarUrl.kt`, `dados/ArmazenamentoDeConfiguracao.kt` (interface + DataStore), `rede/ApiImagineer.kt` (Retrofit, só `GET /configuracao`), `rede/ServidorImagineer.kt` (o teste de conexão, com as três falhas), `telas/configuracao/` (ViewModel + tela) e `ImagineerApp` (injeção manual). 21 testes de unidade na JVM: normalização (9), desserialização com JSON real do backend (2) e ViewModel com armazenamento/servidor falsos (10, incluindo a corrida "resultado de teste antigo não sobrescreve o texto novo"). Falta a verificação manual no tablet, contra o servidor de verdade.
-3. **Camada de rede:** Retrofit + `kotlinx.serialization`, com `GET /livros`. Critério: a Biblioteca mostra os livros reais do Raspberry Pi/PC.
-4. **Biblioteca completa:** estados de vazio, carregando e erro (abaixo).
+3. **Camada de rede:** Retrofit + `kotlinx.serialization`, com `GET /livros`. Critério: a Biblioteca mostra os livros reais do Raspberry Pi/PC. (Retrofit já entrou no incremento 2; aqui entram a rota de livros, o repositório e a tela — decisões em "Incremento 3 em detalhe".) **Implementado:** `rede/ResultadoDaChamada.kt` (`chamarApi`, a tradução de falhas), `rede/LivroResumo.kt`, `rede/RepositorioDeLivros.kt`, `telas/biblioteca/` (ViewModel com os quatro estados + tela com pull-to-refresh e recarga em `ON_RESUME`). 39 testes de unidade no total no app (18 novos: JSON real de `/livros`, as três falhas, os estados da Biblioteca, a corrida entre duas recargas e o texto dos cartões). Falta a verificação manual no tablet.
+4. **Biblioteca completa:** estados de vazio, carregando e erro (abaixo). **Divisão real entre 3 e 4:** como os quatro estados e o pull-to-refresh nascem juntos com a lista (não faz sentido chamar a API sem tratar o erro), o incremento 3 já os entrega; o incremento 4 fica com o que sobrou — **Remover livro** (`DELETE /livros/{id}`, com confirmação) e o acesso aos Perfis de renderização.
 5. **Importar:** seletor de arquivo, upload com progresso, aviso de `livros_semelhantes`, formulário de `metadados_pendentes`.
 
 #### Contratos da API que o Bloco A usa
@@ -1513,7 +1513,7 @@ A tela é uma função do estado do `ViewModel`, um de quatro:
 | Estado | O que a tela mostra |
 |---|---|
 | **Carregando** | Indicador de progresso centralizado |
-| **Lista** | Um cartão por livro: título, autor (ou "Autor desconhecido"), "N capítulos" e, só se `capitulos_ignorados > 0`, "M ignorados". Ordem: mais recente primeiro (`data_importacao`). Tocar abre o Livro. Segurar (ou menu de três pontos) oferece **Remover**, com confirmação — apaga o livro e tudo que depende dele |
+| **Lista** | Um cartão por livro: título, autor (ou "Autor desconhecido"), "N capítulos" e, só se `capitulos_ignorados > 0`, "M ignorados". Ordem: a do servidor, **alfabética por título** (item 6.2) — o app não reordena; a versão anterior desta especificação dizia "mais recente primeiro", divergência corrigida por ser lógica duplicada sem ganho claro. Tocar abre o Livro. Segurar (ou menu de três pontos) oferece **Remover**, com confirmação — apaga o livro e tudo que depende dele |
 | **Vazio** | Convite a importar o primeiro livro. Não é erro |
 | **Erro** | "Não consegui falar com o servidor", o motivo curto e o botão **Tentar de novo**. Vale para timeout, sem conexão, Pi desligado, Tailscale desconectado (item 7.0) |
 
@@ -1547,6 +1547,16 @@ Puxar para atualizar (`pull-to-refresh`) refaz o `GET /livros`. Como o app não 
 - **Depois de salvar, o app volta para a Biblioteca limpando a pilha.** Trocar o servidor invalida tudo o que estava aberto (ids de livros de outro servidor não significam nada no novo), então não faz sentido voltar para a tela anterior.
 - **Primeira abertura:** se não há URL salva, o app abre direto na Configuração (em vez de na Biblioteca), sem botão de voltar. A leitura do DataStore é assíncrona; até ela terminar, a tela fica vazia — em vez de piscar a Biblioteca e pular para a Configuração.
 - **`network_security_config`:** HTTP em texto puro liberado para todos os endereços, e não só para um domínio. O motivo é que o endereço Tailscale é um IP (`100.x.y.z`) e o mecanismo do Android só sabe liberar por nome de domínio ou IP exato — como o IP muda de instalação para instalação, não dá para fixá-lo no APK. Aceitável porque o tráfego vai dentro do túnel criptografado do Tailscale (item 7.0) e o APK é de uso pessoal. Se o app um dia for distribuído a outras pessoas, isto precisa ser reavaliado.
+
+#### Incremento 3 em detalhe — decisões
+
+- **Um repositório por assunto, como interface.** `RepositorioDeLivros` (a Biblioteca, e mais tarde o Livro) fica entre o ViewModel e o Retrofit, com uma implementação de verdade e uma falsa para teste — mesma ideia de `ServidorImagineer` (incremento 2). O ViewModel nunca vê `HttpException` nem `IOException`: recebe um `ResultadoDaChamada` (`Sucesso(dado)` ou `Falha(motivo)`), com o motivo **já escrito para o usuário**.
+- **A tradução de falha é uma função só**, compartilhada com o teste de conexão do incremento 2 (o mesmo `IOException`/`HttpException`/`SerializationException`, as mesmas três mensagens). Duplicar isso em cada repositório faria as telas divergirem na hora de dizer "não consegui falar com o servidor".
+- **O cliente Retrofit é reaproveitado enquanto a URL não muda.** Montar um `OkHttpClient` a cada chamada joga fora o pool de conexões; o repositório guarda o último par (URL, API) e só remonta se a URL salva mudou.
+- **Erro é tratado tela a tela, não por um mecanismo global.** Cada tela tem o seu estado de erro com "Tentar de novo". Coerente com "sem cache, sem modo offline" (item 7.0): não há um estado "offline" do app para anunciar — cada chamada simplesmente dá certo ou falha, e a tela que a fez sabe o que mostrar.
+- **A Biblioteca recarrega toda vez que volta a ficar visível** (`ON_RESUME`), e não só na primeira abertura: é o que garante ver o livro que acabou de ser importado, ou removido, sem ação do usuário. Se já há lista na tela, a recarga é silenciosa (a lista antiga fica visível com o indicador de atualização); se falhar, cai no estado de erro.
+- **`data_importacao` fica como texto ISO no app por enquanto** (`"2026-09-30T01:11:16"`): nenhuma tela do Bloco A a exibe, e converter para data sem uso seria trabalho especulativo.
+- **Acesso à Configuração:** ícone de engrenagem na barra superior da Biblioteca (item 7.1, "qualquer tela → engrenagem"). Os botões provisórios de navegação da Biblioteca deixam de existir; o acesso a Livro passa a vir de tocar num livro real.
 
 #### Detalhes de plataforma que não são óbvios
 
