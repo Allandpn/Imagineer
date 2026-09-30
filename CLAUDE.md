@@ -49,6 +49,20 @@ Allan está aprendendo a programar através deste projeto e quer entender o sist
 - MVP primeiro: Elemento + EstadoElemento + Frame + Prompt + Imagem, conforme Etapa 3 da especificação.
 - Relações entre elementos e Grupos com membros explícitos ficam para uma v2 — não implementar mesmo que pareça simples, sem antes atualizar a especificação para incluir esse escopo.
 
+## O app Android e a especificação compartilhada
+
+O app Android (repositório `Allandpn/Imagineer-App`) consome esta API e segue esta especificação.
+
+- **`ESPECIFICACAO.md` é a única cópia editável.** O app não guarda cópia própria, então as duas versões não têm como divergir.
+- **O Claude do app também escreve aqui**, quando o app precisa de uma mudança de rota, de campo ou de tela. Só **documentação**: o código da API não é alterado a partir de uma sessão do app.
+- **Regras de convivência** (valem para quem escrever, aqui ou no app):
+  - branch curta, criada a partir da `main` **atualizada**; nunca push direto na `main`;
+  - um assunto por pull request, mexendo só na seção desse assunto — rotas na Etapa 6, telas na Etapa 7, pendências novas no fim da lista da Etapa 8;
+  - marcar o que está "especificado" e o que está "implementado", como já é feito;
+  - na descrição do PR, dizer o que muda para o outro lado (API ou app);
+  - quem decide e mescla é o Allan.
+- **Mudança de rota ou campo que o app já usa** precisa avisar isso no PR: o app lê esta especificação no começo de cada sessão e pode estar implementando em cima do texto antigo.
+
 ## Registro de decisões técnicas
 
 Toda decisão de arquitetura relevante (troca de biblioteca, mudança no modelo de dados, escolha de modelo de IA, etc.) deve ser registrada na tabela "Decisões Técnicas e Justificativas" (Etapa 5) de `ESPECIFICACAO.md`, com o motivo da escolha e alternativas descartadas.
