@@ -25,6 +25,7 @@ from imagineer.rotas import (
     perfis_renderizacao,
     prompts,
     saude,
+    sugestoes,
 )
 
 aplicacao = FastAPI(
@@ -52,10 +53,12 @@ aplicacao.include_router(leitura.rotas_de_pin)
 aplicacao.include_router(capitulos.rotas)
 aplicacao.include_router(elementos.rotas_de_livro)
 aplicacao.include_router(elementos.rotas_de_capitulo)
+aplicacao.include_router(sugestoes.rotas_de_livro)
+aplicacao.include_router(sugestoes.rotas_de_capitulo)
 aplicacao.include_router(elementos.rotas)
 aplicacao.include_router(elementos.rotas_de_estado)
-aplicacao.include_router(elementos.rotas_de_sugestao_elemento)
-aplicacao.include_router(elementos.rotas_de_sugestao_cena)
+aplicacao.include_router(sugestoes.rotas_de_sugestao_elemento)
+aplicacao.include_router(sugestoes.rotas_de_sugestao_cena)
 aplicacao.include_router(elementos.rotas_de_identidade)
 aplicacao.include_router(frame.rotas_de_capitulo)
 aplicacao.include_router(frame.rotas)
