@@ -1331,3 +1331,35 @@ def teste_ler_sugestoes_de_capitulo_inexistente_responde_404(cliente: TestClient
     resposta = cliente.get("/capitulos/9999/sugestoes")
 
     assert resposta.status_code == 404
+
+
+def teste_cena_sugerida_traz_o_frame_id_so_depois_de_confirmada(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """O app põe a cena na aba certa por `frame_id`: nulo = pendente, preenchido = confirmada (D2)."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            cenas_sugeridas=[
+                CenaSugerida(
+                    titulo="A partida",
+                    participantes=[ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
+                ),
+                CenaSugerida(
+                    titulo="A volta",
+                    participantes=[ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
+                ),
+            ],
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+    capitulo_id = livro["capitulos"][0]["id"]
+    primeira, segunda = cliente.post(f"/capitulos/{capitulo_id}/sugestoes").json()["cenas"]
+    assert primeira["frame_id"] is None and segunda["frame_id"] is None
+
+    frame = cliente.post(f"/capitulos/{capitulo_id}/frames", json={"sugestao_cena_id": primeira["id"]})
+    assert frame.status_code == 201, frame.text
+
+    cenas = {c["titulo"]: c for c in cliente.get(f"/capitulos/{capitulo_id}/sugestoes").json()["cenas"]}
+    assert cenas["A partida"]["frame_id"] == frame.json()["id"]
+    assert cenas["A volta"]["frame_id"] is None

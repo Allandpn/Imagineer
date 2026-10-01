@@ -467,6 +467,13 @@ class CenaSugerida(BaseModel):
         default=False,
         description="O usuário descartou esta cena (item 6.8): não conta como pendente.",
     )
+    frame_id: int | None = Field(
+        default=None,
+        description=(
+            "O Frame criado a partir desta cena. Nulo = ainda pendente (ou descartada); "
+            "preenchido = confirmada. É o que o app usa para pôr a cena na aba certa (D2)."
+        ),
+    )
     modelo: str = Field(description="O modelo de IA que gerou esta sugestão.")
 
 

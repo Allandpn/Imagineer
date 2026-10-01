@@ -1432,6 +1432,7 @@ def _resposta_de_cena(
         humor=cena.humor,
         modelo=cena.modelo,
         descartada=cena.descartada,
+        frame_id=cena.frame_id,
         participantes=[
             ParticipanteSugeridoResposta(
                 sugestao_elemento_id=participante.id,

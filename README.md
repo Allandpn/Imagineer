@@ -6,6 +6,8 @@ O sistema não gera a imagem: ele monta o prompt, mantendo a **consistência vis
 
 A especificação completa está em [`ESPECIFICACAO.md`](ESPECIFICACAO.md).
 
+Para **subir e atualizar o servidor** (no PC e no Raspberry Pi, com ou sem mudança no banco), veja [`SERVIDOR.md`](SERVIDOR.md).
+
 O manual técnico de casos de uso e rotas (o que cada endpoint faz, campos obrigatórios/opcionais, fluxo de interação) está publicado em: <https://claude.ai/artifact/TQm1FKkVvBfKPBxPmoFtfU>. É atualizado junto com o código — se algo divergir, a especificação é a fonte de verdade.
 
 ## Como está organizado
