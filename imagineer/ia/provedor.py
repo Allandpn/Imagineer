@@ -269,6 +269,7 @@ class ProvedorIA(ABC):
         texto_capitulo: str,
         elementos_conhecidos: list[str],
         modelo: str,
+        orientacao: str | None = None,
     ) -> ExtracaoDeElementos:
         """Identifica os elementos do capítulo — fase 1 do item 4.4 (passo 6).
 
@@ -284,6 +285,8 @@ class ProvedorIA(ABC):
                 quem já existe e reconhecer apelidos; mandar a aparência fazia a
                 IA copiá-la para a sugestão de outro capítulo.
             modelo: o identificador do modelo a usar.
+            orientacao: o que o usuário pediu para procurar além da primeira análise (item 6.7,
+                M1). É um **palpite dele**, não um fato: a IA só inclui o que o texto mostra.
 
         Não pede descrição de aparência — só identificação. Ver
         ``sugerir_estado`` para a leitura profunda de um elemento específico.

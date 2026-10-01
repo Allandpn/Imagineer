@@ -486,6 +486,21 @@ class CenaSugerida(BaseModel):
     modelo: str = Field(description="O modelo de IA que gerou esta sugestão.")
 
 
+class PedidoDeAnalise(BaseModel):
+    """O corpo **opcional** de `POST /capitulos/{id}/sugestoes` (item 6.7, M1)."""
+
+    orientacao: str | None = Field(
+        default=None,
+        max_length=1000,
+        description=(
+            "O que a análise não pegou, em texto livre (\"falta a cena em que X chega ao porto\"). "
+            "Não vazia: roda a IA mesmo sem `forcar=true`, fica guardada no capítulo e vale nas "
+            "reanálises seguintes. Em branco (`\"\"`): apaga a orientação guardada e roda a IA sem ela. "
+            "Ausente ou nula: não mexe na que está guardada."
+        ),
+    )
+
+
 class SugestoesDeCapitulo(BaseModel):
     """O que `POST /capitulos/{id}/sugestoes` devolve.
 
@@ -508,6 +523,10 @@ class SugestoesDeCapitulo(BaseModel):
             "depende de quanto já foi confirmado, não de quantos capítulos "
             "já foram lidos."
         ),
+    )
+    orientacao: str | None = Field(
+        default=None,
+        description="A orientação do usuário que vale neste capítulo (item 6.7, M1); nulo = nenhuma.",
     )
     elementos: list[ElementoSugerido]
     cenas: list[CenaSugerida] = Field(

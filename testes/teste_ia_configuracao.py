@@ -1339,6 +1339,7 @@ def teste_provedor_falso_registra_o_que_foi_pedido() -> None:
             "texto_capitulo": "o texto",
             "elementos_conhecidos": ["Jon: manto"],
             "modelo": MODELO_FALSO,
+            "orientacao": None,
         }
     ]
 

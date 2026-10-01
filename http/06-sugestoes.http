@@ -34,6 +34,18 @@ POST {{baseUrl}}/capitulos/35/sugestoes
     });
 %}
 
+### Reanalisa o capítulo com uma orientação sua: "o que a análise não pegou" (item 6.7, M1)
+# O corpo é OPCIONAL. Com "orientacao" não vazia, RODA A IA (e cobra) mesmo sem forcar=true, e a
+# orientação fica guardada no capítulo: vale nas reanálises seguintes e volta no campo "orientacao"
+# de qualquer leitura. Em branco ("") apaga a guardada e roda a IA sem ela; sem o campo, não mexe.
+# Até 1000 caracteres. A IA trata a orientação como PALPITE: o que não está no capítulo, ela ignora.
+POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/sugestoes
+Content-Type: application/json
+
+{
+  "orientacao": "falta a cena em que o personagem chega ao porto"
+}
+
 ### Rodar de novo depois de confirmar um elemento (03-elementos-e-estados.http)
 # Mesmo sem forcar=true, mostra o elemento já cadastrado com elemento_id
 # preenchido — o casamento é recalculado a cada leitura, só o texto da

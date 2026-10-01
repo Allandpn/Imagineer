@@ -41,6 +41,7 @@ from imagineer.esquemas.elemento import (
     SugestaoDeCenaAjuste,
     SugestaoDeElementoAjuste,
     SugestaoDeElementoBuscada,
+    PedidoDeAnalise,
     SugestoesDeCapitulo,
 )
 from imagineer.ia.openrouter import conferir_se_cabe
@@ -720,6 +721,7 @@ def sugerir_elementos(
             "devolvido sem chamar a IA de novo."
         ),
     ),
+    pedido: PedidoDeAnalise | None = None,
     sessao: Session = Depends(obter_sessao),
     provedor: ProvedorIA = Depends(obter_provedor),
 ) -> SugestoesDeCapitulo:
@@ -736,10 +738,20 @@ def sugerir_elementos(
     do que já está salvo — só o texto da sugestão vem do cache. Assim,
     cadastrar um elemento novo entre uma chamada e outra já aparece casado na
     próxima leitura, sem precisar de `forcar=true`.
+
+    **Orientação do usuário (M1, item 6.7):** o corpo opcional `{"orientacao": "..."}` diz o que a
+    análise não pegou. Não vazia, ela **roda a IA** (mesmo sem `forcar=true`: mandá-la é o pedido de
+    reanalisar) e fica guardada no capítulo para as reanálises seguintes; em branco, apaga a guardada
+    e roda a IA sem ela; ausente, não mexe.
     """
     capitulo = _buscar_capitulo(sessao, capitulo_id)
 
-    if capitulo.sugestoes_geradas_em is None or forcar:
+    rodar_ia = forcar
+    if pedido is not None and pedido.orientacao is not None:
+        capitulo.orientacao_da_analise = pedido.orientacao.strip() or None
+        rodar_ia = True
+
+    if capitulo.sugestoes_geradas_em is None or rodar_ia:
         _gerar_sugestoes(sessao, provedor, capitulo)
 
     _casar_sugestoes_pendentes(sessao, capitulo_id, capitulo.livro_id)
@@ -1289,7 +1301,9 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
             (m.contexto for m in provedor.listar_modelos() if m.id == modelo_extracao), 0
         )
         conferir_se_cabe(capitulo.texto, contexto_do_modelo)
-        extracao = provedor.extrair_elementos(capitulo.texto, elementos_conhecidos, modelo_extracao)
+        extracao = provedor.extrair_elementos(
+            capitulo.texto, elementos_conhecidos, modelo_extracao, capitulo.orientacao_da_analise
+        )
     except (ChaveDeApiAusente, ModeloNaoEscolhido, TextoLongoDemais) as erro:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
@@ -1439,6 +1453,7 @@ def _sugestoes_de_capitulo(
     return SugestoesDeCapitulo(
         gerado_em=capitulo.sugestoes_geradas_em,
         sugestoes_pendentes_anteriores=pendentes_anteriores,
+        orientacao=capitulo.orientacao_da_analise,
         elementos=[_resposta_de_elemento(sessao, e, capitulo, vigentes) for e in elementos],
         cenas=[_resposta_de_cena(sessao, c, capitulo, vigentes) for c in cenas],
     )

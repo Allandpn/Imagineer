@@ -137,6 +137,10 @@ parágrafo do capítulo como uma cena.
 uma frase curta (até 200 caracteres) do texto do capítulo, no ponto em que o momento \
 da cena COMEÇA. Não resuma, não traduza, não corrija pontuação. Se não tiver certeza \
 de achar um trecho exato, use null.
+- Se o pedido trouxer uma "ORIENTAÇÃO DO USUÁRIO", procure com atenção o que ela \
+descreve (um elemento, uma cena) e inclua se estiver no texto. A orientação é um \
+PALPITE do usuário, não um fato: se o que ele descreve NÃO aparece neste capítulo, \
+não invente — ignore. Todo o resto das regras vale igual.
 - Todo nome em "participantes" deve corresponder exatamente a um nome que \
 também está em "elementos".
 - Escreva em português.
@@ -478,7 +482,11 @@ class ProvedorOpenRouter(ProvedorIA):
     # ----------------------------------------------------------------------- #
 
     def extrair_elementos(
-        self, texto_capitulo: str, elementos_conhecidos: list[str], modelo: str
+        self,
+        texto_capitulo: str,
+        elementos_conhecidos: list[str],
+        modelo: str,
+        orientacao: str | None = None,
     ) -> ExtracaoDeElementos:
         """Pede ao modelo os elementos visuais do capítulo — fase 1 (passo 6)."""
         conhecidos = (
@@ -490,6 +498,11 @@ class ProvedorOpenRouter(ProvedorIA):
             f"ELEMENTOS JÁ CADASTRADOS NESTE LIVRO (nome, tipo e quem são):\n{conhecidos}\n\n"
             f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
+        if orientacao:
+            pedido += (
+                "\n\nORIENTAÇÃO DO USUÁRIO (algo que ele acha que a análise anterior deixou passar; "
+                f"é um palpite dele, não um fato):\n{orientacao}"
+            )
 
         resposta = self._conversar(modelo, _INSTRUCAO_DE_EXTRACAO, pedido, operacao="extracao")
         bruto = _extrair_json(resposta)

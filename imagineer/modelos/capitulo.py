@@ -68,6 +68,11 @@ class Capitulo(Base):
     decide.
     """
 
+    orientacao_da_analise: Mapped[str | None] = mapped_column(String(1000))
+    """O que o usuário pediu à IA para procurar neste capítulo na reanálise (item 6.7, M1): "falta a cena
+    em que X chega ao porto". Fica guardada e é reaproveitada nas reanálises seguintes, porque só as
+    sugestões **não confirmadas** são refeitas — sem isso o pedido sumiria. Nulo = nenhuma."""
+
     sugestoes_geradas_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     """Quando a última rodada de `POST /capitulos/{id}/sugestoes` chamou a IA
     de verdade para este capítulo — o texto em si não fica mais aqui, fica em
