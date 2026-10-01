@@ -48,6 +48,9 @@ from imagineer.servicos.importacao_epub import (
     livros_com_mesmo_identificador,
 )
 from imagineer.servicos.upload import ler_com_limite
+from imagineer.rotas._comum import (
+    buscar_livro as _buscar_livro,
+)
 
 rotas = APIRouter(prefix="/livros", tags=["Livros"])
 
@@ -360,17 +363,6 @@ def remover_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Non
 # --------------------------------------------------------------------------- #
 # Funções internas
 # --------------------------------------------------------------------------- #
-
-
-def _buscar_livro(sessao: Session, livro_id: int) -> Livro:
-    """Devolve o livro ou responde 404."""
-    livro = sessao.get(Livro, livro_id)
-    if livro is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe livro com id {livro_id}.",
-        )
-    return livro
 
 
 def _exigir_perfil(sessao: Session, perfil_id: int) -> None:

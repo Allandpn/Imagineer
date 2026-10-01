@@ -17,8 +17,12 @@ from imagineer.esquemas.leitura import (
     PinNovo,
     PinResposta,
 )
-from imagineer.modelos import Capitulo, Livro, Marcador, Pin
+from imagineer.modelos import Capitulo, Marcador, Pin
 from imagineer.servicos.posicao_no_texto import tamanho_em_utf16
+from imagineer.rotas._comum import (
+    buscar_livro as _buscar_livro,
+    buscar_pin as _buscar_pin,
+)
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Leitura"])
 rotas_de_pin = APIRouter(prefix="/pins", tags=["Leitura"])
@@ -202,21 +206,3 @@ def _capitulo_do_livro(sessao: Session, livro_id: int, capitulo_id: int) -> Capi
     return capitulo
 
 
-def _buscar_livro(sessao: Session, livro_id: int) -> Livro:
-    livro = sessao.get(Livro, livro_id)
-    if livro is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe livro com id {livro_id}.",
-        )
-    return livro
-
-
-def _buscar_pin(sessao: Session, pin_id: int) -> Pin:
-    pin = sessao.get(Pin, pin_id)
-    if pin is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe pin com id {pin_id}.",
-        )
-    return pin

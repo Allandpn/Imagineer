@@ -4,12 +4,15 @@ O passo 5 do fluxo — o usuário escolhe um capítulo — e a confirmação da 
 de "ignorado" que a importação deixou (item 2.2).
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.livro import CapituloAjuste, CapituloDetalhe
 from imagineer.modelos import Capitulo
+from imagineer.rotas._comum import (
+    buscar_capitulo as _buscar_capitulo,
+)
 
 rotas = APIRouter(prefix="/capitulos", tags=["Capítulos"])
 
@@ -54,17 +57,6 @@ def ajustar_capitulo(
     sessao.commit()
     sessao.refresh(capitulo)
     return _detalhe(capitulo)
-
-
-def _buscar_capitulo(sessao: Session, capitulo_id: int) -> Capitulo:
-    """Devolve o capítulo ou responde 404."""
-    capitulo = sessao.get(Capitulo, capitulo_id)
-    if capitulo is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe capítulo com id {capitulo_id}.",
-        )
-    return capitulo
 
 
 def _detalhe(capitulo: Capitulo) -> CapituloDetalhe:

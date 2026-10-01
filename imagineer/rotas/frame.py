@@ -32,6 +32,10 @@ from imagineer.modelos import (
 )
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.posicao_no_texto import tamanho_em_utf16
+from imagineer.rotas._comum import (
+    buscar_capitulo as _buscar_capitulo,
+    buscar_frame as _buscar_frame,
+)
 
 rotas_de_capitulo = APIRouter(prefix="/capitulos", tags=["Frames"])
 rotas = APIRouter(prefix="/frames", tags=["Frames"])
@@ -453,21 +457,3 @@ def _detalhe(sessao: Session, frame: Frame) -> FrameDetalhe:
     )
 
 
-def _buscar_frame(sessao: Session, frame_id: int) -> Frame:
-    frame = sessao.get(Frame, frame_id)
-    if frame is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe frame com id {frame_id}.",
-        )
-    return frame
-
-
-def _buscar_capitulo(sessao: Session, capitulo_id: int) -> Capitulo:
-    capitulo = sessao.get(Capitulo, capitulo_id)
-    if capitulo is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe capítulo com id {capitulo_id}.",
-        )
-    return capitulo

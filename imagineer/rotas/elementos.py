@@ -60,7 +60,6 @@ from imagineer.modelos import (
     TipoDeFrame,
     HistoricoIdentidadeElemento,
     Imagem,
-    Livro,
     SugestaoDeCena,
     SugestaoDeElemento,
     TipoElemento,
@@ -71,6 +70,14 @@ from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
 from imagineer.servicos.posicao_no_texto import posicao_da_citacao, posicao_da_primeira_mencao
 from imagineer.servicos.trava_de_analise import AnaliseEmAndamento, analise_exclusiva
+from imagineer.rotas._comum import (
+    buscar_acrescimo as _buscar_acrescimo,
+    buscar_capitulo as _buscar_capitulo,
+    buscar_elemento as _buscar_elemento,
+    buscar_estado as _buscar_estado,
+    buscar_livro as _buscar_livro,
+    buscar_sugestao_de_elemento as _buscar_sugestao_de_elemento,
+)
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Elementos"])
 rotas = APIRouter(prefix="/elementos", tags=["Elementos"])
@@ -349,16 +356,6 @@ def _resumo_do_acrescimo(registro: HistoricoIdentidadeElemento) -> HistoricoIden
             "titulo_do_capitulo": registro.capitulo.titulo,
         }
     )
-
-
-def _buscar_acrescimo(sessao: Session, acrescimo_id: int) -> HistoricoIdentidadeElemento:
-    registro = sessao.get(HistoricoIdentidadeElemento, acrescimo_id)
-    if registro is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe acréscimo de identidade com id {acrescimo_id}.",
-        )
-    return registro
 
 
 @rotas.post(
@@ -1179,36 +1176,6 @@ def _conflito_de_elemento(
     return montar
 
 
-def _buscar_livro(sessao: Session, livro_id: int) -> Livro:
-    livro = sessao.get(Livro, livro_id)
-    if livro is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe livro com id {livro_id}.",
-        )
-    return livro
-
-
-def _buscar_elemento(sessao: Session, elemento_id: int) -> Elemento:
-    elemento = sessao.get(Elemento, elemento_id)
-    if elemento is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe elemento com id {elemento_id}.",
-        )
-    return elemento
-
-
-def _buscar_sugestao_de_elemento(sessao: Session, sugestao_id: int) -> SugestaoDeElemento:
-    sugestao = sessao.get(SugestaoDeElemento, sugestao_id)
-    if sugestao is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe sugestão de elemento com id {sugestao_id}.",
-        )
-    return sugestao
-
-
 def _estado_id_no_capitulo(sessao: Session, sugestao: SugestaoDeElemento) -> int | None:
     """O Estado já registrado para o elemento casado, neste capítulo específico.
 
@@ -1230,26 +1197,6 @@ def _estado_id_no_capitulo(sessao: Session, sugestao: SugestaoDeElemento) -> int
         .order_by(EstadoElemento.id.desc())
         .limit(1)
     ).scalar_one_or_none()
-
-
-def _buscar_estado(sessao: Session, estado_id: int) -> EstadoElemento:
-    estado = sessao.get(EstadoElemento, estado_id)
-    if estado is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe estado com id {estado_id}.",
-        )
-    return estado
-
-
-def _buscar_capitulo(sessao: Session, capitulo_id: int) -> Capitulo:
-    capitulo = sessao.get(Capitulo, capitulo_id)
-    if capitulo is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe capítulo com id {capitulo_id}.",
-        )
-    return capitulo
 
 
 def _buscar_capitulo_do_livro(sessao: Session, capitulo_id: int, livro_id: int) -> Capitulo:

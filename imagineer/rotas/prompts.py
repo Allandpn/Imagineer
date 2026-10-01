@@ -50,6 +50,11 @@ from imagineer.servicos.catalogo_imagens import (
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.identidade_de_elemento import identidade_vigente
 from imagineer.servicos.upload import ler_com_limite
+from imagineer.rotas._comum import (
+    buscar_frame as _buscar_frame,
+    buscar_imagem as _buscar_imagem,
+    buscar_prompt as _buscar_prompt,
+)
 
 rotas_de_frame = APIRouter(prefix="/frames", tags=["Prompts"])
 rotas = APIRouter(prefix="/prompts", tags=["Prompts"])
@@ -614,31 +619,3 @@ def _detalhe(
     )
 
 
-def _buscar_frame(sessao: Session, frame_id: int) -> Frame:
-    frame = sessao.get(Frame, frame_id)
-    if frame is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe frame com id {frame_id}.",
-        )
-    return frame
-
-
-def _buscar_prompt(sessao: Session, prompt_id: int) -> Prompt:
-    prompt = sessao.get(Prompt, prompt_id)
-    if prompt is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe prompt com id {prompt_id}.",
-        )
-    return prompt
-
-
-def _buscar_imagem(sessao: Session, imagem_id: int) -> Imagem:
-    imagem = sessao.get(Imagem, imagem_id)
-    if imagem is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe imagem com id {imagem_id}.",
-        )
-    return imagem

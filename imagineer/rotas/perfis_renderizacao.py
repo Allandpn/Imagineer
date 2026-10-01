@@ -19,6 +19,9 @@ from imagineer.esquemas.frame import (
     PerfilRenderizacaoNovo,
 )
 from imagineer.modelos import PerfilRenderizacao
+from imagineer.rotas._comum import (
+    buscar_perfil as _buscar_perfil,
+)
 
 rotas = APIRouter(prefix="/perfis-renderizacao", tags=["Perfis de renderização"])
 
@@ -87,16 +90,6 @@ def remover_perfil(perfil_id: int, sessao: Session = Depends(obter_sessao)) -> N
     """
     sessao.delete(_buscar_perfil(sessao, perfil_id))
     sessao.commit()
-
-
-def _buscar_perfil(sessao: Session, perfil_id: int) -> PerfilRenderizacao:
-    perfil = sessao.get(PerfilRenderizacao, perfil_id)
-    if perfil is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Não existe perfil de renderização com id {perfil_id}.",
-        )
-    return perfil
 
 
 def _gravar(sessao: Session, nome: str) -> None:
