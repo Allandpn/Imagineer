@@ -18,7 +18,9 @@ services:
       URL_BANCO: postgresql+psycopg://imagineer:${SENHA_BANCO:-senha_local}@db:5432/imagineer
       DIRETORIO_IMAGENS: /dados/imagens
     ports:
-      - "8000:8000"
+      # A porta de FORA é configurável (PORTA_API no .env; padrão 8000): num Raspberry Pi que já
+      # roda outros sistemas, a 8000 pode estar ocupada. A de dentro do container é sempre 8000.
+      - "${PORTA_API:-8000}:8000"
     volumes:
       # Volume dedicado ao catálogo: as imagens ficam em arquivo, nunca no
       # banco (o banco guarda só a referência). Por ser um volume, sobrevivem
@@ -43,7 +45,8 @@ services:
       # ferramentas locais (alembic rodando no venv, cliente de SQL) mas NÃO
       # fica exposto na rede. Sem o "127.0.0.1:", o Docker abriria a porta
       # para qualquer máquina que alcance o Raspberry Pi.
-      - "127.0.0.1:5432:5432"
+      # A porta de fora também é configurável (PORTA_BANCO; padrão 5432), pelo mesmo motivo.
+      - "127.0.0.1:${PORTA_BANCO:-5432}:5432"
     volumes:
       - dados_banco:/var/lib/postgresql/data
     healthcheck:

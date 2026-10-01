@@ -43,26 +43,33 @@ Depois:
 O mesmo `docker compose` roda no Raspberry Pi (as imagens `python:3.12-slim` e `postgres:16-alpine` têm versão ARM64).
 O app acessa o Pi pelo **Tailscale**, de qualquer lugar, sem abrir porta no roteador.
 
-**1. Preparar o Pi** (uma vez; Raspberry Pi OS de 64 bits)
+**1. Preparar o Pi** (uma vez; Raspberry Pi OS de 64 bits). Se o Pi já roda outros sistemas, **confira antes de mexer em qualquer coisa**:
 
 ```bash
-curl -fsSL https://get.docker.com | sh          # instala o Docker
-sudo usermod -aG docker $USER                    # depois, saia e entre de novo no SSH
-curl -fsSL https://tailscale.com/install.sh | sh # instala o Tailscale
-sudo tailscale up                                # abre um link: entre com a mesma conta dos outros aparelhos
-tailscale ip -4                                  # o endereço 100.x.y.z do Pi: é o que vai no app
+docker --version && docker compose version        # já tem Docker? se sim, pule a instalação abaixo
+docker ps                                          # o que já está rodando (não será tocado)
+ss -ltn | grep -E ':(8000|5432)' || echo "portas 8000 e 5432 livres"   # se aparecer algo, use PORTA_API/PORTA_BANCO no .env
+free -h && df -h /                                 # memória e disco: o Imagineer usa ~300 MB de RAM
+```
+
+```bash
+curl -fsSL https://get.docker.com | sh            # só se NÃO tiver Docker
+sudo usermod -aG docker $USER                      # depois, saia e entre de novo no SSH
+curl -fsSL https://tailscale.com/install.sh | sh   # só se NÃO tiver Tailscale
+sudo tailscale up                                  # abre um link: entre com a mesma conta dos outros aparelhos
+tailscale ip -4                                    # o endereço 100.x.y.z do Pi: é o que vai no app
 ```
 
 **2. Baixar e subir**
 
 ```bash
 git clone https://github.com/Allandpn/Imagineer.git && cd Imagineer
-cp .env.exemplo .env && nano .env     # SENHA_BANCO (invente uma) e CHAVE_API_OPENROUTER
+cp .env.exemplo .env && nano .env     # SENHA_BANCO (invente uma) e CHAVE_API_OPENROUTER; se uma porta estiver ocupada, PORTA_API / PORTA_BANCO
 docker compose up -d --build          # a primeira vez demora; as migrations rodam sozinhas
 curl http://localhost:8000/saude      # {"situacao":"ok","banco":"conectado"}
 ```
 
-O `restart: unless-stopped` do compose faz tudo voltar sozinho quando o Pi reinicia.
+O `restart: unless-stopped` do compose faz tudo voltar sozinho quando o Pi reinicia. O projeto usa containers e volumes próprios (`imagineer-*`), então não interfere em outros sistemas do Pi.
 
 **3. Levar os dados do PC** (opcional: sem isso o Pi começa vazio)
 
