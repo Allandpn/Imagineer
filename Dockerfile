@@ -24,4 +24,9 @@ EXPOSE 8000
 
 # --host 0.0.0.0 é obrigatório dentro do container: o padrão (127.0.0.1) só
 # aceitaria conexões de dentro dele próprio, e ninguém de fora conseguiria entrar.
-CMD ["uvicorn", "imagineer.principal:aplicacao", "--host", "0.0.0.0", "--port", "8000"]
+# Ao subir, primeiro aplica as migrations pendentes ("alembic upgrade head") e só então inicia a API:
+# o servidor sempre sobe com o banco no formato que o código espera, inclusive depois de o Raspberry
+# Pi reiniciar ou de uma atualização (decisão registrada na Etapa 5). Num banco já atualizado o
+# comando não faz nada. Se uma migration falhar, o container não sobe e o motivo aparece em
+# "docker compose logs api". O "exec" faz o uvicorn receber os sinais de parada do Docker.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn imagineer.principal:aplicacao --host 0.0.0.0 --port 8000"]

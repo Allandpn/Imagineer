@@ -1,0 +1,28 @@
+# O que NÃO vai para dentro da imagem (o `COPY . .` do Dockerfile respeita este arquivo).
+# Sem ele, a imagem levava o venv do Windows e o histórico do git: engordava e atrasava o build,
+# e no Raspberry Pi isso custa minutos.
+
+# Ambiente virtual e caches do Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Controle de versão e editor
+.git/
+.gitignore
+.idea/
+
+# Segredos e dados locais: a imagem não pode carregar a chave de API nem o banco de ninguém
+.env
+dados/
+*.7z
+
+# Só serve a quem desenvolve: testes, coleção .http e documentação
+testes/
+http/
+pytest.ini
+*.md
+doc-casos-de-uso.html
+modelagem-atual.mmd

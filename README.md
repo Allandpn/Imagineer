@@ -38,6 +38,62 @@ Depois:
 - API: <http://localhost:8000/saude>
 - Documentação automática: <http://localhost:8000/docs>
 
+## Raspberry Pi: servidor 24/7
+
+O mesmo `docker compose` roda no Raspberry Pi (as imagens `python:3.12-slim` e `postgres:16-alpine` têm versão ARM64).
+O app acessa o Pi pelo **Tailscale**, de qualquer lugar, sem abrir porta no roteador.
+
+**1. Preparar o Pi** (uma vez; Raspberry Pi OS de 64 bits)
+
+```bash
+curl -fsSL https://get.docker.com | sh          # instala o Docker
+sudo usermod -aG docker $USER                    # depois, saia e entre de novo no SSH
+curl -fsSL https://tailscale.com/install.sh | sh # instala o Tailscale
+sudo tailscale up                                # abre um link: entre com a mesma conta dos outros aparelhos
+tailscale ip -4                                  # o endereço 100.x.y.z do Pi: é o que vai no app
+```
+
+**2. Baixar e subir**
+
+```bash
+git clone https://github.com/Allandpn/Imagineer.git && cd Imagineer
+cp .env.exemplo .env && nano .env     # SENHA_BANCO (invente uma) e CHAVE_API_OPENROUTER
+docker compose up -d --build          # a primeira vez demora; as migrations rodam sozinhas
+curl http://localhost:8000/saude      # {"situacao":"ok","banco":"conectado"}
+```
+
+O `restart: unless-stopped` do compose faz tudo voltar sozinho quando o Pi reinicia.
+
+**3. Levar os dados do PC** (opcional: sem isso o Pi começa vazio)
+
+No PC, na pasta do projeto, com a stack rodando:
+
+```bash
+docker compose exec -T db pg_dump -U imagineer -d imagineer --clean --if-exists > backup-banco.sql
+docker compose cp api:/dados/imagens ./backup-imagens
+scp -r backup-banco.sql backup-imagens usuario@IP-DO-PI:~/Imagineer/
+```
+
+No Pi, na pasta do projeto (a stack já deve ter subido uma vez):
+
+```bash
+docker compose exec -T db psql -U imagineer -d imagineer < backup-banco.sql
+docker compose cp backup-imagens/. api:/dados/imagens
+docker compose restart api
+```
+
+**4. Atualizar depois de novos commits**
+
+```bash
+cd ~/Imagineer && git pull && docker compose up -d --build
+```
+
+**5. No app:** em Configuração, `http://100.x.y.z:8000` e **Testar**.
+
+**Cuidados.** O servidor não tem login: a proteção é o Tailscale (só os aparelhos da sua conta entram) — não compartilhe
+aparelhos nem convide pessoas para a sua rede sem limitar o acesso. O banco só aceita conexões do próprio Pi
+(`127.0.0.1:5432`). Faça backup de vez em quando (o comando `pg_dump` acima) e guarde-o fora do Pi.
+
 ## Rodando sem Docker (desenvolvimento)
 
 ```bash
