@@ -2421,6 +2421,20 @@ O 10b (a cena) foi dividido em três fatias, cada uma testável no tablet: **(1)
 
 **Como ficou (em linguagem simples).** Tocar numa cena, no painel ou no ícone dela no texto, abre uma folha com o título, a descrição e cada participante, dizendo se já é um elemento confirmado. Se algum ainda não for, há um botão **Revisar** que leva direto ao modal daquele elemento. Confirmar a cena chama o servidor (que usa o estado de cada participante); se faltar algo, a mensagem do servidor aparece na própria folha, sem fechá-la. **Divergências do plano:** no C3, o participante confirmado aparece como "Elemento confirmado" (o servidor não devolve o *nome* do elemento casado nas cenas, só o do participante; mostrar "Casado com *Nome*" exigiria um campo novo). **Defeito corrigido de passagem:** o ícone de cena no texto abria o modal do elemento de mesmo id. O rastro temporário do D3 foi removido.
 
+#### "Confirmar todos" no painel de IA (pedido do Allan, 01/10/2026; implementado, 561 testes; falta validar no tablet)
+
+Um botão no painel de IA do capítulo que decide de uma vez o que já tem par. **Decisão de desenho minha, a rever com o uso:** o lote confirma **só o que não exige escolha**, e **sempre mostra a conta antes** — porque o casamento automático é justamente o que o sistema pede para conferir (item 4.6), e confirmá-lo em massa sem avisar anularia esse cuidado.
+
+- **L1 — O botão.** "Confirmar todos", ao lado de "Reanalisar", na lista de sugestões. Só fica habilitado quando há **algo que o lote consiga confirmar** (elementos novos sozinhos não bastam) e nenhuma análise ou lote está rodando.
+- **L2 — Confirmação com a conta.** O diálogo diz **o que vai acontecer** (quantos casamentos serão confirmados, quantos estados registrados, quantas cenas tentadas) **e o que não vai** ("não gasta IA e não descarta nada"; quantos elementos novos ficam para a pessoa).
+- **L3 — Ordem e ritmo.** (1) confirma os **casamentos automáticos**; (2) relê; registra o **estado** de quem ainda não tem (inclusive quem acabou de ter o casamento confirmado); (3) relê; tenta confirmar as **cenas pendentes**; (4) relê. **Uma chamada por vez**, sem repetição automática.
+- **L4 — Falhas.** Uma chamada que o **servidor recusa** (422: falta confirmar algo) deixa **aquele item pendente** e o lote **continua**; já uma falha de **conexão** (sem código HTTP) **interrompe** o lote, para não esperar vários tempos limites seguidos. Um **409** (cena já confirmada, por exemplo em outro aparelho) conta como feito.
+- **L5 — O resumo.** Ao terminar, o painel mostra uma ou duas frases ("Confirmado: 1 casamento, 1 estado, 1 cena. 1 elemento novo espera sua decisão."), com o primeiro motivo de recusa e, se parou, onde parou. Dispensa-se com o X; some ao começar outro lote.
+- **L6 — O que o lote NUNCA faz.** Criar elemento novo (criar ou vincular exige escolha), descartar qualquer coisa, ou gastar IA. O estado registrado é um **rascunho** (item 4.4), como sempre.
+- **L7 — Descartados ficam de fora**, e cenas já confirmadas também.
+
+*Em linguagem simples:* o botão resolve, de uma vez, o que já tem um par óbvio, e deixa para você só o que realmente precisa de uma decisão sua.
+
 #### Incremento 11 do app, primeira fatia — os ícones dos elementos no texto (implementado em 30/09/2026)
 
 **Pedido do Allan:** ao analisar o capítulo, as sugestões aparecem no painel de IA **e também como ícones no texto**. Fatia combinada com ele, dada a pouca cota do dia: **só os elementos, de ponta a ponta**; as cenas entram depois.
