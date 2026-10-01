@@ -46,3 +46,22 @@ def identidade_vigente(sessao: Session, elemento: Elemento, ordem_limite: int) -
     partes.extend(incrementos)
 
     return " ".join(partes) if partes else None
+
+
+def resumir_texto(texto: str | None, limite: int) -> str | None:
+    """Corta o texto em ``limite`` caracteres, na última palavra inteira, terminando em "…".
+
+    Existe porque a identidade vigente **cresce sem parar** (a descrição inicial mais um
+    acréscimo por capítulo): mandá-la inteira em cada sugestão, ou à IA, não escala num livro
+    grande (item 7.5b, rodada 3). Espaços repetidos e quebras de linha viram um espaço só.
+    Devolve o texto como está se cabe, e ``None`` se vier ``None`` ou vazio.
+    """
+    if not texto:
+        return None
+    limpo = " ".join(texto.split())
+    if len(limpo) <= limite:
+        return limpo
+    corte = limpo[:limite]
+    if " " in corte:
+        corte = corte.rsplit(" ", 1)[0]
+    return corte.rstrip(" ,.;:") + "…"

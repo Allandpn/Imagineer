@@ -247,7 +247,7 @@ class ProvedorIA(ABC):
     def extrair_elementos(
         self,
         texto_capitulo: str,
-        estados_conhecidos: list[str],
+        elementos_conhecidos: list[str],
         modelo: str,
     ) -> ExtracaoDeElementos:
         """Identifica os elementos do capítulo — fase 1 do item 4.4 (passo 6).
@@ -258,10 +258,11 @@ class ProvedorIA(ABC):
 
         Args:
             texto_capitulo: o texto a ler.
-            estados_conhecidos: o último estado conhecido de cada elemento já
-                cadastrado, em texto. É o contexto que permite à IA responder
-                "manter estado atual" em vez de inventar um estado novo a cada
-                capítulo.
+            elementos_conhecidos: cada elemento já cadastrado, em texto, com a
+                **identidade** vigente ("Nome (TIPO): quem é"), e nunca a
+                aparência de um capítulo. Serve para a IA usar o mesmo nome de
+                quem já existe e reconhecer apelidos; mandar a aparência fazia a
+                IA copiá-la para a sugestão de outro capítulo.
             modelo: o identificador do modelo a usar.
 
         Não pede descrição de aparência — só identificação. Ver

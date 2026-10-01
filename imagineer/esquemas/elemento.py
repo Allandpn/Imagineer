@@ -15,6 +15,14 @@ class EstadoResumo(BaseModel):
     id: int
     elemento_id: int
     capitulo_id: int
+    ordem_do_capitulo: int | None = Field(
+        default=None,
+        description="A `ordem` do capítulo, preenchida em `GET /elementos/{id}` (item 7.5b, E13).",
+    )
+    titulo_do_capitulo: str | None = Field(
+        default=None,
+        description="O título do capítulo (pode ser nulo: a tela usa \"Capítulo N\", item 7.5b, E19).",
+    )
     descricao: str
     imagem_ancora_id: int | None
     data_criacao: datetime
@@ -38,6 +46,14 @@ class HistoricoIdentidadeResumo(BaseModel):
     id: int
     elemento_id: int
     capitulo_id: int
+    ordem_do_capitulo: int | None = Field(
+        default=None,
+        description="A `ordem` do capítulo, preenchida em `GET /elementos/{id}` (item 7.5b, E13).",
+    )
+    titulo_do_capitulo: str | None = Field(
+        default=None,
+        description="O título do capítulo (pode ser nulo: a tela usa \"Capítulo N\", item 7.5b, E19).",
+    )
     descricao: str
     data_criacao: datetime
 
@@ -58,6 +74,32 @@ class EstadoAjuste(BaseModel):
 
     descricao: str | None = Field(default=None, min_length=1)
     imagem_ancora_id: int | None = None
+
+
+class HistoricoIdentidadeNovo(BaseModel):
+    """O que `POST /elementos/{id}/historico-identidade` recebe (item 6.3): um acréscimo escrito à mão."""
+
+    capitulo_id: int = Field(description="O capítulo que revelou isto; tem de ser do mesmo livro do elemento.")
+    descricao: str = Field(
+        min_length=1,
+        description="Só o que **este** capítulo acrescenta sobre quem o elemento é, não um resumo acumulado.",
+    )
+
+
+class HistoricoIdentidadeAjuste(BaseModel):
+    """O que `PATCH /historico-identidade/{id}` recebe: o novo texto do acréscimo."""
+
+    descricao: str = Field(min_length=1)
+
+
+class ElementoMesclagem(BaseModel):
+    """O que `POST /elementos/{id}/mesclar` recebe (item 6.3): para qual elemento juntar."""
+
+    destino_id: int = Field(
+        description=(
+            "O elemento que **fica**. O elemento da rota (a origem) é juntado a ele e deixa de existir."
+        )
+    )
 
 
 class EstadosDeSugestoes(BaseModel):
@@ -175,6 +217,39 @@ class ElementoAjuste(BaseModel):
     )
 
 
+class ElementoCasado(BaseModel):
+    """O elemento cadastrado a que uma sugestão está ligada, para o app mostrar
+    **com quem** ela foi casada sem precisar de outra chamada (item 7.5b, E1).
+
+    ``identidade`` é a **identidade vigente** até o capítulo da sugestão
+    (item 3.4f): ``Elemento.descricao`` somada ao histórico de identidade, em
+    ordem narrativa — o "compilado" de quem o elemento é no livro.
+    """
+
+    id: int
+    tipo: TipoElemento
+    nome: str
+    identidade: str | None = None
+
+
+class EstadoVigenteDaSugestao(BaseModel):
+    """O estado de aparência que vale para o elemento casado **neste capítulo**
+    (o do próprio capítulo, ou o mais recente dos anteriores — item 3.4b).
+
+    É o que uma cena deste capítulo usaria. Nulo quando o elemento ainda não
+    apareceu (nenhum estado até aqui).
+    """
+
+    id: int
+    capitulo_id: int
+    ordem_do_capitulo: int
+    titulo_do_capitulo: str | None = Field(
+        default=None,
+        description="O título do capítulo (pode ser nulo: a tela usa \"Capítulo N\", item 7.5b, E19).",
+    )
+    descricao: str
+
+
 class ElementoSugerido(BaseModel):
     """Um elemento sugerido pela IA — só identificação (passo 6, item 4.4, fase 1).
 
@@ -228,26 +303,60 @@ class ElementoSugerido(BaseModel):
             "ainda não virou Estado."
         ),
     )
+    elemento_casado: ElementoCasado | None = Field(
+        default=None,
+        description=(
+            "Com quem a sugestão está casada (nome, tipo e identidade "
+            "vigente). Nulo quando `elemento_id` é nulo."
+        ),
+    )
+    estado_vigente: EstadoVigenteDaSugestao | None = Field(
+        default=None,
+        description=(
+            "O estado que vale para o elemento casado neste capítulo — pode "
+            "vir de um capítulo anterior. Nulo se não há elemento casado ou "
+            "se ele ainda não tem estado até aqui."
+        ),
+    )
+    descartada: bool = Field(
+        default=False,
+        description=(
+            "O usuário descartou esta sugestão (item 6.8): não conta como "
+            "pendente e sobrevive a uma reanálise."
+        ),
+    )
     modelo: str = Field(description="O modelo de IA que gerou esta sugestão.")
 
 
 class SugestaoDeElementoAjuste(BaseModel):
-    """O que `PATCH /sugestoes-elemento/{id}` recebe (item 4.6).
+    """O que `PATCH /sugestoes-elemento/{id}` recebe (item 4.6 e 6.8).
 
-    Só corrige o vínculo `elemento_id` — nunca grava Estado. Resolve o caso
-    em que o casamento automático (item 6.7) associou a sugestão a um
-    elemento errado, e o usuário só quer desfazer isso, sem os dois passos
-    manuais que a rota anterior exigia (confirmar no elemento certo e apagar
-    o Estado criado no errado).
+    Ajusta **uma** coisa por pedido: ou o vínculo `elemento_id` (nunca grava
+    Estado), ou `descartada`. Campos ausentes não mudam; `elemento_id: null`
+    (presente, mas nulo) **desfaz** o casamento. Resolve o caso em que o
+    casamento automático (item 6.7) associou a sugestão a um elemento errado.
     """
 
     elemento_id: int | None = Field(
+        default=None,
         description=(
-            "O elemento correto, ou null para desfazer o casamento por "
-            "completo. Campo obrigatório no corpo (mesmo que null) — é a "
-            "única coisa que esta rota ajusta."
-        )
+            "O elemento correto, ou null (explícito) para desfazer o casamento "
+            "por completo. Ausente = não mexe no vínculo."
+        ),
     )
+    descartada: bool | None = Field(
+        default=None,
+        description=(
+            "true descarta (só uma sugestão ainda sem elemento); false a "
+            "restaura. Ausente = não mexe."
+        ),
+    )
+
+
+class SugestaoDeCenaAjuste(BaseModel):
+    """O que `PATCH /sugestoes-cena/{id}` recebe (item 6.8): descartar ou restaurar."""
+
+    descartada: bool
 
 
 class ParticipanteSugerido(BaseModel):
@@ -309,6 +418,10 @@ class CenaSugerida(BaseModel):
     clima: str | None
     humor: str | None
     participantes: list[ParticipanteSugerido]
+    descartada: bool = Field(
+        default=False,
+        description="O usuário descartou esta cena (item 6.8): não conta como pendente.",
+    )
     modelo: str = Field(description="O modelo de IA que gerou esta sugestão.")
 
 

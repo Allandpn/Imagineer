@@ -431,7 +431,11 @@ def _sugestoes_pendentes_por_capitulo(sessao: Session, livro_id: int) -> dict[in
     for capitulo_id, total in sessao.execute(
         select(SugestaoDeElemento.capitulo_id, func.count(SugestaoDeElemento.id))
         .join(Capitulo, Capitulo.id == SugestaoDeElemento.capitulo_id)
-        .where(Capitulo.livro_id == livro_id, SugestaoDeElemento.elemento_id.is_(None))
+        .where(
+            Capitulo.livro_id == livro_id,
+            SugestaoDeElemento.elemento_id.is_(None),
+            SugestaoDeElemento.descartada.is_(False),
+        )
         .group_by(SugestaoDeElemento.capitulo_id)
     ).all():
         contagem[capitulo_id] = contagem.get(capitulo_id, 0) + total
@@ -439,7 +443,11 @@ def _sugestoes_pendentes_por_capitulo(sessao: Session, livro_id: int) -> dict[in
     for capitulo_id, total in sessao.execute(
         select(SugestaoDeCena.capitulo_id, func.count(SugestaoDeCena.id))
         .join(Capitulo, Capitulo.id == SugestaoDeCena.capitulo_id)
-        .where(Capitulo.livro_id == livro_id, SugestaoDeCena.frame_id.is_(None))
+        .where(
+            Capitulo.livro_id == livro_id,
+            SugestaoDeCena.frame_id.is_(None),
+            SugestaoDeCena.descartada.is_(False),
+        )
         .group_by(SugestaoDeCena.capitulo_id)
     ).all():
         contagem[capitulo_id] = contagem.get(capitulo_id, 0) + total

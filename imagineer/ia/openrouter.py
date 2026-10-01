@@ -68,8 +68,7 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
     {
       "tipo": "PERSONAGEM",
       "nome": "como o elemento é chamado no texto",
-      "descricao": "quem ou o que é: papel na história, natureza, função",
-      "manter_estado_atual": false
+      "descricao": "quem ou o que é: papel na história, natureza, função"
     }
   ],
   "cenas": [
@@ -113,11 +112,10 @@ individualizados ("os guardas", "a multidão").
 - Inclua apenas o que tem presença visual no capítulo. Ignore conceitos abstratos.
 - "descricao" é a identidade do elemento (quem ou o que é), não a aparência dele \
 neste capítulo — a aparência é analisada depois, um elemento por vez.
-- Se um elemento da lista de estados conhecidos aparece no capítulo sem indício \
-de mudança visível, marque "manter_estado_atual": true. Se parece ter mudado, \
-marque false. Elementos novos (fora da lista) sempre são false.
-- Use exatamente o nome que já está na lista de estados conhecidos, quando o \
-elemento já for conhecido.
+- Se um elemento da lista de elementos já cadastrados aparece no capítulo, use \
+exatamente o nome que está na lista, e não um apelido ou variação. Em "descricao", \
+diga só quem ou o que ele é (a identidade), sem copiar a descrição da lista nem \
+descrever a aparência neste capítulo.
 - **Objetos: seja seletivo.** Só inclua um objeto se ele tem peso visual \
 memorável na cena — algo que o leitor lembraria de ver, um símbolo, algo \
 central para uma ação marcante (a moeda entregue como pagamento, o tabuleiro \
@@ -463,16 +461,16 @@ class ProvedorOpenRouter(ProvedorIA):
     # ----------------------------------------------------------------------- #
 
     def extrair_elementos(
-        self, texto_capitulo: str, estados_conhecidos: list[str], modelo: str
+        self, texto_capitulo: str, elementos_conhecidos: list[str], modelo: str
     ) -> ExtracaoDeElementos:
         """Pede ao modelo os elementos visuais do capítulo — fase 1 (passo 6)."""
         conhecidos = (
-            "\n".join(f"- {estado}" for estado in estados_conhecidos)
-            if estados_conhecidos
+            "\n".join(f"- {elemento}" for elemento in elementos_conhecidos)
+            if elementos_conhecidos
             else "(nenhum elemento cadastrado ainda)"
         )
         pedido = (
-            f"ESTADOS CONHECIDOS DOS ELEMENTOS JÁ CADASTRADOS:\n{conhecidos}\n\n"
+            f"ELEMENTOS JÁ CADASTRADOS NESTE LIVRO (nome, tipo e quem são):\n{conhecidos}\n\n"
             f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
 

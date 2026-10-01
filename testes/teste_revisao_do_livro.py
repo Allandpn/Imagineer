@@ -90,6 +90,14 @@ ACOES_QUE_ALTERAM_DADO = {
     "vincular uma sugestão a um elemento": lambda c, x: c.patch(
         f"/sugestoes-elemento/{x['sugestao_id']}", json={"elemento_id": x["elemento_id"]}
     ),
+    "desfazer o casamento de uma sugestão": lambda c, x: c.patch(
+        f"/sugestoes-elemento/{x['sugestao_id']}", json={"elemento_id": None}
+    ),
+    "descartar uma sugestão": lambda c, x: (
+        # Só se descarta o que não está ligado: desfaz antes, e a revisão que conta é a da 2ª chamada.
+        c.patch(f"/sugestoes-elemento/{x['sugestao_id']}", json={"elemento_id": None}),
+        c.patch(f"/sugestoes-elemento/{x['sugestao_id']}", json={"descartada": True}),
+    )[1],
 }
 
 

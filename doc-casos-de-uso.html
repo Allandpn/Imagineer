@@ -833,6 +833,20 @@
         </article>
 
         <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/sugestoes-elemento/{sugestao_elemento_id}</span><span class="rsummary">Corrige o casamento de uma sugestão, ou a descarta</span></header>
+          <div class="route-body">
+            <p class="desc">Ajusta <strong>uma</strong> coisa por pedido: <code>elemento_id</code> (inclusive <code>null</code>, que <em>desfaz</em> o casamento de verdade — o casamento automático não religa a sugestão sozinho) ou <code>descartada</code> (tira das pendentes; sobrevive a uma reanálise; só vale para sugestão ainda sem elemento, 409 senão). Não grava Estado.</p>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/sugestoes-cena/{sugestao_cena_id}</span><span class="rsummary">Descarta (ou restaura) uma sugestão de cena</span></header>
+          <div class="route-body">
+            <p class="desc"><code>descartada: true</code> tira a cena das pendentes e ela sobrevive a uma reanálise. Uma cena que já virou Frame não se descarta (409).</p>
+          </div>
+        </article>
+
+        <article class="route">
           <header class="rhead"><span class="method get">GET</span><span class="rpath">/livros/{livro_id}/sugestoes-elemento</span><span class="rsummary">Busca sugestões de elemento por nome</span></header>
           <div class="route-body">
             <p class="desc">Item 3.4e. Cross-capítulo, no livro inteiro — acha todas as menções de um nome sem vasculhar capítulo por capítulo. Resolve o caso em que a IA sugere o mesmo personagem com nomes diferentes em capítulos diferentes ("Sextus Hospius" num, "Hospius" sozinho noutro).</p>
@@ -897,6 +911,34 @@
               <li><span class="status s4">404</span> Elemento inexistente</li>
               <li><span class="status s4">409</span> Novo tipo+nome colide com outro elemento do livro</li>
             </ul>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/elementos/{elemento_id}/historico-identidade</span><span class="rsummary">Acrescenta à mão um acréscimo de identidade</span></header>
+          <div class="route-body">
+            <p class="desc">Corpo: <code>{"capitulo_id": N, "descricao": "..."}</code>. Grava o que um capítulo revela sobre <em>quem</em> o elemento é (item 3.4f), como o servidor faz sozinho ao gerar prompts — e, por já existir um para o par elemento+capítulo, impede o automático naquele capítulo. <code>422</code> se o capítulo é de outro livro ou o texto está vazio.</p>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method patch">PATCH</span><span class="rpath">/historico-identidade/{acrescimo_id}</span><span class="rsummary">Corrige um acréscimo de identidade</span></header>
+          <div class="route-body">
+            <p class="desc">Corpo: <code>{"descricao": "..."}</code> (não pode ser vazio).</p>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method delete">DELETE</span><span class="rpath">/historico-identidade/{acrescimo_id}</span><span class="rsummary">Apaga um acréscimo de identidade</span></header>
+          <div class="route-body">
+            <p class="desc">Responde <code>204</code>. A IA pode registrar outro ao gerar um prompt para aquele capítulo.</p>
+          </div>
+        </article>
+
+        <article class="route">
+          <header class="rhead"><span class="method post">POST</span><span class="rpath">/elementos/{elemento_id}/mesclar</span><span class="rsummary">Junta um elemento duplicado a outro</span></header>
+          <div class="route-body">
+            <p class="desc">Corpo: <code>{"destino_id": N}</code>. O elemento da URL (a <em>origem</em>) é juntado ao <em>destino</em>, que fica: todos os estados (os frames que os usam continuam ligados), o histórico de identidade e as sugestões casadas passam para o destino, e a origem deixa de existir. Fica o nome, o tipo e a identidade do destino (a da origem só é emprestada se o destino não tiver uma). Devolve a ficha do destino. <code>404</code> se um dos dois não existe; <code>422</code> se forem o mesmo elemento ou de livros diferentes.</p>
           </div>
         </article>
 

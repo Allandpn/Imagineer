@@ -130,6 +130,9 @@ def teste_sugestoes_devolve_o_que_o_provedor_deu(
         "elemento_id": None,
         "casamento_automatico": False,
         "estado_id": None,
+        "elemento_casado": None,
+        "estado_vigente": None,
+        "descartada": False,
         "modelo": MODELO_FALSO,
     }
 
@@ -247,7 +250,7 @@ def teste_sugestoes_do_cache_recalcula_elemento_id_casado_depois(
     assert segunda.json()["elementos"][0]["elemento_id"] == jon["id"]
 
 
-def teste_sugestoes_manda_o_texto_e_os_estados_conhecidos_ao_provedor(
+def teste_sugestoes_manda_o_texto_e_os_elementos_conhecidos_ao_provedor(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     provedor = usar_provedor_falso(ProvedorFalso())
@@ -259,6 +262,7 @@ def teste_sugestoes_manda_o_texto_e_os_estados_conhecidos_ao_provedor(
         json={
             "tipo": "PERSONAGEM",
             "nome": "Jon",
+            "descricao": "Bastardo de Winterfell.",
             "estado_inicial": {
                 "capitulo_id": livro["capitulos"][0]["id"],
                 "descricao": "Veste preto da Patrulha da Noite.",
@@ -272,9 +276,10 @@ def teste_sugestoes_manda_o_texto_e_os_estados_conhecidos_ao_provedor(
     chamada = provedor.chamadas_de_extracao[0]
     assert chamada["modelo"] == MODELO_FALSO
     assert TEXTO_LONGO in chamada["texto_capitulo"]
-    assert chamada["estados_conhecidos"] == [
-        "Jon (PERSONAGEM): Veste preto da Patrulha da Noite."
-    ]
+    # A IA recebe quem o elemento É (identidade), nunca a aparência de um capítulo: era isso
+    # que ela copiava para a sugestão de outro capítulo (achado no tablet, 30/09/2026).
+    assert chamada["elementos_conhecidos"] == ["Jon (PERSONAGEM): Bastardo de Winterfell."]
+    assert "Veste preto" not in " ".join(chamada["elementos_conhecidos"])
 
 
 def teste_sugestoes_casa_com_elemento_existente_ignorando_caixa_e_acento(

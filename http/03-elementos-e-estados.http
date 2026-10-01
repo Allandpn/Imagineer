@@ -153,5 +153,40 @@ GET {{baseUrl}}/capitulos/3/estados-vigentes
 ### Remove um estado — o elemento e os frames que o citavam permanecem
 # DELETE {{baseUrl}}/estados/{{estadoId}}
 
+### Acrescenta à mão o que um capítulo revela sobre quem o elemento é (item 3.4f)
+# Vale como o acréscimo que o servidor grava sozinho ao gerar prompts (e, por já existir um para o par
+# elemento+capítulo, impede o automático naquele capítulo). O capítulo tem de ser do mesmo livro (422).
+# POST {{baseUrl}}/elementos/1/historico-identidade
+# Content-Type: application/json
+#
+# {
+#   "capitulo_id": 3,
+#   "descricao": "Agora é Lorde Comandante da Patrulha da Noite."
+# }
+
+### Corrige o texto de um acréscimo de identidade — troque o id pelo de "historico_identidade" na ficha
+# PATCH {{baseUrl}}/historico-identidade/1
+# Content-Type: application/json
+#
+# {
+#   "descricao": "Texto corrigido."
+# }
+
+### Apaga um acréscimo de identidade (204)
+# DELETE {{baseUrl}}/historico-identidade/1
+
+### Junta um elemento duplicado a outro (item 6.3)
+# Quando o mesmo elemento foi cadastrado duas vezes (por exemplo, como veículo e como ambiente, com o
+# mesmo nome): o elemento da URL (a origem) é juntado ao destino, que fica. Estados, histórico de
+# identidade e sugestões casadas passam para o destino; a origem deixa de existir. Fica o nome, o tipo
+# e a identidade do destino (a da origem só é emprestada se o destino não tiver uma). Troque os ids.
+# 404 se um não existe; 422 se forem o mesmo elemento ou de livros diferentes.
+# POST {{baseUrl}}/elementos/5/mesclar
+# Content-Type: application/json
+#
+# {
+#   "destino_id": 6
+# }
+
 ### Remove o elemento e todos os seus estados
 # DELETE {{baseUrl}}/elementos/{{elementoId}}

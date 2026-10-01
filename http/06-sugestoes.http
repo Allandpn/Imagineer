@@ -65,14 +65,36 @@ GET {{baseUrl}}/livros/1/sugestoes-elemento?nome=vis
 # Resolve o caso raro de o casamento automático ter errado (associou a um
 # elemento errado por coincidência de nome normalizado) — diferente de
 # POST /elementos/{id}/estados-de-sugestoes, que sempre cria um Estado
-# junto. elemento_id é obrigatório no corpo, mas aceita null pra desfazer o
-# casamento por completo. Troque o id abaixo por um id real de sugestão
+# junto. O corpo leva UMA coisa por pedido: elemento_id (aceita null, que
+# DESFAZ o casamento de verdade: o casamento automático não religa a sugestão
+# sozinho) ou descartada. Troque o id abaixo por um id real de sugestão
 # (elementos[].id na resposta de POST /capitulos/{id}/sugestoes).
 # PATCH {{baseUrl}}/sugestoes-elemento/6
 # Content-Type: application/json
 #
 # {
 #   "elemento_id": 3
+# }
+
+### Descarta uma sugestão de elemento (item 6.8)
+# Tira a sugestão das pendentes (inclusive de sugestoes_pendentes do capítulo e
+# do aviso de pendências anteriores) e ela SOBREVIVE a uma reanálise: não volta
+# nem é recriada. Só vale para sugestão ainda não ligada a um elemento (409
+# senão: desfaça o casamento antes). "descartada": false restaura.
+# PATCH {{baseUrl}}/sugestoes-elemento/6
+# Content-Type: application/json
+#
+# {
+#   "descartada": true
+# }
+
+### Descarta (ou restaura) uma sugestão de cena (item 6.8)
+# Uma cena que já virou Frame não se descarta (409).
+# PATCH {{baseUrl}}/sugestoes-cena/2
+# Content-Type: application/json
+#
+# {
+#   "descartada": true
 # }
 
 ### Capítulo inexistente — confere o 404

@@ -87,12 +87,12 @@ class ProvedorFalso(ProvedorIA):
         return list(self._modelos)
 
     def extrair_elementos(
-        self, texto_capitulo: str, estados_conhecidos: list[str], modelo: str
+        self, texto_capitulo: str, elementos_conhecidos: list[str], modelo: str
     ) -> ExtracaoDeElementos:
         self.chamadas_de_extracao.append(
             {
                 "texto_capitulo": texto_capitulo,
-                "estados_conhecidos": estados_conhecidos,
+                "elementos_conhecidos": elementos_conhecidos,
                 "modelo": modelo,
             }
         )

@@ -9,7 +9,7 @@ import unicodedata
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,9 @@ from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.elemento import (
     CenaSugerida as CenaSugeridaResposta,
     ElementoAjuste,
+    ElementoCasado,
     ElementoDetalhe,
+    ElementoMesclagem,
     ElementoNovo,
     ElementoResumo,
     ElementoSugerido as ElementoSugeridoResposta,
@@ -26,8 +28,12 @@ from imagineer.esquemas.elemento import (
     EstadoNovo,
     EstadoResumo,
     EstadosDeSugestoes,
+    EstadoVigenteDaSugestao,
+    HistoricoIdentidadeAjuste,
+    HistoricoIdentidadeNovo,
     HistoricoIdentidadeResumo,
     ParticipanteSugerido as ParticipanteSugeridoResposta,
+    SugestaoDeCenaAjuste,
     SugestaoDeElementoAjuste,
     SugestaoDeElementoBuscada,
     SugestoesDeCapitulo,
@@ -54,12 +60,15 @@ from imagineer.modelos import (
 from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
+from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Elementos"])
 rotas = APIRouter(prefix="/elementos", tags=["Elementos"])
 rotas_de_estado = APIRouter(prefix="/estados", tags=["Elementos"])
 rotas_de_capitulo = APIRouter(prefix="/capitulos", tags=["Elementos"])
 rotas_de_sugestao_elemento = APIRouter(prefix="/sugestoes-elemento", tags=["Elementos"])
+rotas_de_sugestao_cena = APIRouter(prefix="/sugestoes-cena", tags=["Elementos"])
+rotas_de_identidade = APIRouter(prefix="/historico-identidade", tags=["Elementos"])
 
 
 # --------------------------------------------------------------------------- #
@@ -249,6 +258,155 @@ def remover_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao)) 
     sessao.commit()
 
 
+@rotas.post(
+    "/{elemento_id}/mesclar",
+    response_model=ElementoDetalhe,
+    summary="Junta este elemento a outro do mesmo livro",
+)
+def mesclar_elemento(
+    elemento_id: int,
+    corpo: ElementoMesclagem,
+    sessao: Session = Depends(obter_sessao),
+) -> ElementoDetalhe:
+    """Junta o elemento (a **origem**) ao `destino_id`, que fica; a origem deixa de existir.
+
+    Existe porque o mesmo personagem (ou lugar, ou veículo) pode ter sido cadastrado duas
+    vezes — por exemplo, com tipos diferentes (achado testando no tablet, 30/09/2026) — e o
+    servidor não aceita dois elementos com o mesmo tipo e nome no livro, então corrigir o
+    tipo de um dava conflito e não havia como juntar os dois.
+
+    **Passam para o destino:** todos os estados de aparência (os frames que os usam
+    continuam ligados a eles), todo o histórico de identidade e as sugestões de elemento
+    casadas com a origem. **Fica o do destino:** nome, tipo e identidade inicial — que a
+    origem só empresta se o destino não tiver uma. A referência visual padrão segue a mesma
+    regra. Tudo numa transação: se algo falha, nada muda.
+    """
+    if corpo.destino_id == elemento_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Não dá para juntar um elemento a ele mesmo.",
+        )
+    origem = _buscar_elemento(sessao, elemento_id)
+    destino = _buscar_elemento(sessao, corpo.destino_id)
+    if origem.livro_id != destino.livro_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"O elemento {destino.id} é do livro {destino.livro_id}, "
+                f"não do livro {origem.livro_id} do elemento {origem.id}."
+            ),
+        )
+
+    if not destino.descricao and origem.descricao:
+        destino.descricao = origem.descricao
+    if destino.imagem_ancora_padrao_id is None and origem.imagem_ancora_padrao_id is not None:
+        destino.imagem_ancora_padrao_id = origem.imagem_ancora_padrao_id
+
+    # Em massa, e não pela lista `origem.estados`: essa relação apaga o que sobrar nela ao
+    # apagar a origem, e os estados já são do destino.
+    sessao.execute(
+        update(EstadoElemento).where(EstadoElemento.elemento_id == origem.id).values(elemento_id=destino.id)
+    )
+    sessao.execute(
+        update(HistoricoIdentidadeElemento)
+        .where(HistoricoIdentidadeElemento.elemento_id == origem.id)
+        .values(elemento_id=destino.id)
+    )
+    sessao.execute(
+        update(SugestaoDeElemento)
+        .where(SugestaoDeElemento.elemento_id == origem.id)
+        .values(elemento_id=destino.id)
+    )
+    sessao.flush()
+    sessao.expire(origem)  # a origem ainda "lembra" os estados que acabaram de sair dela
+
+    sessao.delete(origem)
+    sessao.commit()
+    sessao.refresh(destino)
+    return _detalhe(sessao, destino)
+
+
+# --------------------------------------------------------------------------- #
+# Acréscimos de identidade, à mão (item 7.5b, rodada 5)
+# --------------------------------------------------------------------------- #
+
+
+def _resumo_do_acrescimo(registro: HistoricoIdentidadeElemento) -> HistoricoIdentidadeResumo:
+    """O acréscimo como a API o devolve, já com a posição e o título do capítulo."""
+    return HistoricoIdentidadeResumo.model_validate(registro).model_copy(
+        update={
+            "ordem_do_capitulo": registro.capitulo.ordem,
+            "titulo_do_capitulo": registro.capitulo.titulo,
+        }
+    )
+
+
+def _buscar_acrescimo(sessao: Session, acrescimo_id: int) -> HistoricoIdentidadeElemento:
+    registro = sessao.get(HistoricoIdentidadeElemento, acrescimo_id)
+    if registro is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Não existe acréscimo de identidade com id {acrescimo_id}.",
+        )
+    return registro
+
+
+@rotas.post(
+    "/{elemento_id}/historico-identidade",
+    response_model=HistoricoIdentidadeResumo,
+    status_code=status.HTTP_201_CREATED,
+    summary="Acrescenta à mão o que um capítulo revela sobre quem o elemento é",
+)
+def criar_acrescimo_de_identidade(
+    elemento_id: int,
+    corpo: HistoricoIdentidadeNovo,
+    sessao: Session = Depends(obter_sessao),
+) -> HistoricoIdentidadeResumo:
+    """Grava um acréscimo de identidade (item 3.4f) escrito pelo usuário.
+
+    Vale como o gravado pelo servidor na leitura profunda de identidade: como esta só tenta
+    um acréscimo para um par (elemento, capítulo) que ainda não tem nenhum (item 4.4, fase 2b),
+    escrever um à mão **impede** o automático naquele capítulo. O capítulo tem de ser do
+    mesmo livro do elemento.
+    """
+    elemento = _buscar_elemento(sessao, elemento_id)
+    capitulo = _buscar_capitulo_do_livro(sessao, corpo.capitulo_id, elemento.livro_id)
+    registro = HistoricoIdentidadeElemento(
+        elemento_id=elemento.id, capitulo_id=capitulo.id, descricao=corpo.descricao
+    )
+    sessao.add(registro)
+    sessao.commit()
+    sessao.refresh(registro)
+    return _resumo_do_acrescimo(registro)
+
+
+@rotas_de_identidade.patch(
+    "/{acrescimo_id}",
+    response_model=HistoricoIdentidadeResumo,
+    summary="Corrige o texto de um acréscimo de identidade",
+)
+def ajustar_acrescimo_de_identidade(
+    acrescimo_id: int,
+    ajuste: HistoricoIdentidadeAjuste,
+    sessao: Session = Depends(obter_sessao),
+) -> HistoricoIdentidadeResumo:
+    registro = _buscar_acrescimo(sessao, acrescimo_id)
+    registro.descricao = ajuste.descricao
+    sessao.commit()
+    sessao.refresh(registro)
+    return _resumo_do_acrescimo(registro)
+
+
+@rotas_de_identidade.delete(
+    "/{acrescimo_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Apaga um acréscimo de identidade",
+)
+def remover_acrescimo_de_identidade(acrescimo_id: int, sessao: Session = Depends(obter_sessao)) -> None:
+    sessao.delete(_buscar_acrescimo(sessao, acrescimo_id))
+    sessao.commit()
+
+
 # --------------------------------------------------------------------------- #
 # Estados de um elemento
 # --------------------------------------------------------------------------- #
@@ -405,57 +563,111 @@ def remover_estado(estado_id: int, sessao: Session = Depends(obter_sessao)) -> N
 @rotas_de_sugestao_elemento.patch(
     "/{sugestao_elemento_id}",
     response_model=ElementoSugeridoResposta,
-    summary="Corrige só o casamento de uma sugestão de elemento",
+    summary="Corrige o casamento de uma sugestão de elemento, ou a descarta",
 )
-def ajustar_casamento_de_sugestao(
+def ajustar_sugestao_de_elemento(
     sugestao_elemento_id: int,
     ajuste: SugestaoDeElementoAjuste,
     sessao: Session = Depends(obter_sessao),
 ) -> ElementoSugeridoResposta:
-    """Corrige só `elemento_id` de uma sugestão, sem gravar Estado nenhum.
+    """Ajusta **uma** coisa da sugestão: o casamento (`elemento_id`) ou `descartada`.
 
-    Diferente de `POST /elementos/{id}/estados-de-sugestoes`, que sempre cria
-    um Estado como efeito colateral (item 3.4e) — o que serve bem ao caso
-    comum (a IA reconheceu o personagem de novo, faz sentido registrar o
-    estado daquele capítulo), mas não ao caso raro de o casamento automático
-    ter errado (associou a um elemento errado por coincidência de nome
-    normalizado) e o usuário só querer desfazer isso, sem estado nenhum.
+    **Casamento** — corrige só `elemento_id`, sem gravar Estado nenhum. Diferente de
+    `POST /elementos/{id}/estados-de-sugestoes`, que sempre cria um Estado como efeito
+    colateral (item 3.4e), o que serve ao caso comum mas não ao caso raro de o casamento
+    automático ter errado e o usuário só querer desfazer. Se `elemento_id` vier
+    preenchido, exige que o elemento exista e seja do mesmo livro do capítulo da sugestão.
+    `elemento_id: null` **desfaz** o casamento **de verdade**: marca `casamento_desfeito`,
+    para o casamento automático (que roda a cada leitura) não religar a sugestão ao mesmo
+    elemento logo em seguida.
 
-    Se `elemento_id` vier preenchido, exige que o elemento exista e seja do
-    mesmo livro do capítulo da sugestão — mesma checagem que já vale para
-    `estados_ids`/`sugestoes_elemento_ids` em outras rotas (item 6.3).
+    **Descartar** (item 6.8) — `descartada: true` tira a sugestão das pendentes e ela
+    sobrevive a uma reanálise; `false` a restaura. Só se descarta uma sugestão **ainda não
+    ligada** a um elemento (409 senão: desfaça o casamento antes).
     """
     sugestao = _buscar_sugestao_de_elemento(sessao, sugestao_elemento_id)
+    campos = ajuste.model_fields_set
 
-    if ajuste.elemento_id is not None:
-        elemento = _buscar_elemento(sessao, ajuste.elemento_id)
-        if elemento.livro_id != sugestao.capitulo.livro_id:
+    if "elemento_id" in campos and "descartada" in campos:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Ajuste uma coisa por vez: o casamento (elemento_id) ou descartada.",
+        )
+    if "elemento_id" not in campos and ajuste.descartada is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Informe elemento_id (pode ser null) ou descartada.",
+        )
+
+    if "elemento_id" in campos:
+        if ajuste.elemento_id is not None:
+            elemento = _buscar_elemento(sessao, ajuste.elemento_id)
+            if elemento.livro_id != sugestao.capitulo.livro_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=(
+                        f"O elemento {ajuste.elemento_id} é do livro {elemento.livro_id}, "
+                        f"não do livro {sugestao.capitulo.livro_id} desta sugestão."
+                    ),
+                )
+        sugestao.elemento_id = ajuste.elemento_id
+        # É uma correção explícita do usuário — deixa de ser "casamento nunca
+        # revisado", mesmo que o novo valor seja null (desfazendo o casamento).
+        sugestao.casamento_automatico = False
+        sugestao.casamento_desfeito = ajuste.elemento_id is None
+        if ajuste.elemento_id is not None:
+            sugestao.descartada = False  # ligar é decidir o contrário de descartar
+    elif ajuste.descartada:
+        if sugestao.elemento_id is not None:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                status_code=status.HTTP_409_CONFLICT,
                 detail=(
-                    f"O elemento {ajuste.elemento_id} é do livro {elemento.livro_id}, "
-                    f"não do livro {sugestao.capitulo.livro_id} desta sugestão."
+                    "Esta sugestão está ligada a um elemento. Desfaça o casamento "
+                    "antes de descartá-la."
                 ),
             )
+        sugestao.descartada = True
+    else:
+        sugestao.descartada = False
 
-    sugestao.elemento_id = ajuste.elemento_id
-    # É uma correção explícita do usuário — deixa de ser "casamento nunca
-    # revisado", mesmo que o novo valor seja null (desfazendo o casamento).
-    sugestao.casamento_automatico = False
     sessao.commit()
     sessao.refresh(sugestao)
 
-    return ElementoSugeridoResposta(
-        id=sugestao.id,
-        tipo=sugestao.tipo,
-        nome=sugestao.nome,
-        descricao=sugestao.descricao,
-        manter_estado_atual=sugestao.manter_estado_atual,
-        elemento_id=sugestao.elemento_id,
-        casamento_automatico=sugestao.casamento_automatico,
-        estado_id=_estado_id_no_capitulo(sessao, sugestao),
-        modelo=sugestao.modelo,
-    )
+    capitulo = sugestao.capitulo
+    vigentes = estado_vigente_por_elemento(sessao, capitulo.livro_id, capitulo.ordem)
+    return _resposta_de_elemento(sessao, sugestao, capitulo, vigentes)
+
+
+@rotas_de_sugestao_cena.patch(
+    "/{sugestao_cena_id}",
+    response_model=CenaSugeridaResposta,
+    summary="Descarta (ou restaura) uma sugestão de cena",
+)
+def ajustar_sugestao_de_cena(
+    sugestao_cena_id: int,
+    ajuste: SugestaoDeCenaAjuste,
+    sessao: Session = Depends(obter_sessao),
+) -> CenaSugeridaResposta:
+    """`descartada: true` tira a cena das pendentes e ela sobrevive a uma reanálise;
+    `false` a restaura. Uma cena que já virou Frame não se descarta (409): o Frame existe."""
+    cena = sessao.get(SugestaoDeCena, sugestao_cena_id)
+    if cena is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Não existe sugestão de cena com id {sugestao_cena_id}.",
+        )
+    if ajuste.descartada and cena.frame_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Esta cena já virou o frame {cena.frame_id}; não dá para descartá-la.",
+        )
+    cena.descartada = ajuste.descartada
+    sessao.commit()
+    sessao.refresh(cena)
+
+    capitulo = cena.capitulo
+    vigentes = estado_vigente_por_elemento(sessao, capitulo.livro_id, capitulo.ordem)
+    return _resposta_de_cena(sessao, cena, capitulo, vigentes)
 
 
 # --------------------------------------------------------------------------- #
@@ -652,9 +864,22 @@ def _detalhe(sessao: Session, elemento: Elemento) -> ElementoDetalhe:
         nome=elemento.nome,
         descricao=elemento.descricao,
         imagem_ancora_padrao_id=elemento.imagem_ancora_padrao_id,
-        estados=[EstadoResumo.model_validate(estado) for estado in estados],
+        estados=[
+            EstadoResumo.model_validate(estado).model_copy(
+                update={
+                    "ordem_do_capitulo": estado.capitulo.ordem,
+                    "titulo_do_capitulo": estado.capitulo.titulo,
+                }
+            )
+            for estado in estados
+        ],
         historico_identidade=[
-            HistoricoIdentidadeResumo.model_validate(registro)
+            HistoricoIdentidadeResumo.model_validate(registro).model_copy(
+                update={
+                    "ordem_do_capitulo": registro.capitulo.ordem,
+                    "titulo_do_capitulo": registro.capitulo.titulo,
+                }
+            )
             for registro in historico_identidade
         ],
     )
@@ -844,8 +1069,10 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
     """Chama a IA e grava o resultado como linhas (item 3.4e).
 
     Só substitui as sugestões deste capítulo que ainda não foram confirmadas
-    (`elemento_id`/`frame_id` nulos) — uma sugestão já virada Elemento ou
-    Frame de verdade sobrevive a uma rodada nova, mesmo com `forcar=true`.
+    (`elemento_id`/`frame_id` nulos) **e não descartadas** — uma sugestão já virada
+    Elemento ou Frame de verdade, ou descartada pelo usuário, sobrevive a uma rodada
+    nova, mesmo com `forcar=true`. Uma sugestão nova que repete uma descartada (mesmo
+    tipo e nome, ou mesmo título de cena) **não é criada de novo**.
     """
     configuracao = obter_ou_criar(sessao)
     modelo_extracao = configuracao.modelo_extracao
@@ -856,14 +1083,14 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
             detail="Nenhum modelo de extração foi escolhido. Configure um em /configuracao.",
         )
 
-    estados_conhecidos = _formatar_estados_conhecidos(sessao, capitulo)
+    elementos_conhecidos = _formatar_elementos_conhecidos(sessao, capitulo)
 
     try:
         contexto_do_modelo = next(
             (m.contexto for m in provedor.listar_modelos() if m.id == modelo_extracao), 0
         )
         conferir_se_cabe(capitulo.texto, contexto_do_modelo)
-        extracao = provedor.extrair_elementos(capitulo.texto, estados_conhecidos, modelo_extracao)
+        extracao = provedor.extrair_elementos(capitulo.texto, elementos_conhecidos, modelo_extracao)
     except (ChaveDeApiAusente, ModeloNaoEscolhido, TextoLongoDemais) as erro:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
@@ -877,17 +1104,40 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
         delete(SugestaoDeElemento).where(
             SugestaoDeElemento.capitulo_id == capitulo.id,
             SugestaoDeElemento.elemento_id.is_(None),
+            SugestaoDeElemento.descartada.is_(False),
         )
     )
     sessao.execute(
         delete(SugestaoDeCena).where(
             SugestaoDeCena.capitulo_id == capitulo.id,
             SugestaoDeCena.frame_id.is_(None),
+            SugestaoDeCena.descartada.is_(False),
         )
     )
 
-    elementos_desta_rodada: dict[tuple[TipoElemento, str], SugestaoDeElemento] = {}
+    # As descartadas ficam; o que a IA repetir delas não vira sugestão nova, mas os
+    # participantes das cenas novas ainda podem apontar para elas.
+    elementos_desta_rodada: dict[tuple[TipoElemento, str], SugestaoDeElemento] = {
+        _chave_normalizada(d.tipo, d.nome): d
+        for d in sessao.scalars(
+            select(SugestaoDeElemento).where(
+                SugestaoDeElemento.capitulo_id == capitulo.id,
+                SugestaoDeElemento.descartada.is_(True),
+            )
+        )
+    }
+    titulos_de_cenas_descartadas = {
+        _texto_normalizado(c.titulo)
+        for c in sessao.scalars(
+            select(SugestaoDeCena).where(
+                SugestaoDeCena.capitulo_id == capitulo.id,
+                SugestaoDeCena.descartada.is_(True),
+            )
+        )
+    }
     for item in extracao.elementos:
+        if _chave_normalizada(item.tipo, item.nome) in elementos_desta_rodada:
+            continue
         linha = SugestaoDeElemento(
             capitulo_id=capitulo.id,
             tipo=item.tipo,
@@ -900,6 +1150,8 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
         elementos_desta_rodada[_chave_normalizada(item.tipo, item.nome)] = linha
 
     for cena in extracao.cenas:
+        if _texto_normalizado(cena.titulo) in titulos_de_cenas_descartadas:
+            continue
         linha_cena = SugestaoDeCena(
             capitulo_id=capitulo.id,
             titulo=cena.titulo,
@@ -934,6 +1186,9 @@ def _casar_sugestoes_pendentes(sessao: Session, capitulo_id: int, livro_id: int)
             select(SugestaoDeElemento).where(
                 SugestaoDeElemento.capitulo_id == capitulo_id,
                 SugestaoDeElemento.elemento_id.is_(None),
+                # Descartada não se casa; casamento desfeito de propósito não religa sozinho.
+                SugestaoDeElemento.descartada.is_(False),
+                SugestaoDeElemento.casamento_desfeito.is_(False),
             )
         )
     )
@@ -974,45 +1229,87 @@ def _sugestoes_de_capitulo(
         )
     )
 
+    vigentes = estado_vigente_por_elemento(sessao, capitulo.livro_id, capitulo.ordem)
     return SugestoesDeCapitulo(
         gerado_em=capitulo.sugestoes_geradas_em,
         sugestoes_pendentes_anteriores=pendentes_anteriores,
-        elementos=[
-            ElementoSugeridoResposta(
-                id=elemento.id,
-                tipo=elemento.tipo,
-                nome=elemento.nome,
-                descricao=elemento.descricao,
-                manter_estado_atual=elemento.manter_estado_atual,
-                elemento_id=elemento.elemento_id,
-                casamento_automatico=elemento.casamento_automatico,
-                estado_id=_estado_id_no_capitulo(sessao, elemento),
-                modelo=elemento.modelo,
+        elementos=[_resposta_de_elemento(sessao, e, capitulo, vigentes) for e in elementos],
+        cenas=[_resposta_de_cena(sessao, c, capitulo, vigentes) for c in cenas],
+    )
+
+
+def _resposta_de_elemento(
+    sessao: Session,
+    sugestao: SugestaoDeElemento,
+    capitulo: Capitulo,
+    vigentes: dict[int, EstadoElemento],
+) -> ElementoSugeridoResposta:
+    """Uma sugestão de elemento como a API a devolve, com o elemento casado e o
+    estado que vale para ele neste capítulo (item 7.5b, E1)."""
+    casado = None
+    estado_vigente = None
+    if sugestao.elemento_id is not None:
+        elemento = sugestao.elemento
+        casado = ElementoCasado(
+            id=elemento.id,
+            tipo=elemento.tipo,
+            nome=elemento.nome,
+            identidade=resumir_texto(
+                identidade_vigente(sessao, elemento, capitulo.ordem), LIMITE_DA_IDENTIDADE_NA_SUGESTAO
+            ),
+        )
+        vigente = vigentes.get(elemento.id)
+        if vigente is not None:
+            estado_vigente = EstadoVigenteDaSugestao(
+                id=vigente.id,
+                capitulo_id=vigente.capitulo_id,
+                ordem_do_capitulo=vigente.capitulo.ordem,
+                titulo_do_capitulo=vigente.capitulo.titulo,
+                descricao=vigente.descricao,
             )
-            for elemento in elementos
-        ],
-        cenas=[
-            CenaSugeridaResposta(
-                id=cena.id,
-                titulo=cena.titulo,
-                descricao=cena.descricao,
-                horario=cena.horario,
-                clima=cena.clima,
-                humor=cena.humor,
-                modelo=cena.modelo,
-                participantes=[
-                    ParticipanteSugeridoResposta(
-                        sugestao_elemento_id=participante.id,
-                        tipo=participante.tipo,
-                        nome=participante.nome,
-                        elemento_id=participante.elemento_id,
-                        casamento_automatico=participante.casamento_automatico,
-                        estado_id=_estado_id_no_capitulo(sessao, participante),
-                    )
-                    for participante in cena.participantes
-                ],
+
+    return ElementoSugeridoResposta(
+        id=sugestao.id,
+        tipo=sugestao.tipo,
+        nome=sugestao.nome,
+        descricao=sugestao.descricao,
+        manter_estado_atual=sugestao.manter_estado_atual,
+        elemento_id=sugestao.elemento_id,
+        casamento_automatico=sugestao.casamento_automatico,
+        estado_id=_estado_id_no_capitulo(sessao, sugestao),
+        elemento_casado=casado,
+        estado_vigente=estado_vigente,
+        descartada=sugestao.descartada,
+        modelo=sugestao.modelo,
+    )
+
+
+def _resposta_de_cena(
+    sessao: Session,
+    cena: SugestaoDeCena,
+    capitulo: Capitulo,
+    vigentes: dict[int, EstadoElemento],
+) -> CenaSugeridaResposta:
+    """Uma cena sugerida como a API a devolve."""
+    return CenaSugeridaResposta(
+        id=cena.id,
+        titulo=cena.titulo,
+        descricao=cena.descricao,
+        horario=cena.horario,
+        clima=cena.clima,
+        humor=cena.humor,
+        modelo=cena.modelo,
+        descartada=cena.descartada,
+        participantes=[
+            ParticipanteSugeridoResposta(
+                sugestao_elemento_id=participante.id,
+                tipo=participante.tipo,
+                nome=participante.nome,
+                elemento_id=participante.elemento_id,
+                casamento_automatico=participante.casamento_automatico,
+                estado_id=_estado_id_no_capitulo(sessao, participante),
             )
-            for cena in cenas
+            for participante in cena.participantes
         ],
     )
 
@@ -1029,12 +1326,14 @@ def _sugestoes_pendentes_anteriores(sessao: Session, capitulo: Capitulo) -> int:
         select(func.count(SugestaoDeElemento.id)).where(
             SugestaoDeElemento.capitulo_id.in_(capitulos_anteriores),
             SugestaoDeElemento.elemento_id.is_(None),
+            SugestaoDeElemento.descartada.is_(False),
         )
     )
     cenas_pendentes = sessao.scalar(
         select(func.count(SugestaoDeCena.id)).where(
             SugestaoDeCena.capitulo_id.in_(capitulos_anteriores),
             SugestaoDeCena.frame_id.is_(None),
+            SugestaoDeCena.descartada.is_(False),
         )
     )
     return (elementos_pendentes or 0) + (cenas_pendentes or 0)
@@ -1084,26 +1383,55 @@ def _sugestoes_de_elemento_do_livro(
     return [por_id[identificador] for identificador in pedidos]
 
 
-def _formatar_estados_conhecidos(sessao: Session, capitulo: Capitulo) -> list[str]:
-    """Monta a lista "Nome (TIPO): descrição" que vai como contexto para a IA.
+#: Quanto da identidade de cada elemento vai para a IA, e quanto o pedido inteiro pode ter
+#: (item 7.5b, rodada 3): sem teto, a lista cresce com o livro e o pedido com ela.
+LIMITE_DA_IDENTIDADE_NO_CONTEXTO = 200
+TETO_DO_CONTEXTO_DA_IA = 8000
+#: O quanto da identidade do elemento casado vai na resposta de cada sugestão.
+LIMITE_DA_IDENTIDADE_NA_SUGESTAO = 300
 
-    Só entram elementos que já têm um estado até este ponto da narrativa — um
-    elemento sem estado ainda não apareceu, e listá-lo sem descrição não ajudaria
-    a IA a decidir "manter estado atual" (item 4.4).
+
+def _formatar_elementos_conhecidos(sessao: Session, capitulo: Capitulo) -> list[str]:
+    """Monta a lista "Nome (TIPO): identidade" que vai como contexto para a IA.
+
+    Entram os elementos já cadastrados no livro, cada um com a sua **identidade vigente
+    até o capítulo anterior** (item 3.4f) **resumida** — quem ou o que é —, e **nunca** o
+    estado de aparência de um capítulo. Motivo (achado testando no tablet, 30/09/2026):
+    quando recebia "Nome: aparência no capítulo 1", a IA copiava esse texto para a
+    sugestão do capítulo 4, e a sugestão parecia descrever o capítulo errado. A lista serve
+    a dois fins: a IA **usar o mesmo nome** de quem já existe e reconhecer apelidos pela
+    identidade.
+
+    **Tem teto** (``TETO_DO_CONTEXTO_DA_IA`` caracteres): vão primeiro os elementos que
+    apareceram **mais recentemente** (o capítulo do estado vigente mais novo), e os sem estado
+    por último. O que não cabe fica fora — o casamento automático é por nome, no servidor, e
+    não depende desta lista.
     """
-    elementos = {
-        elemento.id: elemento
-        for elemento in sessao.scalars(
-            select(Elemento).where(Elemento.livro_id == capitulo.livro_id)
-        )
-    }
-    vigentes = estado_vigente_por_elemento(sessao, capitulo.livro_id, capitulo.ordem)
+    elementos = list(
+        sessao.scalars(select(Elemento).where(Elemento.livro_id == capitulo.livro_id))
+    )
+    vigentes = estado_vigente_por_elemento(sessao, capitulo.livro_id, capitulo.ordem - 1)
 
-    return [
-        f"{elementos[elemento_id].nome} ({elementos[elemento_id].tipo.name}): "
-        f"{estado.descricao}"
-        for elemento_id, estado in vigentes.items()
-    ]
+    def prioridade(elemento: Elemento) -> tuple[int, int, int]:
+        vigente = vigentes.get(elemento.id)
+        if vigente is None:
+            return (1, 0, elemento.id)
+        return (0, -vigente.capitulo.ordem, elemento.id)
+
+    linhas: list[str] = []
+    total = 0
+    for elemento in sorted(elementos, key=prioridade):
+        identidade = resumir_texto(
+            identidade_vigente(sessao, elemento, capitulo.ordem - 1), LIMITE_DA_IDENTIDADE_NO_CONTEXTO
+        )
+        linha = f"{elemento.nome} ({elemento.tipo.name})"
+        if identidade:
+            linha = f"{linha}: {identidade}"
+        if total + len(linha) + 1 > TETO_DO_CONTEXTO_DA_IA:
+            break
+        linhas.append(linha)
+        total += len(linha) + 1
+    return linhas
 
 
 def _texto_normalizado(texto: str) -> str:

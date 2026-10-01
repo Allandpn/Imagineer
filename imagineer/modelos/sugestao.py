@@ -104,6 +104,18 @@ class SugestaoDeElemento(Base):
     um casamento que hoje é silencioso, para o app poder destacar antes de o
     usuário confirmar uma cena inteira de uma vez."""
 
+    casamento_desfeito: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    """``True`` quando o usuário **desfez** o casamento (``PATCH`` com
+    ``elemento_id`` nulo). Sem isto, o casamento automático que roda a cada
+    leitura (item 6.7) religaria a sugestão ao mesmo elemento logo em seguida
+    — desfazer não adiantaria. Volta a ``False`` quando o usuário liga a
+    sugestão a um elemento de novo."""
+
+    descartada: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    """``True`` quando o usuário descartou a sugestão (item 6.8): ela deixa de
+    contar como pendente, não é casada automaticamente e **sobrevive a uma
+    reanálise**. Só se descarta uma sugestão ainda não ligada a um elemento."""
+
     capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
     elemento: Mapped["Elemento | None"] = relationship()  # noqa: F821
 
@@ -141,6 +153,10 @@ class SugestaoDeCena(Base):
         ForeignKey("frames.id", ondelete="SET NULL"),
     )
     """O Frame real criado a partir desta cena — nulo até confirmar."""
+
+    descartada: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    """``True`` quando o usuário descartou a cena (item 6.8): deixa de contar
+    como pendente e sobrevive a uma reanálise. Só se descarta cena ainda sem Frame."""
 
     capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
     frame: Mapped["Frame | None"] = relationship()  # noqa: F821

@@ -1316,7 +1316,7 @@ def teste_provedor_falso_registra_o_que_foi_pedido() -> None:
     assert provedor.chamadas_de_extracao == [
         {
             "texto_capitulo": "o texto",
-            "estados_conhecidos": ["Jon: manto"],
+            "elementos_conhecidos": ["Jon: manto"],
             "modelo": MODELO_FALSO,
         }
     ]
