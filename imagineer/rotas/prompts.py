@@ -7,7 +7,7 @@ resultado de volta para o catálogo.
 
 import mimetypes
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -37,6 +37,11 @@ from imagineer.modelos import (
     Prompt,
     TipoDeFrame,
 )
+from imagineer.rotas._comum import (
+    buscar_frame as _buscar_frame,
+    buscar_imagem as _buscar_imagem,
+    buscar_prompt as _buscar_prompt,
+)
 from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.catalogo_imagens import (
     TAMANHO_MAXIMO_DA_IMAGEM,
@@ -47,12 +52,13 @@ from imagineer.servicos.catalogo_imagens import (
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.identidade_de_elemento import identidade_vigente
-from imagineer.servicos.upload import ler_com_limite
-from imagineer.rotas._comum import (
-    buscar_frame as _buscar_frame,
-    buscar_imagem as _buscar_imagem,
-    buscar_prompt as _buscar_prompt,
+from imagineer.servicos.imagens_reduzidas import (
+    TamanhoDeImagem,
+    arquivo_no_tamanho,
+    ler_dimensoes,
+    remover_derivadas,
 )
+from imagineer.servicos.upload import ler_com_limite
 
 rotas_de_frame = APIRouter(prefix="/frames", tags=["Prompts"])
 rotas = APIRouter(prefix="/prompts", tags=["Prompts"])
@@ -177,15 +183,18 @@ def remover_prompt(prompt_id: int, sessao: Session = Depends(obter_sessao)) -> N
     do commit.
     """
     prompt = _buscar_prompt(sessao, prompt_id)
-    caminhos = list(
-        sessao.scalars(select(Imagem.caminho_arquivo).where(Imagem.prompt_id == prompt_id))
+    imagens = list(
+        sessao.execute(
+            select(Imagem.id, Imagem.caminho_arquivo).where(Imagem.prompt_id == prompt_id)
+        ).all()
     )
 
     sessao.delete(prompt)
     sessao.commit()
 
-    for caminho in caminhos:
+    for imagem_id, caminho in imagens:
         remover_arquivo(caminho)
+        remover_derivadas(imagem_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -215,7 +224,15 @@ async def importar_imagem(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
         ) from erro
 
-    imagem = Imagem(prompt_id=prompt.id, caminho_arquivo=caminho, tamanho_em_bytes=len(conteudo))
+    # Um arquivo que o Pillow não lê continua aceito, só sem dimensões (como era antes de existirem).
+    dimensoes = ler_dimensoes(conteudo)
+    imagem = Imagem(
+        prompt_id=prompt.id,
+        caminho_arquivo=caminho,
+        tamanho_em_bytes=len(conteudo),
+        largura=dimensoes[0] if dimensoes else None,
+        altura=dimensoes[1] if dimensoes else None,
+    )
     sessao.add(imagem)
     sessao.commit()
     sessao.refresh(imagem)
@@ -228,8 +245,18 @@ async def importar_imagem(
 
 
 @rotas_de_imagem.get("/{imagem_id}/arquivo", summary="Devolve o arquivo da imagem")
-def baixar_imagem(imagem_id: int, sessao: Session = Depends(obter_sessao)) -> FileResponse:
-    """O arquivo de imagem em si, para exibir ou baixar no app.
+def baixar_imagem(
+    imagem_id: int,
+    tamanho: TamanhoDeImagem = Query(
+        default=TamanhoDeImagem.ORIGINAL,
+        description=(
+            "`miniatura` (256 px no lado maior), `leitura` (1280 px) ou `original` (o arquivo como veio, "
+            "o padrão). Nunca amplia: se a imagem já cabe, volta o original (item 6.9)."
+        ),
+    ),
+    sessao: Session = Depends(obter_sessao),
+) -> FileResponse:
+    """O arquivo de imagem em si, para exibir ou baixar no app, no tamanho pedido.
 
     **Cache imutável** (item 6.9): o arquivo de uma imagem **nunca** muda — o nome é gerado
     (UUID) e nunca é sobrescrito; trocar a imagem é criar outra. Por isso o cliente pode
@@ -244,9 +271,10 @@ def baixar_imagem(imagem_id: int, sessao: Session = Depends(obter_sessao)) -> Fi
             detail="O arquivo desta imagem não está mais no disco.",
         )
 
-    tipo, _ = mimetypes.guess_type(caminho.name)
+    servido, tipo_da_versao = arquivo_no_tamanho(imagem.id, caminho, tamanho)
+    tipo = tipo_da_versao or mimetypes.guess_type(caminho.name)[0]
     return FileResponse(
-        caminho,
+        servido,
         media_type=tipo or "application/octet-stream",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
@@ -262,8 +290,10 @@ def remover_imagem(imagem_id: int, sessao: Session = Depends(obter_sessao)) -> N
     imagem = _buscar_imagem(sessao, imagem_id)
     caminho_relativo = imagem.caminho_arquivo
 
+    imagem_removida_id = imagem.id
     sessao.delete(imagem)
     sessao.commit()
+    remover_derivadas(imagem_removida_id)
 
     remover_arquivo(caminho_relativo)
 

@@ -111,6 +111,12 @@ class Imagem(Base):
     manifesto de mídias calcula a partir do arquivo em disco e grava aqui na primeira vez.
     """
 
+    largura: Mapped[int | None] = mapped_column(Integer)
+    altura: Mapped[int | None] = mapped_column(Integer)
+    """Dimensões em pixels (item 6.9): lidas na importação; nas imagens antigas, calculadas na primeira
+    leitura. Nulas = o arquivo não pôde ser lido como imagem (ou ainda não foi calculado). Com elas o app
+    decide o layout no texto — retrato em duas colunas, paisagem na largura da tela (item 7.5b, I1)."""
+
     data_importacao: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

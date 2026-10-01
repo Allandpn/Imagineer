@@ -309,7 +309,9 @@ def ler_artefatos(
     sessao: Session = Depends(obter_sessao),
 ) -> ArtefatosDoCapitulo:
     """Os ícones do capítulo (item 6.8), numa chamada só — **só leitura, nunca chama a IA**."""
-    return ArtefatosDoCapitulo(artefatos=artefatos_do_capitulo(sessao, _buscar_capitulo(sessao, capitulo_id)))
+    artefatos = artefatos_do_capitulo(sessao, _buscar_capitulo(sessao, capitulo_id))
+    sessao.commit()  # grava as dimensões de imagens antigas, calculadas agora (não sobe a revisão)
+    return ArtefatosDoCapitulo(artefatos=artefatos)
 
 
 @rotas_de_capitulo.get(
@@ -327,7 +329,9 @@ def ler_marcadores_obsoleta(
     Devolve exatamente os mesmos dados, no campo ``marcadores`` em vez de ``artefatos``. "Marcador" agora
     é outra coisa (a posição de leitura, defeito D4); sai daqui quando o app migrar.
     """
-    return MarcadoresDoCapitulo(marcadores=artefatos_do_capitulo(sessao, _buscar_capitulo(sessao, capitulo_id)))
+    artefatos = artefatos_do_capitulo(sessao, _buscar_capitulo(sessao, capitulo_id))
+    sessao.commit()
+    return MarcadoresDoCapitulo(marcadores=artefatos)
 
 
 def _sugestoes_de_capitulo(

@@ -2,7 +2,9 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+from imagineer.servicos.imagens_reduzidas import Orientacao, orientacao_de
 
 
 class ImagemResumo(BaseModel):
@@ -17,7 +19,14 @@ class ImagemResumo(BaseModel):
     id: int
     prompt_id: int
     tamanho_em_bytes: int | None = None
+    largura: int | None = Field(default=None, description="Largura em pixels; nula se o arquivo não pôde ser lido como imagem.")
+    altura: int | None = Field(default=None, description="Altura em pixels; nula como a largura.")
     data_importacao: datetime
+
+    @computed_field(description="RETRATO se a altura é maior que a largura; PAISAGEM no resto; nulo sem dimensões (item 7.5b, I1).")
+    @property
+    def orientacao(self) -> Orientacao | None:
+        return orientacao_de(self.largura, self.altura)
 
 
 class MidiaDeImagem(BaseModel):
@@ -28,6 +37,13 @@ class MidiaDeImagem(BaseModel):
     frame_id: int
     tamanho_em_bytes: int = Field(description="O tamanho do arquivo **original**, em bytes.")
     tipo_do_arquivo: str = Field(description='O tipo de mídia, como "image/png".')
+    largura: int | None = Field(default=None, description="Largura em pixels; nula se o arquivo não pôde ser lido.")
+    altura: int | None = Field(default=None, description="Altura em pixels; nula como a largura.")
+
+    @computed_field(description="RETRATO, PAISAGEM ou nulo sem dimensões (item 7.5b, I1).")
+    @property
+    def orientacao(self) -> Orientacao | None:
+        return orientacao_de(self.largura, self.altura)
 
 
 class MidiasDoLivro(BaseModel):

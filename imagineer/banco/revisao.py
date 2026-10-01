@@ -42,8 +42,9 @@ from imagineer.modelos.elemento import HistoricoIdentidadeElemento
 
 _CAMPOS_QUE_NAO_CONTAM: dict[type, set[str]] = {
     Livro: {"revisao"},
-    # O tamanho é calculado do disco pelo manifesto de mídias; não muda o que o leitor vê.
-    Imagem: {"tamanho_em_bytes"},
+    # O tamanho e as dimensões são calculados do disco numa leitura (manifesto de mídias, artefatos);
+    # não mudam o que o leitor vê, e uma leitura que subisse a revisão faria o app reler para sempre.
+    Imagem: {"tamanho_em_bytes", "largura", "altura"},
 }
 """Campos cuja mudança, sozinha, **não** sobe a revisão."""
 

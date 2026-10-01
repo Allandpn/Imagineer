@@ -27,3 +27,6 @@ httpx==0.28.1
 
 # Testes
 pytest==9.1.1
+
+# Redução de imagens e leitura das dimensões (item 6.9); wheels prontas para ARM64 (Raspberry Pi)
+pillow==12.3.0

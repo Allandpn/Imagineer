@@ -37,18 +37,19 @@ from imagineer.modelos import (
     SugestaoDeCena,
     SugestaoDeElemento,
 )
+from imagineer.rotas._comum import (
+    buscar_livro as _buscar_livro,
+)
 from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.imagens_reduzidas import garantir_dimensoes
 from imagineer.servicos.importacao_epub import (
     ArquivoEpubInvalido,
     importar_epub,
     livros_com_mesmo_identificador,
 )
 from imagineer.servicos.upload import ler_com_limite
-from imagineer.rotas._comum import (
-    buscar_livro as _buscar_livro,
-)
 
 rotas = APIRouter(prefix="/livros", tags=["Livros"])
 
@@ -226,6 +227,8 @@ def listar_midias(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Mid
         if imagem.tamanho_em_bytes is None:
             imagem.tamanho_em_bytes = caminho.stat().st_size
             gravou = True
+        if garantir_dimensoes(imagem, caminho):
+            gravou = True
         tipo, _ = mimetypes.guess_type(caminho.name)
         midias.append(
             MidiaDeImagem(
@@ -234,6 +237,8 @@ def listar_midias(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Mid
                 frame_id=frame_id,
                 tamanho_em_bytes=imagem.tamanho_em_bytes,
                 tipo_do_arquivo=tipo or "application/octet-stream",
+                largura=imagem.largura,
+                altura=imagem.altura,
             )
         )
     if gravou:

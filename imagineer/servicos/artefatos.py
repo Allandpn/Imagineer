@@ -7,8 +7,25 @@ from sqlalchemy.orm import Session
 
 from imagineer.esquemas.elemento import Artefato, SituacaoDoArtefato, TipoDeArtefato
 from imagineer.modelos import Capitulo, Frame, Imagem, SugestaoDeCena, SugestaoDeElemento, TipoDeFrame
+from imagineer.servicos.catalogo_imagens import caminho_absoluto
+from imagineer.servicos.imagens_reduzidas import garantir_dimensoes, orientacao_de
 from imagineer.servicos.posicao_no_texto import posicao_da_primeira_mencao
 from imagineer.servicos.sugestoes import chave_normalizada
+
+
+def _campos_da_imagem(imagem: Imagem | None) -> dict:
+    """Os campos ``imagem_*`` de um artefato. Calcula as dimensões de uma imagem antiga (só em memória: quem
+    chama, a rota, faz o commit do que isto preencheu)."""
+    if imagem is None:
+        return {}
+    garantir_dimensoes(imagem, caminho_absoluto(imagem.caminho_arquivo))
+    orientacao = orientacao_de(imagem.largura, imagem.altura)
+    return {
+        "imagem_id": imagem.id,
+        "imagem_largura": imagem.largura,
+        "imagem_altura": imagem.altura,
+        "imagem_orientacao": orientacao.value if orientacao else None,
+    }
 
 
 def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[SituacaoDoArtefato, Imagem | None]:
@@ -102,7 +119,7 @@ def artefatos_do_capitulo(sessao: Session, capitulo: Capitulo) -> list[Artefato]
                     else posicao_da_primeira_mencao(capitulo.texto, sugestao.nome)
                 ),
                 situacao=situacao,
-                imagem_id=ultima.id if ultima is not None else None,
+                **_campos_da_imagem(ultima),
             )
         )
 
@@ -129,7 +146,7 @@ def artefatos_do_capitulo(sessao: Session, capitulo: Capitulo) -> list[Artefato]
                     else cena.posicao_no_texto
                 ),
                 situacao=situacao,
-                imagem_id=ultima.id if ultima is not None else None,
+                **_campos_da_imagem(ultima),
             )
         )
 
@@ -146,7 +163,7 @@ def artefatos_do_capitulo(sessao: Session, capitulo: Capitulo) -> list[Artefato]
                     rotulo=frame.titulo,
                     posicao_no_texto=frame.posicao_no_texto,
                     situacao=situacao,
-                    imagem_id=ultima.id if ultima is not None else None,
+                    **_campos_da_imagem(ultima),
                 )
             )
         elif frame.tipo == TipoDeFrame.PERSONAGEM and frame.estados_elemento:
@@ -161,7 +178,7 @@ def artefatos_do_capitulo(sessao: Session, capitulo: Capitulo) -> list[Artefato]
                         rotulo=elemento.nome,
                         posicao_no_texto=frame.posicao_no_texto,
                         situacao=situacao,
-                        imagem_id=ultima.id if ultima is not None else None,
+                        **_campos_da_imagem(ultima),
                     )
                 )
 

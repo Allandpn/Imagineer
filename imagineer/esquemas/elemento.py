@@ -129,6 +129,12 @@ class Artefato(BaseModel):
     )
     situacao: SituacaoDoArtefato
     imagem_id: int | None = Field(default=None, description="A imagem mais recente do frame, se há.")
+    imagem_largura: int | None = Field(default=None, description="Largura da imagem em pixels (nula sem imagem ou sem dimensões).")
+    imagem_altura: int | None = Field(default=None, description="Altura da imagem em pixels (nula como a largura).")
+    imagem_orientacao: str | None = Field(
+        default=None,
+        description="RETRATO ou PAISAGEM, pela imagem real (item 7.5b, I1): o app decide o layout sem baixá-la. Nulo sem dimensões.",
+    )
 
 
 class ArtefatosDoCapitulo(BaseModel):
