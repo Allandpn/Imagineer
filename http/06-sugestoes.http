@@ -97,12 +97,12 @@ GET {{baseUrl}}/livros/1/sugestoes-elemento?nome=vis
 #   "descartada": true
 # }
 
-### Os marcadores a desenhar sobre o texto do capítulo (item 6.8)
-# Só leitura, NUNCA chama a IA. Um marcador por sugestão não descartada, de ELEMENTO ou de CENA, com a posição
+### Os artefatos a desenhar sobre o texto do capítulo (item 6.8)
+# Só leitura, NUNCA chama a IA. Um artefato por sugestão não descartada, de ELEMENTO ou de CENA, com a posição
 # (início do parágrafo, em UTF-16; nulo = não achada) e a situação (SUGERIDO, CONFIRMADO, PROMPT_PRONTO,
 # ILUSTRADO). Elemento: posição pelo nome, funciona em capítulos já analisados. Cena: posição pela citação da
 # IA, gravada ao analisar — cena de capítulo analisado antes disso vem sem posição até reanalisar.
-GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}/marcadores
+GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}/artefatos
 
 ### Capítulo inexistente — confere o 404
 POST {{baseUrl}}/capitulos/999999/sugestoes

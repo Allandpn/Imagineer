@@ -1,6 +1,6 @@
 """Onde, no texto de um capítulo, fica a primeira menção de um nome (item 3.4g, "Posição no texto").
 
-O app desenha o marcador de cada sugestão no parágrafo da primeira vez que o elemento aparece.
+O app desenha o artefato de cada sugestão no parágrafo da primeira vez que o elemento aparece.
 Este módulo transforma um **nome** em uma **posição**, como o contrato do item 3.4g pede:
 
 - a posição é o **início do parágrafo** que contém a primeira menção (o app desenha entre parágrafos);
@@ -136,7 +136,7 @@ def posicao_da_citacao(texto: str, citacao: str | None) -> int | None:
     """A posição (UTF-16) do início do parágrafo onde ``citacao`` aparece, ou ``None``.
 
     É o caminho das **cenas** (item 3.4g): não há nome a buscar, só a citação que a IA devolveu.
-    Citação vazia ou não encontrada: ``None``, e a cena continua valendo — só não ganha marcador.
+    Citação vazia ou não encontrada: ``None``, e a cena continua valendo — só não ganha artefato.
     """
     if not citacao:
         return None
@@ -155,7 +155,7 @@ def posicao_da_primeira_mencao(texto: str, nome: str) -> int | None:
        (ver ``_partes_de_nome_proprio``): vale a que vier antes no texto.
 
     Nome vazio ou nenhum pedaço no texto: ``None``, e a sugestão continua valendo — só não ganha
-    marcador. (Isso também denuncia uma sugestão que a IA listou **sem** o elemento aparecer no capítulo.)
+    artefato. (Isso também denuncia uma sugestão que a IA listou **sem** o elemento aparecer no capítulo.)
     """
     indice = _indice_da_primeira_mencao(texto, nome)
     if indice is None:

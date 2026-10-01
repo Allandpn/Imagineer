@@ -1,4 +1,4 @@
-"""Onde ficam os marcadores no texto (item 3.4g) e `GET /capitulos/{id}/marcadores` (item 6.8)."""
+"""Onde ficam os artefatos no texto (item 3.4g) e `GET /capitulos/{id}/artefatos` (item 6.8)."""
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -19,7 +19,7 @@ TEXTO = "Primeiro parágrafo, sem ninguém.\n\nJon chegou ao muro.\nOutra linha 
 
 def teste_acha_o_inicio_do_paragrafo_da_primeira_mencao() -> None:
     assert posicao_da_primeira_mencao(TEXTO, "Jon") == TEXTO.index("Jon chegou")
-    # Ned só aparece no último parágrafo: o marcador vai para o começo dele, não para o nome.
+    # Ned só aparece no último parágrafo: o artefato vai para o começo dele, não para o nome.
     assert posicao_da_primeira_mencao(TEXTO, "Ned") == TEXTO.index("Terceiro")
 
 
@@ -85,7 +85,7 @@ def _cenario(cliente: TestClient, usar_provedor_falso, sessao: Session, texto: s
     return livro, capitulo["id"]
 
 
-def teste_marcadores_vem_por_posicao_e_os_sem_posicao_depois(
+def teste_artefatos_vem_por_posicao_e_os_sem_posicao_depois(
     cliente: TestClient, usar_provedor_falso, sessao_com_tabelas: Session
 ) -> None:
     _, c1 = _cenario(
@@ -97,19 +97,19 @@ def teste_marcadores_vem_por_posicao_e_os_sem_posicao_depois(
         ],
     )
 
-    corpo = cliente.get(f"/capitulos/{c1}/marcadores").json()
+    corpo = cliente.get(f"/capitulos/{c1}/artefatos").json()
 
-    assert [(m["rotulo"], m["tipo_do_elemento"]) for m in corpo["marcadores"]] == [
+    assert [(m["rotulo"], m["tipo_do_elemento"]) for m in corpo["artefatos"]] == [
         ("muro", "AMBIENTE"),  # parágrafo 2
         ("Ned", "PERSONAGEM"),  # parágrafo 3
         ("Arya", "PERSONAGEM"),  # sem posição, por último
     ]
-    assert [m["posicao_no_texto"] for m in corpo["marcadores"]] == [
+    assert [m["posicao_no_texto"] for m in corpo["artefatos"]] == [
         TEXTO.index("Jon chegou"),
         TEXTO.index("Terceiro"),
         None,
     ]
-    assert all(m["tipo"] == "ELEMENTO" and m["situacao"] == "SUGERIDO" for m in corpo["marcadores"])
+    assert all(m["tipo"] == "ELEMENTO" and m["situacao"] == "SUGERIDO" for m in corpo["artefatos"])
 
 
 def teste_funciona_em_capitulo_ja_analisado(
@@ -120,29 +120,29 @@ def teste_funciona_em_capitulo_ja_analisado(
         [ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
     )
 
-    resposta = cliente.get(f"/capitulos/{c1}/marcadores")
+    resposta = cliente.get(f"/capitulos/{c1}/artefatos")
 
     assert resposta.status_code == 200
-    assert len(resposta.json()["marcadores"]) == 1
+    assert len(resposta.json()["artefatos"]) == 1
 
 
-def teste_capitulo_nunca_analisado_nao_tem_marcadores_e_nada_e_gasto(
+def teste_capitulo_nunca_analisado_nao_tem_artefatos_e_nada_e_gasto(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
     provedor = usar_provedor_falso(ProvedorFalso())
     livro = _livro_com_capitulos(cliente, capitulos=1)
 
-    corpo = cliente.get(f"/capitulos/{livro['capitulos'][0]['id']}/marcadores").json()
+    corpo = cliente.get(f"/capitulos/{livro['capitulos'][0]['id']}/artefatos").json()
 
-    assert corpo == {"marcadores": []}
+    assert corpo == {"artefatos": []}
     assert provedor.chamadas_de_extracao == []
 
 
 def teste_capitulo_inexistente_responde_404(cliente: TestClient) -> None:
-    assert cliente.get("/capitulos/9999/marcadores").status_code == 404
+    assert cliente.get("/capitulos/9999/artefatos").status_code == 404
 
 
-def teste_sugestao_descartada_nao_vira_marcador(
+def teste_sugestao_descartada_nao_vira_artefato(
     cliente: TestClient, usar_provedor_falso, sessao_com_tabelas: Session
 ) -> None:
     _, c1 = _cenario(
@@ -155,9 +155,9 @@ def teste_sugestao_descartada_nao_vira_marcador(
     jon = cliente.get(f"/capitulos/{c1}/sugestoes").json()["elementos"][0]
     cliente.patch(f"/sugestoes-elemento/{jon['id']}", json={"descartada": True})
 
-    corpo = cliente.get(f"/capitulos/{c1}/marcadores").json()
+    corpo = cliente.get(f"/capitulos/{c1}/artefatos").json()
 
-    assert [m["rotulo"] for m in corpo["marcadores"]] == ["Ned"]
+    assert [m["rotulo"] for m in corpo["artefatos"]] == ["Ned"]
 
 
 def teste_situacao_acompanha_o_andamento_ate_a_imagem(
@@ -168,10 +168,10 @@ def teste_situacao_acompanha_o_andamento_ate_a_imagem(
         [ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
     )
 
-    def marcador() -> dict:
-        return cliente.get(f"/capitulos/{c1}/marcadores").json()["marcadores"][0]
+    def artefato() -> dict:
+        return cliente.get(f"/capitulos/{c1}/artefatos").json()["artefatos"][0]
 
-    assert marcador()["situacao"] == "SUGERIDO"
+    assert artefato()["situacao"] == "SUGERIDO"
 
     sugestao = cliente.get(f"/capitulos/{c1}/sugestoes").json()["elementos"][0]
     jon = cliente.post(
@@ -179,21 +179,21 @@ def teste_situacao_acompanha_o_andamento_ate_a_imagem(
         json={"tipo": "PERSONAGEM", "nome": "Jon", "estado_inicial": {"capitulo_id": c1, "descricao": "manto"}},
     ).json()
     cliente.patch(f"/sugestoes-elemento/{sugestao['id']}", json={"elemento_id": jon["id"]})
-    assert marcador()["situacao"] == "CONFIRMADO"
-    assert marcador()["frame_id"] is None
+    assert artefato()["situacao"] == "CONFIRMADO"
+    assert artefato()["frame_id"] is None
 
     frame = _frame(cliente, c1, [jon["estados"][0]["id"]], tipo="PERSONAGEM")
-    assert marcador()["frame_id"] == frame["id"]
-    assert marcador()["situacao"] == "CONFIRMADO"  # há retrato, ainda sem prompt
+    assert artefato()["frame_id"] == frame["id"]
+    assert artefato()["situacao"] == "CONFIRMADO"  # há retrato, ainda sem prompt
 
     cliente.put("/configuracao", json={"modelo_prompt": "falso/modelo-de-teste"})
     perfil = cliente.post("/perfis-renderizacao", json={"nome": "P"}).json()
     prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={"perfil_renderizacao_id": perfil["id"]}).json()
-    assert marcador()["situacao"] == "PROMPT_PRONTO"
+    assert artefato()["situacao"] == "PROMPT_PRONTO"
 
     imagem = _importar_imagem(cliente, prompt["id"])
-    assert marcador()["situacao"] == "ILUSTRADO"
-    assert marcador()["imagem_id"] == imagem["id"]
+    assert artefato()["situacao"] == "ILUSTRADO"
+    assert artefato()["imagem_id"] == imagem["id"]
 
 
 def teste_o_rotulo_e_o_nome_do_cadastro_quando_a_sugestao_esta_casada(
@@ -209,7 +209,25 @@ def teste_o_rotulo_e_o_nome_do_cadastro_quando_a_sugestao_esta_casada(
     ).json()
     cliente.patch(f"/sugestoes-elemento/{sugestao['id']}", json={"elemento_id": elemento["id"]})
 
-    (marcador,) = cliente.get(f"/capitulos/{c1}/marcadores").json()["marcadores"]
+    (artefato,) = cliente.get(f"/capitulos/{c1}/artefatos").json()["artefatos"]
 
-    assert marcador["rotulo"] == "Jon Snow"
-    assert marcador["posicao_no_texto"] == TEXTO.index("Jon chegou")  # a posição vem do nome sugerido
+    assert artefato["rotulo"] == "Jon Snow"
+    assert artefato["posicao_no_texto"] == TEXTO.index("Jon chegou")  # a posição vem do nome sugerido
+
+
+def teste_rota_antiga_de_marcadores_devolve_os_mesmos_dados_no_campo_antigo(
+    cliente: TestClient, usar_provedor_falso, sessao_com_tabelas: Session
+) -> None:
+    """O app em uso ainda lê `/marcadores` e o campo `marcadores`; sai quando ele migrar (item 6.8)."""
+    _, c1 = _cenario(
+        cliente, usar_provedor_falso, sessao_com_tabelas, TEXTO,
+        [ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Jon")],
+    )
+
+    novo = cliente.get(f"/capitulos/{c1}/artefatos").json()
+    antigo = cliente.get(f"/capitulos/{c1}/marcadores")
+
+    assert antigo.status_code == 200
+    assert antigo.json() == {"marcadores": novo["artefatos"]}
+    assert len(novo["artefatos"]) == 1
+    assert cliente.get("/capitulos/9999/marcadores").status_code == 404

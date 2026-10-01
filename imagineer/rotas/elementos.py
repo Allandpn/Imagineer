@@ -32,10 +32,11 @@ from imagineer.esquemas.elemento import (
     HistoricoIdentidadeAjuste,
     HistoricoIdentidadeNovo,
     HistoricoIdentidadeResumo,
-    Marcador,
+    Artefato,
+    ArtefatosDoCapitulo,
     MarcadoresDoCapitulo,
-    SituacaoDoMarcador,
-    TipoDeMarcador,
+    SituacaoDoArtefato,
+    TipoDeArtefato,
     ParticipanteSugerido as ParticipanteSugeridoResposta,
     SugestaoDeCenaAjuste,
     SugestaoDeElementoAjuste,
@@ -782,20 +783,20 @@ def ler_sugestoes(
     return _sugestoes_de_capitulo(sessao, capitulo, pendentes_anteriores)
 
 
-def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[SituacaoDoMarcador, Imagem | None]:
-    """A situação de um marcador e a imagem a mostrar (a mais recente do frame, se houver).
+def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[SituacaoDoArtefato, Imagem | None]:
+    """A situação de um artefato e a imagem a mostrar (a mais recente do frame, se houver).
 
     ``confirmado`` diz se a sugestão já virou elemento ou frame; sem isso, é só ``SUGERIDO``.
     """
     if not confirmado:
-        return SituacaoDoMarcador.SUGERIDO, None
+        return SituacaoDoArtefato.SUGERIDO, None
     imagens = [imagem for prompt in frame.prompts for imagem in prompt.imagens] if frame else []
     ultima = max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
     if ultima is not None:
-        return SituacaoDoMarcador.ILUSTRADO, ultima
+        return SituacaoDoArtefato.ILUSTRADO, ultima
     if frame is not None and frame.prompts:
-        return SituacaoDoMarcador.PROMPT_PRONTO, None
-    return SituacaoDoMarcador.CONFIRMADO, None
+        return SituacaoDoArtefato.PROMPT_PRONTO, None
+    return SituacaoDoArtefato.CONFIRMADO, None
 
 
 def _sem_repetidas(sugestoes: list[SugestaoDeElemento]) -> list[SugestaoDeElemento]:
@@ -821,17 +822,40 @@ def _sem_repetidas(sugestoes: list[SugestaoDeElemento]) -> list[SugestaoDeElemen
 
 
 @rotas_de_capitulo.get(
+    "/{capitulo_id}/artefatos",
+    response_model=ArtefatosDoCapitulo,
+    summary="Os artefatos a desenhar sobre o texto do capítulo, sem chamar a IA",
+)
+def ler_artefatos(
+    capitulo_id: int,
+    sessao: Session = Depends(obter_sessao),
+) -> ArtefatosDoCapitulo:
+    """Os ícones do capítulo (item 6.8), numa chamada só — **só leitura, nunca chama a IA**."""
+    return ArtefatosDoCapitulo(artefatos=_artefatos_do_capitulo(sessao, capitulo_id))
+
+
+@rotas_de_capitulo.get(
     "/{capitulo_id}/marcadores",
     response_model=MarcadoresDoCapitulo,
-    summary="Os marcadores a desenhar sobre o texto do capítulo, sem chamar a IA",
+    deprecated=True,
+    summary="[Obsoleta] O mesmo que /artefatos, com o nome e o campo antigos",
 )
-def ler_marcadores(
+def ler_marcadores_obsoleta(
     capitulo_id: int,
     sessao: Session = Depends(obter_sessao),
 ) -> MarcadoresDoCapitulo:
-    """Os ícones do capítulo (item 6.8), numa chamada só — **só leitura, nunca chama a IA**.
+    """**Obsoleta** (item 6.8): o nome antigo de ``/artefatos``, mantido só para o app que ainda a usa.
 
-    Cada sugestão **não descartada** vira um marcador. A posição dos **elementos** é achada **pelo
+    Devolve exatamente os mesmos dados, no campo ``marcadores`` em vez de ``artefatos``. "Marcador" agora
+    é outra coisa (a posição de leitura, defeito D4); sai daqui quando o app migrar.
+    """
+    return MarcadoresDoCapitulo(marcadores=_artefatos_do_capitulo(sessao, capitulo_id))
+
+
+def _artefatos_do_capitulo(sessao: Session, capitulo_id: int) -> list[Artefato]:
+    """Monta os artefatos do capítulo.
+
+    Cada sugestão **não descartada** vira um artefato. A posição dos **elementos** é achada **pelo
     nome**, no texto, na hora da leitura — funciona também nos capítulos já analisados. A das
     **cenas** vem da citação da IA, **gravada** quando a sugestão nasceu (item 3.4g): cena analisada
     antes disso fica sem posição até o capítulo ser reanalisado. Ordem: por posição; sem posição, depois.
@@ -857,15 +881,15 @@ def ler_marcadores(
         if frame.estados_elemento:
             retratos[frame.estados_elemento[0].elemento_id] = frame  # o mais novo (id maior) vence, pela ordem
 
-    marcadores: list[Marcador] = []
+    artefatos: list[Artefato] = []
     for sugestao in _sem_repetidas(sugestoes):
         elemento = sugestao.elemento
         frame = retratos.get(sugestao.elemento_id) if sugestao.elemento_id is not None else None
         situacao, ultima = _situacao_e_imagem(frame, confirmado=sugestao.elemento_id is not None)
 
-        marcadores.append(
-            Marcador(
-                tipo=TipoDeMarcador.ELEMENTO,
+        artefatos.append(
+            Artefato(
+                tipo=TipoDeArtefato.ELEMENTO,
                 tipo_do_elemento=elemento.tipo if elemento is not None else sugestao.tipo,
                 sugestao_id=sugestao.id,
                 frame_id=frame.id if frame is not None else None,
@@ -883,9 +907,9 @@ def ler_marcadores(
     )
     for cena in cenas:
         situacao, ultima = _situacao_e_imagem(cena.frame, confirmado=cena.frame_id is not None)
-        marcadores.append(
-            Marcador(
-                tipo=TipoDeMarcador.CENA,
+        artefatos.append(
+            Artefato(
+                tipo=TipoDeArtefato.CENA,
                 sugestao_id=cena.id,
                 frame_id=cena.frame_id,
                 rotulo=cena.titulo,
@@ -896,8 +920,8 @@ def ler_marcadores(
         )
 
     # Por posição; sem posição vêm depois, na ordem em que as sugestões foram criadas (a ordem estável do sort).
-    marcadores.sort(key=lambda m: (m.posicao_no_texto is None, m.posicao_no_texto or 0))
-    return MarcadoresDoCapitulo(marcadores=marcadores)
+    artefatos.sort(key=lambda m: (m.posicao_no_texto is None, m.posicao_no_texto or 0))
+    return artefatos
 
 
 # --------------------------------------------------------------------------- #

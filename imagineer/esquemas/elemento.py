@@ -93,15 +93,15 @@ class HistoricoIdentidadeAjuste(BaseModel):
     descricao: str = Field(min_length=1)
 
 
-class TipoDeMarcador(str, enum.Enum):
-    """O que um marcador representa no texto (item 6.8)."""
+class TipoDeArtefato(str, enum.Enum):
+    """O que um artefato representa no texto (item 6.8)."""
 
     ELEMENTO = "ELEMENTO"
     CENA = "CENA"
 
 
-class SituacaoDoMarcador(str, enum.Enum):
-    """Onde o usuário parou com aquele marcador (item 6.8): faz o ícone mostrar o andamento."""
+class SituacaoDoArtefato(str, enum.Enum):
+    """Onde o usuário parou com aquele artefato (item 6.8): faz o ícone mostrar o andamento."""
 
     SUGERIDO = "SUGERIDO"  # a sugestão existe e ainda não foi confirmada
     CONFIRMADO = "CONFIRMADO"  # virou elemento (ou frame)
@@ -109,13 +109,13 @@ class SituacaoDoMarcador(str, enum.Enum):
     ILUSTRADO = "ILUSTRADO"  # há imagem
 
 
-class Marcador(BaseModel):
+class Artefato(BaseModel):
     """Um ícone a desenhar sobre o texto do capítulo (item 6.8 e 7.5b)."""
 
-    tipo: TipoDeMarcador
+    tipo: TipoDeArtefato
     tipo_do_elemento: TipoElemento | None = Field(
         default=None,
-        description="Só nos marcadores de ELEMENTO; é o que escolhe o ícone. Nulo nos de CENA.",
+        description="Só nos artefatos de ELEMENTO; é o que escolhe o ícone. Nulo nos de CENA.",
     )
     sugestao_id: int | None = Field(default=None, description="A sugestão de origem; nulo se nasceu à mão.")
     frame_id: int | None = Field(default=None, description="O retrato do elemento neste capítulo, quando existe.")
@@ -124,17 +124,26 @@ class Marcador(BaseModel):
         default=None,
         description=(
             "Onde desenhar: o início do parágrafo da primeira menção, em unidades UTF-16 desde o começo do "
-            "texto do capítulo. Nulo = não achado: o marcador vai para a faixa 'sem posição'."
+            "texto do capítulo. Nulo = não achado: o artefato vai para a faixa 'sem posição'."
         ),
     )
-    situacao: SituacaoDoMarcador
+    situacao: SituacaoDoArtefato
     imagem_id: int | None = Field(default=None, description="A imagem mais recente do frame, se há.")
 
 
-class MarcadoresDoCapitulo(BaseModel):
+class ArtefatosDoCapitulo(BaseModel):
     """Tudo que o leitor precisa desenhar sobre o texto, numa chamada só (item 6.8)."""
 
-    marcadores: list[Marcador]
+    artefatos: list[Artefato]
+
+
+class MarcadoresDoCapitulo(BaseModel):
+    """**Obsoleto:** a resposta de ``GET /capitulos/{id}/marcadores``, o nome antigo de ``/artefatos``.
+
+    Mesmos dados, no campo antigo. Mantido só até o app migrar (item 6.8).
+    """
+
+    marcadores: list[Artefato]
 
 
 class ElementoMesclagem(BaseModel):

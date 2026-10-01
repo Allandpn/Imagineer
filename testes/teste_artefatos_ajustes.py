@@ -1,4 +1,4 @@
-"""Ajustes dos marcadores achados com dados reais (30/09/2026): nome parcial, sem duplicatas."""
+"""Ajustes dos artefatos achados com dados reais (30/09/2026): nome parcial, sem duplicatas."""
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ TEXTO = "Abertura sem ninguém.\n\nA senhora Ellanher entrou. Septimus sorriu.\n
 
 
 def teste_nome_parcial_acha_o_pedaco_que_e_nome_proprio() -> None:
-    """O texto diz "Ellanher", a IA sugeriu "Septimus Ellanher": o marcador vai para a primeira menção de qualquer pedaço."""
+    """O texto diz "Ellanher", a IA sugeriu "Septimus Ellanher": o artefato vai para a primeira menção de qualquer pedaço."""
     assert posicao_da_primeira_mencao(TEXTO, "Septimus Ellanher") == TEXTO.index("A senhora")
 
 
@@ -91,7 +91,7 @@ def teste_um_icone_por_elemento_mesmo_com_duplicatas_antigas(
     sessao_com_tabelas.commit()
     assert len(cliente.get(f"/capitulos/{c1}/sugestoes").json()["elementos"]) == 2  # o painel mostra as duas
 
-    marcadores = cliente.get(f"/capitulos/{c1}/marcadores").json()["marcadores"]
+    artefatos = cliente.get(f"/capitulos/{c1}/artefatos").json()["artefatos"]
 
-    assert [m["rotulo"] for m in marcadores] == ["Ellanher"]
-    assert marcadores[0]["sugestao_id"] == original.id  # fica a mais antiga
+    assert [m["rotulo"] for m in artefatos] == ["Ellanher"]
+    assert artefatos[0]["sugestao_id"] == original.id  # fica a mais antiga

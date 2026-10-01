@@ -1,4 +1,4 @@
-"""Os marcadores de cena (item 3.4g, 6.8): a posição vem da citação da IA, gravada ao analisar."""
+"""Os artefatos de cena (item 3.4g, 6.8): a posição vem da citação da IA, gravada ao analisar."""
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -74,8 +74,8 @@ def _cenario(cliente: TestClient, usar_provedor_falso, sessao: Session, cenas, e
     return livro, capitulo["id"]
 
 
-def _marcadores(cliente: TestClient, capitulo_id: int) -> list[dict]:
-    return cliente.get(f"/capitulos/{capitulo_id}/marcadores").json()["marcadores"]
+def _artefatos(cliente: TestClient, capitulo_id: int) -> list[dict]:
+    return cliente.get(f"/capitulos/{capitulo_id}/artefatos").json()["artefatos"]
 
 
 def teste_analisar_grava_a_citacao_e_a_posicao_da_cena(
@@ -106,7 +106,7 @@ def teste_citacao_longa_demais_e_cortada_sem_derrubar_a_analise(
     assert cena.posicao_no_texto == TEXTO.index("Ned ergueu")  # achada pelas primeiras palavras
 
 
-def teste_cena_vira_marcador_misturada_com_elemento_e_por_posicao(
+def teste_cena_vira_artefato_misturada_com_elemento_e_por_posicao(
     cliente: TestClient, usar_provedor_falso, sessao_com_tabelas: Session
 ) -> None:
     _, c1 = _cenario(
@@ -115,27 +115,27 @@ def teste_cena_vira_marcador_misturada_com_elemento_e_por_posicao(
         elementos=[ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Ned")],
     )
 
-    marcadores = _marcadores(cliente, c1)
+    artefatos = _artefatos(cliente, c1)
 
-    assert [(m["tipo"], m["rotulo"], m["posicao_no_texto"]) for m in marcadores] == [
+    assert [(m["tipo"], m["rotulo"], m["posicao_no_texto"]) for m in artefatos] == [
         ("ELEMENTO", "Ned", TEXTO.index("Ned ergueu")),
         ("CENA", "Choro no pátio", TEXTO.index("Depois")),
         ("CENA", "Sem posição", None),  # sem posição vem depois
     ]
-    cena = marcadores[1]
+    cena = artefatos[1]
     assert cena["tipo_do_elemento"] is None
     assert cena["situacao"] == "SUGERIDO"
     assert cena["frame_id"] is None and cena["imagem_id"] is None
 
 
-def teste_cena_descartada_nao_vira_marcador(
+def teste_cena_descartada_nao_vira_artefato(
     cliente: TestClient, usar_provedor_falso, sessao_com_tabelas: Session
 ) -> None:
     _, c1 = _cenario(cliente, usar_provedor_falso, sessao_com_tabelas, [_cena("A", "Jon chorou"), _cena("B", "Ned")])
     primeira = cliente.get(f"/capitulos/{c1}/sugestoes").json()["cenas"][0]
     cliente.patch(f"/sugestoes-cena/{primeira['id']}", json={"descartada": True})
 
-    assert [m["rotulo"] for m in _marcadores(cliente, c1)] == ["B"]
+    assert [m["rotulo"] for m in _artefatos(cliente, c1)] == ["B"]
 
 
 def teste_situacao_da_cena_acompanha_o_andamento_ate_a_imagem(
@@ -143,29 +143,29 @@ def teste_situacao_da_cena_acompanha_o_andamento_ate_a_imagem(
 ) -> None:
     _, c1 = _cenario(cliente, usar_provedor_falso, sessao_com_tabelas, [_cena("A espada", "Ned ergueu")])
     sugestao = cliente.get(f"/capitulos/{c1}/sugestoes").json()["cenas"][0]
-    assert _marcadores(cliente, c1)[0]["situacao"] == "SUGERIDO"
+    assert _artefatos(cliente, c1)[0]["situacao"] == "SUGERIDO"
 
     frame = cliente.post(f"/capitulos/{c1}/frames", json={"sugestao_cena_id": sugestao["id"]})
     assert frame.status_code == 201, frame.text
     frame = frame.json()
-    marcador = _marcadores(cliente, c1)[0]
-    assert (marcador["situacao"], marcador["frame_id"]) == ("CONFIRMADO", frame["id"])
-    assert marcador["posicao_no_texto"] == TEXTO.index("Ned ergueu")  # a posição sobrevive à confirmação
+    artefato = _artefatos(cliente, c1)[0]
+    assert (artefato["situacao"], artefato["frame_id"]) == ("CONFIRMADO", frame["id"])
+    assert artefato["posicao_no_texto"] == TEXTO.index("Ned ergueu")  # a posição sobrevive à confirmação
 
     cliente.put("/configuracao", json={"modelo_prompt": "falso/modelo-de-teste"})
     perfil = cliente.post("/perfis-renderizacao", json={"nome": "P"}).json()
     prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={"perfil_renderizacao_id": perfil["id"]}).json()
-    assert _marcadores(cliente, c1)[0]["situacao"] == "PROMPT_PRONTO"
+    assert _artefatos(cliente, c1)[0]["situacao"] == "PROMPT_PRONTO"
 
     imagem = _importar_imagem(cliente, prompt["id"])
-    marcador = _marcadores(cliente, c1)[0]
-    assert (marcador["situacao"], marcador["imagem_id"]) == ("ILUSTRADO", imagem["id"])
+    artefato = _artefatos(cliente, c1)[0]
+    assert (artefato["situacao"], artefato["imagem_id"]) == ("ILUSTRADO", imagem["id"])
 
 
 def teste_cena_analisada_antes_da_coluna_fica_sem_posicao_mas_continua_valendo(
     cliente: TestClient, usar_provedor_falso, sessao_com_tabelas: Session
 ) -> None:
-    """D5: sem citação gravada, a cena segue como marcador sem posição — nada é reanalisado sozinho."""
+    """D5: sem citação gravada, a cena segue como artefato sem posição — nada é reanalisado sozinho."""
     provedor = ProvedorFalso(cenas_sugeridas=[_cena("Antiga", None)])
     usar_provedor_falso(provedor)
     livro = _livro_com_capitulos(cliente, capitulos=1)
@@ -173,7 +173,7 @@ def teste_cena_analisada_antes_da_coluna_fica_sem_posicao_mas_continua_valendo(
     _escolher_modelo_de_extracao(cliente)
     cliente.post(f"/capitulos/{c1}/sugestoes")
 
-    (marcador,) = _marcadores(cliente, c1)
+    (artefato,) = _artefatos(cliente, c1)
 
-    assert (marcador["rotulo"], marcador["posicao_no_texto"]) == ("Antiga", None)
-    assert len(provedor.chamadas_de_extracao) == 1  # ler os marcadores não chamou a IA
+    assert (artefato["rotulo"], artefato["posicao_no_texto"]) == ("Antiga", None)
+    assert len(provedor.chamadas_de_extracao) == 1  # ler os artefatos não chamou a IA
