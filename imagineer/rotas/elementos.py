@@ -9,7 +9,7 @@ import unicodedata
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,10 @@ from imagineer.esquemas.elemento import (
     HistoricoIdentidadeAjuste,
     HistoricoIdentidadeNovo,
     HistoricoIdentidadeResumo,
+    Marcador,
+    MarcadoresDoCapitulo,
+    SituacaoDoMarcador,
+    TipoDeMarcador,
     ParticipanteSugerido as ParticipanteSugeridoResposta,
     SugestaoDeCenaAjuste,
     SugestaoDeElementoAjuste,
@@ -50,6 +54,8 @@ from imagineer.modelos import (
     Capitulo,
     Elemento,
     EstadoElemento,
+    Frame,
+    TipoDeFrame,
     HistoricoIdentidadeElemento,
     Imagem,
     Livro,
@@ -61,6 +67,7 @@ from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
+from imagineer.servicos.posicao_no_texto import posicao_da_primeira_mencao
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Elementos"])
 rotas = APIRouter(prefix="/elementos", tags=["Elementos"])
@@ -775,6 +782,99 @@ def ler_sugestoes(
     return _sugestoes_de_capitulo(sessao, capitulo, pendentes_anteriores)
 
 
+def _sem_repetidas(sugestoes: list[SugestaoDeElemento]) -> list[SugestaoDeElemento]:
+    """Uma sugestão por elemento: duas sugestões do mesmo elemento (ou do mesmo tipo e nome, se ainda
+    não casadas) desenhariam o mesmo ícone duas vezes no mesmo parágrafo.
+
+    Fica a **mais antiga** (id menor); o painel de IA continua mostrando todas. Existe porque o banco
+    pode ter duplicatas de reanálises feitas antes de o servidor deixar de recriar as confirmadas.
+    """
+    vistas: set[object] = set()
+    unicas: list[SugestaoDeElemento] = []
+    for sugestao in sugestoes:  # já vêm por id
+        chave: object = (
+            ("elemento", sugestao.elemento_id)
+            if sugestao.elemento_id is not None
+            else ("nome", *_chave_normalizada(sugestao.tipo, sugestao.nome))
+        )
+        if chave in vistas:
+            continue
+        vistas.add(chave)
+        unicas.append(sugestao)
+    return unicas
+
+
+@rotas_de_capitulo.get(
+    "/{capitulo_id}/marcadores",
+    response_model=MarcadoresDoCapitulo,
+    summary="Os marcadores a desenhar sobre o texto do capítulo, sem chamar a IA",
+)
+def ler_marcadores(
+    capitulo_id: int,
+    sessao: Session = Depends(obter_sessao),
+) -> MarcadoresDoCapitulo:
+    """Os ícones do capítulo (item 6.8), numa chamada só — **só leitura, nunca chama a IA**.
+
+    Por ora, **só os marcadores de elemento** (as cenas chegam junto das posições por citação, que
+    pedem mudança no prompt da IA e reanálise). Cada sugestão **não descartada** vira um marcador;
+    a posição é achada **pelo nome**, no texto do capítulo, na hora da leitura — por isso funciona
+    também nos capítulos já analisados, sem reanalisar. Ordem: por posição; sem posição, depois.
+
+    A situação mostra onde o usuário parou: ``SUGERIDO`` (não confirmado) → ``CONFIRMADO`` (virou
+    elemento) → ``PROMPT_PRONTO`` (o retrato tem prompt) → ``ILUSTRADO`` (o retrato tem imagem).
+    """
+    capitulo = _buscar_capitulo(sessao, capitulo_id)
+    sugestoes = sessao.scalars(
+        select(SugestaoDeElemento)
+        .where(
+            SugestaoDeElemento.capitulo_id == capitulo.id,
+            SugestaoDeElemento.descartada.is_(False),
+        )
+        .order_by(SugestaoDeElemento.id)
+    ).all()
+
+    # O retrato de cada elemento NESTE capítulo: o frame PERSONAGEM cujo único estado é dele.
+    retratos: dict[int, Frame] = {}
+    for frame in sessao.scalars(
+        select(Frame).where(Frame.capitulo_id == capitulo.id, Frame.tipo == TipoDeFrame.PERSONAGEM)
+    ):
+        if frame.estados_elemento:
+            retratos[frame.estados_elemento[0].elemento_id] = frame  # o mais novo (id maior) vence, pela ordem
+
+    marcadores: list[Marcador] = []
+    for sugestao in _sem_repetidas(sugestoes):
+        elemento = sugestao.elemento
+        frame = retratos.get(sugestao.elemento_id) if sugestao.elemento_id is not None else None
+        imagens = [imagem for prompt in frame.prompts for imagem in prompt.imagens] if frame else []
+        ultima = max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
+
+        if sugestao.elemento_id is None:
+            situacao = SituacaoDoMarcador.SUGERIDO
+        elif ultima is not None:
+            situacao = SituacaoDoMarcador.ILUSTRADO
+        elif frame is not None and frame.prompts:
+            situacao = SituacaoDoMarcador.PROMPT_PRONTO
+        else:
+            situacao = SituacaoDoMarcador.CONFIRMADO
+
+        marcadores.append(
+            Marcador(
+                tipo=TipoDeMarcador.ELEMENTO,
+                tipo_do_elemento=elemento.tipo if elemento is not None else sugestao.tipo,
+                sugestao_id=sugestao.id,
+                frame_id=frame.id if frame is not None else None,
+                rotulo=elemento.nome if elemento is not None else sugestao.nome,
+                posicao_no_texto=posicao_da_primeira_mencao(capitulo.texto, sugestao.nome),
+                situacao=situacao,
+                imagem_id=ultima.id if ultima is not None else None,
+            )
+        )
+
+    # Por posição; sem posição vêm depois, na ordem em que as sugestões foram criadas (a ordem estável do sort).
+    marcadores.sort(key=lambda m: (m.posicao_no_texto is None, m.posicao_no_texto or 0))
+    return MarcadoresDoCapitulo(marcadores=marcadores)
+
+
 # --------------------------------------------------------------------------- #
 # Funções internas
 # --------------------------------------------------------------------------- #
@@ -1115,14 +1215,18 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
         )
     )
 
-    # As descartadas ficam; o que a IA repetir delas não vira sugestão nova, mas os
-    # participantes das cenas novas ainda podem apontar para elas.
+    # As descartadas e as já confirmadas ficam; o que a IA repetir delas não vira sugestão nova
+    # (era isso que duplicava os cartões a cada reanálise: a confirmada sobrevivia e a IA a listava de
+    # novo), mas os participantes das cenas novas ainda podem apontar para elas.
     elementos_desta_rodada: dict[tuple[TipoElemento, str], SugestaoDeElemento] = {
         _chave_normalizada(d.tipo, d.nome): d
         for d in sessao.scalars(
             select(SugestaoDeElemento).where(
                 SugestaoDeElemento.capitulo_id == capitulo.id,
-                SugestaoDeElemento.descartada.is_(True),
+                or_(
+                    SugestaoDeElemento.descartada.is_(True),
+                    SugestaoDeElemento.elemento_id.is_not(None),
+                ),
             )
         )
     }

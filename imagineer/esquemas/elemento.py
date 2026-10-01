@@ -1,5 +1,6 @@
 """Contratos das rotas de elementos e estados (Etapa 6.3 e 6.7)."""
 
+import enum
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -90,6 +91,50 @@ class HistoricoIdentidadeAjuste(BaseModel):
     """O que `PATCH /historico-identidade/{id}` recebe: o novo texto do acréscimo."""
 
     descricao: str = Field(min_length=1)
+
+
+class TipoDeMarcador(str, enum.Enum):
+    """O que um marcador representa no texto (item 6.8)."""
+
+    ELEMENTO = "ELEMENTO"
+    CENA = "CENA"
+
+
+class SituacaoDoMarcador(str, enum.Enum):
+    """Onde o usuário parou com aquele marcador (item 6.8): faz o ícone mostrar o andamento."""
+
+    SUGERIDO = "SUGERIDO"  # a sugestão existe e ainda não foi confirmada
+    CONFIRMADO = "CONFIRMADO"  # virou elemento (ou frame)
+    PROMPT_PRONTO = "PROMPT_PRONTO"  # há prompt, falta imagem
+    ILUSTRADO = "ILUSTRADO"  # há imagem
+
+
+class Marcador(BaseModel):
+    """Um ícone a desenhar sobre o texto do capítulo (item 6.8 e 7.5b)."""
+
+    tipo: TipoDeMarcador
+    tipo_do_elemento: TipoElemento | None = Field(
+        default=None,
+        description="Só nos marcadores de ELEMENTO; é o que escolhe o ícone. Nulo nos de CENA.",
+    )
+    sugestao_id: int | None = Field(default=None, description="A sugestão de origem; nulo se nasceu à mão.")
+    frame_id: int | None = Field(default=None, description="O retrato do elemento neste capítulo, quando existe.")
+    rotulo: str = Field(description="O nome do elemento (o do cadastro, se a sugestão está casada) ou o título da cena.")
+    posicao_no_texto: int | None = Field(
+        default=None,
+        description=(
+            "Onde desenhar: o início do parágrafo da primeira menção, em unidades UTF-16 desde o começo do "
+            "texto do capítulo. Nulo = não achado: o marcador vai para a faixa 'sem posição'."
+        ),
+    )
+    situacao: SituacaoDoMarcador
+    imagem_id: int | None = Field(default=None, description="A imagem mais recente do frame, se há.")
+
+
+class MarcadoresDoCapitulo(BaseModel):
+    """Tudo que o leitor precisa desenhar sobre o texto, numa chamada só (item 6.8)."""
+
+    marcadores: list[Marcador]
 
 
 class ElementoMesclagem(BaseModel):

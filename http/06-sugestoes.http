@@ -97,5 +97,11 @@ GET {{baseUrl}}/livros/1/sugestoes-elemento?nome=vis
 #   "descartada": true
 # }
 
+### Os marcadores a desenhar sobre o texto do capítulo (item 6.8)
+# Só leitura, NUNCA chama a IA. Um marcador por sugestão de elemento não descartada, com o tipo (escolhe o
+# ícone), a posição (início do parágrafo da primeira menção do nome, em UTF-16; nulo = nome não achado) e a
+# situação (SUGERIDO, CONFIRMADO, PROMPT_PRONTO, ILUSTRADO). Funciona em capítulos já analisados.
+GET {{baseUrl}}/capitulos/{{primeiroCapituloId}}/marcadores
+
 ### Capítulo inexistente — confere o 404
 POST {{baseUrl}}/capitulos/999999/sugestoes
