@@ -131,6 +131,9 @@ class CenaSugerida:
     clima: str | None = None
     humor: str | None = None
     participantes: list[ParticipanteSugerido] = field(default_factory=list)
+    trecho_ancora: str | None = None
+    """Citação literal do começo do momento, copiada do texto; o servidor a converte em
+    posição (item 3.4g). Nulo quando a IA não tem certeza."""
 
 
 @dataclass

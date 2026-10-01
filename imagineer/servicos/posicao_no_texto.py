@@ -95,6 +95,57 @@ def _partes_de_nome_proprio(nome: str) -> list[str]:
     return [p for p in palavras if len(p) >= 3 and p[0].isupper()]
 
 
+_MAXIMO_DE_PALAVRAS_DO_COMECO = 6
+_MINIMO_DE_PALAVRAS_DO_COMECO = 3
+"""Última tentativa: a IA costuma copiar bem o começo da citação e errar o fim (cortar, completar de
+cabeça). Tenta-se o começo com 6 palavras, depois 5, 4 e 3, sempre o mais longo primeiro. Menos de 3
+palavras é genérico demais: casaria com qualquer trecho parecido e apontaria o lugar errado."""
+
+
+def _indice_da_citacao(texto: str, citacao: str) -> int | None:
+    """O índice, no texto original, onde começa ``citacao`` — um **trecho**, não uma palavra inteira.
+
+    Três tentativas, da mais exata à mais tolerante: (1) o trecho exato; (2) o trecho normalizado
+    (com o mapa de volta ao original); (3) só o começo, normalizado, de 6 a 3 palavras.
+    """
+    citacao = citacao.strip()
+    if not citacao:
+        return None
+
+    indice = texto.find(citacao)
+    if indice != -1:
+        return indice
+
+    texto_normalizado, origem = _normalizar(texto)
+    citacao_normalizada = _normalizar(citacao)[0].strip()
+    if not citacao_normalizada:
+        return None
+    indice = texto_normalizado.find(citacao_normalizada)
+    if indice != -1:
+        return origem[indice]
+
+    palavras = citacao_normalizada.split()
+    for quantas in range(min(_MAXIMO_DE_PALAVRAS_DO_COMECO, len(palavras) - 1), _MINIMO_DE_PALAVRAS_DO_COMECO - 1, -1):
+        indice = texto_normalizado.find(" ".join(palavras[:quantas]))
+        if indice != -1:
+            return origem[indice]
+    return None
+
+
+def posicao_da_citacao(texto: str, citacao: str | None) -> int | None:
+    """A posição (UTF-16) do início do parágrafo onde ``citacao`` aparece, ou ``None``.
+
+    É o caminho das **cenas** (item 3.4g): não há nome a buscar, só a citação que a IA devolveu.
+    Citação vazia ou não encontrada: ``None``, e a cena continua valendo — só não ganha marcador.
+    """
+    if not citacao:
+        return None
+    indice = _indice_da_citacao(texto, citacao)
+    if indice is None:
+        return None
+    return _em_utf16(texto, _inicio_do_paragrafo(texto, indice))
+
+
 def posicao_da_primeira_mencao(texto: str, nome: str) -> int | None:
     """A posição (UTF-16) do início do parágrafo da primeira menção de ``nome``, ou ``None``.
 

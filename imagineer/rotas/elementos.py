@@ -67,7 +67,7 @@ from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
-from imagineer.servicos.posicao_no_texto import posicao_da_primeira_mencao
+from imagineer.servicos.posicao_no_texto import posicao_da_citacao, posicao_da_primeira_mencao
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Elementos"])
 rotas = APIRouter(prefix="/elementos", tags=["Elementos"])
@@ -782,6 +782,22 @@ def ler_sugestoes(
     return _sugestoes_de_capitulo(sessao, capitulo, pendentes_anteriores)
 
 
+def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[SituacaoDoMarcador, Imagem | None]:
+    """A situação de um marcador e a imagem a mostrar (a mais recente do frame, se houver).
+
+    ``confirmado`` diz se a sugestão já virou elemento ou frame; sem isso, é só ``SUGERIDO``.
+    """
+    if not confirmado:
+        return SituacaoDoMarcador.SUGERIDO, None
+    imagens = [imagem for prompt in frame.prompts for imagem in prompt.imagens] if frame else []
+    ultima = max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
+    if ultima is not None:
+        return SituacaoDoMarcador.ILUSTRADO, ultima
+    if frame is not None and frame.prompts:
+        return SituacaoDoMarcador.PROMPT_PRONTO, None
+    return SituacaoDoMarcador.CONFIRMADO, None
+
+
 def _sem_repetidas(sugestoes: list[SugestaoDeElemento]) -> list[SugestaoDeElemento]:
     """Uma sugestão por elemento: duas sugestões do mesmo elemento (ou do mesmo tipo e nome, se ainda
     não casadas) desenhariam o mesmo ícone duas vezes no mesmo parágrafo.
@@ -815,13 +831,13 @@ def ler_marcadores(
 ) -> MarcadoresDoCapitulo:
     """Os ícones do capítulo (item 6.8), numa chamada só — **só leitura, nunca chama a IA**.
 
-    Por ora, **só os marcadores de elemento** (as cenas chegam junto das posições por citação, que
-    pedem mudança no prompt da IA e reanálise). Cada sugestão **não descartada** vira um marcador;
-    a posição é achada **pelo nome**, no texto do capítulo, na hora da leitura — por isso funciona
-    também nos capítulos já analisados, sem reanalisar. Ordem: por posição; sem posição, depois.
+    Cada sugestão **não descartada** vira um marcador. A posição dos **elementos** é achada **pelo
+    nome**, no texto, na hora da leitura — funciona também nos capítulos já analisados. A das
+    **cenas** vem da citação da IA, **gravada** quando a sugestão nasceu (item 3.4g): cena analisada
+    antes disso fica sem posição até o capítulo ser reanalisado. Ordem: por posição; sem posição, depois.
 
     A situação mostra onde o usuário parou: ``SUGERIDO`` (não confirmado) → ``CONFIRMADO`` (virou
-    elemento) → ``PROMPT_PRONTO`` (o retrato tem prompt) → ``ILUSTRADO`` (o retrato tem imagem).
+    elemento ou frame) → ``PROMPT_PRONTO`` (o frame tem prompt) → ``ILUSTRADO`` (o frame tem imagem).
     """
     capitulo = _buscar_capitulo(sessao, capitulo_id)
     sugestoes = sessao.scalars(
@@ -845,17 +861,7 @@ def ler_marcadores(
     for sugestao in _sem_repetidas(sugestoes):
         elemento = sugestao.elemento
         frame = retratos.get(sugestao.elemento_id) if sugestao.elemento_id is not None else None
-        imagens = [imagem for prompt in frame.prompts for imagem in prompt.imagens] if frame else []
-        ultima = max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
-
-        if sugestao.elemento_id is None:
-            situacao = SituacaoDoMarcador.SUGERIDO
-        elif ultima is not None:
-            situacao = SituacaoDoMarcador.ILUSTRADO
-        elif frame is not None and frame.prompts:
-            situacao = SituacaoDoMarcador.PROMPT_PRONTO
-        else:
-            situacao = SituacaoDoMarcador.CONFIRMADO
+        situacao, ultima = _situacao_e_imagem(frame, confirmado=sugestao.elemento_id is not None)
 
         marcadores.append(
             Marcador(
@@ -865,6 +871,25 @@ def ler_marcadores(
                 frame_id=frame.id if frame is not None else None,
                 rotulo=elemento.nome if elemento is not None else sugestao.nome,
                 posicao_no_texto=posicao_da_primeira_mencao(capitulo.texto, sugestao.nome),
+                situacao=situacao,
+                imagem_id=ultima.id if ultima is not None else None,
+            )
+        )
+
+    cenas = sessao.scalars(
+        select(SugestaoDeCena)
+        .where(SugestaoDeCena.capitulo_id == capitulo.id, SugestaoDeCena.descartada.is_(False))
+        .order_by(SugestaoDeCena.id)
+    )
+    for cena in cenas:
+        situacao, ultima = _situacao_e_imagem(cena.frame, confirmado=cena.frame_id is not None)
+        marcadores.append(
+            Marcador(
+                tipo=TipoDeMarcador.CENA,
+                sugestao_id=cena.id,
+                frame_id=cena.frame_id,
+                rotulo=cena.titulo,
+                posicao_no_texto=cena.posicao_no_texto,
                 situacao=situacao,
                 imagem_id=ultima.id if ultima is not None else None,
             )
@@ -1264,6 +1289,9 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
             clima=cena.clima,
             humor=cena.humor,
             modelo=extracao.modelo,
+            trecho_ancora=cena.trecho_ancora[:300] if cena.trecho_ancora else None,
+            # A posição vem da citação, calculada aqui — a IA nunca devolve número (item 3.4g).
+            posicao_no_texto=posicao_da_citacao(capitulo.texto, cena.trecho_ancora),
         )
         for participante in cena.participantes:
             correspondente = elementos_desta_rodada.get(

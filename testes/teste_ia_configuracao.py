@@ -304,6 +304,27 @@ def teste_extrair_elementos_interpreta_cenas_sugeridas() -> None:
     assert cena.participantes[1].tipo is TipoElemento.OBJETO
 
 
+def teste_extrair_elementos_le_o_trecho_ancora_da_cena_e_trata_o_que_nao_e_texto_como_nulo() -> None:
+    """A citação do começo do momento (item 3.4g): presente, ausente, 'null' e não-texto."""
+    participantes = [{"tipo": "PERSONAGEM", "nome": "Ned"}]
+    resposta = json.dumps(
+        {
+            "elementos": [{"tipo": "PERSONAGEM", "nome": "Ned"}],
+            "cenas": [
+                {"titulo": "A", "participantes": participantes, "trecho_ancora": "  Ned ergueu a espada.  "},
+                {"titulo": "B", "participantes": participantes},
+                {"titulo": "C", "participantes": participantes, "trecho_ancora": "null"},
+                {"titulo": "D", "participantes": participantes, "trecho_ancora": 42},
+            ],
+        }
+    )
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    cenas = provedor.extrair_elementos("t", [], "m").cenas
+
+    assert [c.trecho_ancora for c in cenas] == ["Ned ergueu a espada.", None, None, None]
+
+
 def teste_extrair_elementos_descarta_cena_sem_titulo_ou_sem_participantes() -> None:
     """Uma cena malformada não deveria derrubar as outras (mesma regra dos elementos)."""
     resposta = json.dumps(

@@ -149,6 +149,14 @@ class SugestaoDeCena(Base):
     modelo: Mapped[str] = mapped_column(String(200))
     """O modelo que gerou esta sugestão — ver `SugestaoDeElemento.modelo`."""
 
+    trecho_ancora: Mapped[str | None] = mapped_column(String(300))
+    """Citação literal e curta do começo do momento, devolvida pela IA (item 3.4g).
+    Só serve para o servidor achar ``posicao_no_texto``; nulo se a IA não citou."""
+
+    posicao_no_texto: Mapped[int | None] = mapped_column()
+    """Início do parágrafo do momento, em UTF-16, achado pelo servidor a partir de
+    ``trecho_ancora``. Nulo = não achado (ou cena analisada antes desta coluna existir)."""
+
     frame_id: Mapped[int | None] = mapped_column(
         ForeignKey("frames.id", ondelete="SET NULL"),
     )

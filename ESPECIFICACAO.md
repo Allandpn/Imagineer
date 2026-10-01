@@ -1458,7 +1458,7 @@ O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado c
 | Método e caminho | O que faz | Estado |
 |---|---|---|
 | `GET /capitulos/{id}/sugestoes` | **Só leitura** das sugestões já salvas do capítulo — a mesma resposta do `POST`, **sem nunca chamar a IA** | **implementado** (30/09/2026, 8 testes; a função nem declara a dependência do provedor de IA, então a garantia é estrutural) |
-| `GET /capitulos/{id}/marcadores` | Tudo que o leitor do capítulo precisa desenhar sobre o texto, numa chamada só — **sem chamar a IA** | **implementado só para elementos** (30/09/2026, 15 testes); as cenas ficam para a fatia seguinte (ver abaixo) |
+| `GET /capitulos/{id}/marcadores` | Tudo que o leitor do capítulo precisa desenhar sobre o texto, numa chamada só — **sem chamar a IA** | **implementado** — elementos (30/09/2026) e cenas (01/10/2026, a posição da cena só existe depois de analisar/reanalisar o capítulo) |
 | `PATCH /frames/{id}` | Passa a aceitar `posicao_no_texto` (item 3.4g) | especificado |
 | `POST /capitulos/{id}/frames` | Passa a aceitar `posicao_no_texto`; com `sugestao_cena_id`, herda a da sugestão | especificado |
 
@@ -2278,6 +2278,26 @@ Regras de negócio, **E1 a E10**:
 - A posição do servidor é achada no app pelo **último parágrafo que começa nela ou antes** — tolera uma pequena diferença de aparo.
 
 **Fica para a próxima fatia:** os ícones de **cena** (precisam do `trecho_ancora` no prompt da IA, das colunas e de **reanalisar** cada capítulo), "Ilustrar aqui" e a imagem desenhada entre os parágrafos (incremento 12).
+
+#### Incremento 11, segunda fatia — os marcadores de cena (servidor; implementado em 01/10/2026, 459 testes, 13 novos; falta o app)
+
+**O quê.** `GET /capitulos/{id}/marcadores` passa a devolver, além dos de elemento, um marcador `CENA` por sugestão de cena **não descartada**. É a parte que o 3.4g já previa; esta fatia só fixa o recorte e as decisões abaixo.
+
+**Por quê é diferente dos elementos.** Elemento tem nome, então o servidor o acha no texto na hora da leitura. Cena não tem nome a buscar: só a **IA** sabe onde o momento começa. Por isso a posição da cena precisa ser **pedida à IA (uma citação) e gravada** quando a sugestão nasce.
+
+**Decisões:**
+- **D1 — Só `SugestaoDeCena` ganha colunas** (`trecho_ancora`, texto 300; `posicao_no_texto`, inteiro; ambas nulas; uma migration). `SugestaoDeElemento` **não** ganha: a posição dela continua sendo calculada pelo nome (divergência já registrada acima).
+- **D2 — O prompt da IA pede `trecho_ancora` em cada cena:** uma citação **literal e curta** (até ~200 caracteres) do começo do momento, copiada do texto; **`null` na dúvida**. `CenaSugerida` (provedor e falso) ganha o campo; um valor que não seja texto vira nulo.
+- **D3 — O servidor converte a citação em posição ao gravar a sugestão** (em `_gerar_sugestoes`), nunca a IA. Ordem do 3.4g: **exata → normalizada (com mapa de índices) → só o começo, com 6 palavras e, se não achar, 5, 4 e 3** (menos que 3 é genérico demais); resultado = início do **parágrafo**, em **UTF-16**. Não achou = `posicao_no_texto` nula. A busca da citação **não** é por palavra inteira (é um trecho, não um nome); as de elemento continuam sendo.
+- **D4 — Mesmo formato de marcador:** `tipo=CENA`, `tipo_do_elemento` nulo, `rotulo` = título da cena, `sugestao_id`, `frame_id` (o `Frame` confirmado, se houver), `imagem_id` (a mais recente do frame). `situacao`: `SUGERIDO` (sem frame) → `CONFIRMADO` (frame sem prompt) → `PROMPT_PRONTO` → `ILUSTRADO`, como nos elementos. Entram na **mesma ordenação** (por posição; sem posição depois).
+- **D5 — Capítulos já analisados ficam sem posição nas cenas** até serem **reanalisados** (não há como saber onde a cena começa sem a IA). Seguem valendo, só sem ícone no texto. **Nenhuma reanálise automática**: custa IA e só o usuário decide. Cena **confirmada** (com `frame_id`) sobrevive à reanálise e, portanto, **não ganha posição retroativa** nesta fatia; só o "Ilustrar aqui" / `PATCH /frames` (próxima fatia) dá posição a um frame.
+- **D6 — Fora desta fatia:** `Frame.posicao_no_texto`, `PATCH /frames` e `POST /capitulos/{id}/frames` com posição, "Ilustrar aqui", a imagem entre os parágrafos e o lado do app (ícone de cena, E42 estendido).
+
+**Em linguagem simples, o que foi feito.** Quando o usuário clica em "Analisar", a IA agora devolve, para cada cena, uma frase copiada do texto onde o momento começa. O servidor procura essa frase no capítulo (primeiro igual, depois ignorando acento e aspas, depois só o começo dela, caso a IA tenha inventado o fim) e guarda o número da posição. Quando o app pede os marcadores, as cenas vêm junto dos elementos, cada uma já com a posição. Se a IA não citou, ou a citação não existe no texto, a cena vem sem posição e continua valendo.
+
+**Divergência do plano:** o 3.4g previa as "primeiras palavras" sem dizer quantas. Um primeiro teste mostrou que fixar 6 falhava quando a IA acertava só as 4 primeiras; ficou **de 6 a 3, o mais longo primeiro**. O prompt de cena foi alterado (instrução de `trecho_ancora`), então **a taxa de acerto precisa ser reavaliada com IA real** (a medição de 30/09/2026 usou um prompt de teste) — ainda não foi feito. Migration `a1c3e5f7b9d2`.
+
+**Testes (feitos):** o serviço de citação (exata, normalizada com acento/aspas, primeiras palavras, não achada, UTF-16 depois de um emoji, início do parágrafo); o parser da IA (`trecho_ancora` presente, ausente, não-texto); `_gerar_sugestoes` gravando a posição; o marcador de cena em cada `situacao`, o descartado fora, a ordenação misturada com elementos e o `GET` sem chamar a IA.
 
 #### Navegação entre capítulos por gesto (item 7.5c, implementado em 30/09/2026; 489 testes no app; ainda a validar no tablet)
 

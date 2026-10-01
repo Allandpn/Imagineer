@@ -78,6 +78,7 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
       "horario": "período do dia, se o texto sugerir, senão nulo",
       "clima": "condição do ambiente, se o texto sugerir, senão nulo",
       "humor": "tom emocional da cena, se ficar claro, senão nulo",
+      "trecho_ancora": "citação literal do começo desse momento, copiada do texto",
       "participantes": [
         {"tipo": "PERSONAGEM", "nome": "nome exatamente como em elementos"}
       ]
@@ -128,6 +129,10 @@ personagem, um objeto, ou estar situado num ambiente/edificação) — não sugi
 uma "cena" que é só um ambiente vazio ou um objeto sozinho. Prefira poucas \
 cenas bem compostas (os momentos que um leitor lembraria) a listar cada \
 parágrafo do capítulo como uma cena.
+- "trecho_ancora" de cada cena: copie, **palavra por palavra e sem alterar nada**, \
+uma frase curta (até 200 caracteres) do texto do capítulo, no ponto em que o momento \
+da cena COMEÇA. Não resuma, não traduza, não corrija pontuação. Se não tiver certeza \
+de achar um trecho exato, use null.
 - Todo nome em "participantes" deve corresponder exatamente a um nome que \
 também está em "elementos".
 - Escreva em português.
@@ -894,6 +899,7 @@ def _interpretar_cenas_sugeridas(bruto: dict) -> list[CenaSugerida]:
                 clima=_texto_ou_nulo(entrada.get("clima")),
                 humor=_texto_ou_nulo(entrada.get("humor")),
                 participantes=participantes,
+                trecho_ancora=_texto_ou_nulo(entrada.get("trecho_ancora")),
             )
         )
 
