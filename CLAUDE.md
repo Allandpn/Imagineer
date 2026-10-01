@@ -47,6 +47,8 @@ Allan está aprendendo a programar através deste projeto e quer entender o sist
 ## Escopo
 
 - MVP primeiro: Elemento + EstadoElemento + Frame + Prompt + Imagem, conforme Etapa 3 da especificação.
+- **Visão ampliada (01/10/2026, decisão do Allan):** o Imagineer passa a mirar ser um **leitor de EPUB completo**, com a geração de imagens como camada sobre a leitura (ver `EXPERIENCIA_DE_LEITURA.md` e o item 1.1 da especificação). Isso **não revoga a regra acima**: o núcleo do MVP continua sendo o primeiro. Cada funcionalidade de leitura (retomar de onde parou, tipografia, sumário, busca no texto, marcador/pin...) entra **uma de cada vez**, só depois de especificada em `ESPECIFICACAO.md` — o `EXPERIENCIA_DE_LEITURA.md` é pesquisa, não especificação.
+- **Vocabulário (01/10/2026):** **artefato** = o ícone desenhado sobre o texto do capítulo; **marcador** = a posição de leitura automática do livro; **pin** = a posição marcada à mão.
 - Relações entre elementos e Grupos com membros explícitos ficam para uma v2 — não implementar mesmo que pareça simples, sem antes atualizar a especificação para incluir esse escopo.
 
 ## O app Android e a especificação compartilhada
