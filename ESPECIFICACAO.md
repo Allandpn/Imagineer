@@ -899,6 +899,29 @@ O `ProvedorOpenRouter` é testado com um transporte falso do `httpx`, que respon
 
 Também descobri, na mesma chamada, que **os 458 modelos declaram modalidades** — então o caminho de reserva do filtro ("sem a informação, assume texto") não é exercitado hoje. Ficou como proteção contra o campo desaparecer da API: nesse caso é melhor a lista vir completa demais do que vazia, que deixaria o usuário sem como configurar.
 
+#### Custo das chamadas de IA (especificado e implementado em 01/10/2026; item M3 da Etapa 8)
+
+**Pedido do Allan:** guardar o custo de cada solicitação à IA, para usar como métrica no futuro. O OpenRouter devolve, em cada resposta, o bloco `usage` com os tokens e o **custo em dólares** (`cost`); o servidor passa a gravar isso.
+
+**Tabela nova `usos_ia` (`UsoDeIA`, migration `b2d4f6a8c0e1`), uma linha por chamada bem-sucedida:**
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | |
+| `criado_em` | data/hora | não | preenchido pelo banco (`NOW()`), como `Imagem.data_importacao` |
+| `operacao` | texto (40) | não | qual passo do fluxo chamou: `extracao`, `estado`, `identidade`, `fundamentacao`, `prompt` ou `perfil` |
+| `modelo` | texto (200) | não | o modelo usado, como escolhido na configuração |
+| `tokens_entrada` / `tokens_saida` | inteiro | sim | `usage.prompt_tokens` / `usage.completion_tokens` |
+| `custo` | decimal (12, 8) | sim | `usage.cost`, em dólares. **Nulo = o OpenRouter não informou** (acontece com modelos gratuitos ou chave própria do provedor) — nunca zero inventado |
+| `id_da_geracao` | texto (100) | sim | o `id` da resposta; permite conferir a cobrança no painel do OpenRouter |
+
+**Como funciona.** `ProvedorOpenRouter` aceita um `ao_usar` opcional (uma função); depois de cada chamada de conversa bem-sucedida, lê o `usage` da resposta e a chama com um `UsoDeIA` (`ia/provedor.py`). Quem monta o provedor (`construir_provedor`, via a dependência `obter_provedor`) passa uma função que **grava a linha numa sessão própria, com commit imediato** (`servicos/uso_de_ia.py`). Duas decisões, e o porquê:
+- **Sessão própria, e não a da rota.** A rota pode falhar depois da chamada (um 422, um erro ao gravar as sugestões) e desfazer a transação dela; mas a chamada **já foi cobrada**. Gravar à parte mantém o registro fiel ao que foi gasto.
+- **Gravar nunca derruba a chamada.** Se o banco falhar ao registrar o uso, o erro vai para o log e a resposta da IA segue normalmente: perder uma linha de métrica é melhor do que perder um capítulo analisado que já custou dinheiro.
+- A camada `ia/` continua sem conhecer o banco: ela só avisa quem a chamou.
+
+**O que fica de fora por ora (YAGNI):** nenhuma rota de leitura (as métricas são "para o futuro"; consulta-se o banco direto); nenhum vínculo com livro ou capítulo (o provedor não sabe em que livro está; se a métrica por livro fizer falta, acrescenta-se uma coluna depois, com o contexto da rota); só chamadas de **conversa** (a listagem de modelos é gratuita e pública); chamadas que **falham** não gravam (não há cobrança confirmada).
+
 ### 4.4 Regra de decisão de novo Estado
 
 A extração é **semi-automática**: a IA sugere, o usuário confirma. Isso evita depender de uma regra algorítmica perfeita para decidir sozinha se um capítulo representa mudança de estado. Depois de testar com IA real (ver a divergência registrada no item 4.2), o processo virou **duas fases**, para o texto do livro — e não um resumo apressado de vários elementos numa resposta só — ser sempre a fonte da descrição de aparência que chega ao prompt de imagem.
@@ -1146,6 +1169,7 @@ Migration `a92e5f1c8d3b`. 4 testes novos (311 no total). Verificado contra `Prov
 | Imagem mostrada no texto = a **mais recente** do frame; sem campo "imagem principal" por enquanto | Evita uma escolha a mais para o usuário e um campo novo no banco. Reavaliar se a escolha automática incomodar |
 | App com **biblioteca de imagens (Coil)** e cache de imagens — **exceção** à regra "sem cache" do item 7.0 | A regra valia para *dados* (livros, capítulos). Imagens são grandes: sem cache, cada rolagem baixaria a figura de novo pela rede. Coil carrega só o que está na tela |
 | **Geração de imagem pelo app fica apenas reservada** (item 7.5b): lugar na interface, sem campo no banco nem rota | Continua só o OpenRouter (item 4.1). O contrato se define quando se verificar o que o OpenRouter oferece para imagem; criar campos antes seria abstração prematura |
+| **Custo de cada chamada de IA gravado em tabela própria** (`usos_ia`), em sessão separada e sem nunca derrubar a chamada (01/10/2026) | Pedido do Allan, para métricas futuras. O OpenRouter já devolve tokens e custo em dólares em cada resposta. Sessão própria porque a rota pode desfazer a transação dela depois de a chamada já ter sido cobrada; falha ao gravar só vai para o log. `custo` nulo (e não zero) quando o provedor não informa. *Alternativas descartadas:* gravar na sessão da rota (perderia o registro em chamadas cobradas cuja rota falhou) e acumular em memória (some ao reiniciar) |
 | O container da API **aplica as migrations sozinho ao subir** (`alembic upgrade head` antes do `uvicorn`), e a imagem passa a ter um `.dockerignore` (30/09/2026) | O servidor roda 24/7 num Raspberry Pi: depois de um reinício ou de uma atualização do código, ele precisa subir com o banco no formato que o código espera, sem ninguém lembrar de um comando à mão. Num banco já atualizado o comando não faz nada; num banco vazio cria tudo (verificado: 15 tabelas, versão `f9a4c6e8b0d3`). Risco aceito: uma migration com defeito impede a API de subir — o motivo aparece em `docker compose logs api`. O `.dockerignore` tira da imagem o `venv`, o `.git`, o `.env`, os testes e a documentação (build mais rápido no Pi e nenhum segredo dentro da imagem). *Alternativa descartada:* rodar `alembic upgrade head` à mão a cada atualização (fácil de esquecer; foi assim até aqui). |
 
 ---

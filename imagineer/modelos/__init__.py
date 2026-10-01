@@ -25,6 +25,7 @@ from imagineer.modelos.sugestao import (
     SugestaoDeElemento,
     sugestoes_participante,
 )
+from imagineer.modelos.uso_ia import UsoDeIA
 
 __all__ = [
     "Capitulo",
@@ -43,6 +44,7 @@ __all__ = [
     "SugestaoDeElemento",
     "TipoDeFrame",
     "TipoElemento",
+    "UsoDeIA",
     "frames_estados_elemento",
     "sugestoes_participante",
 ]

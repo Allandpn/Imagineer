@@ -19,6 +19,7 @@ from imagineer.configuracao import obter_configuracoes
 from imagineer.ia.openrouter import ProvedorOpenRouter
 from imagineer.ia.provedor import ProvedorIA
 from imagineer.modelos.configuracao import ID_UNICO, Configuracao
+from imagineer.servicos.uso_de_ia import gravar_uso
 
 
 @dataclass
@@ -71,4 +72,4 @@ def construir_provedor(cabecalho: str | None = None) -> ProvedorIA:
     por um falso, e o que faz uma troca de chave valer no pedido seguinte sem
     reiniciar o serviço.
     """
-    return ProvedorOpenRouter(chave_api=resolver_chave(cabecalho).valor)
+    return ProvedorOpenRouter(chave_api=resolver_chave(cabecalho).valor, ao_usar=gravar_uso)

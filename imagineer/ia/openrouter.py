@@ -6,7 +6,10 @@ por fornecedor na v1 (Etapa 5).
 """
 
 import json
+import logging
 import re
+from collections.abc import Callable
+from decimal import Decimal, InvalidOperation
 
 import httpx
 
@@ -26,6 +29,7 @@ from imagineer.ia.provedor import (
     PromptMontado,
     ProvedorIA,
     TextoLongoDemais,
+    UsoDaChamada,
 )
 from imagineer.modelos import CategoriaEstilo, TipoElemento
 
@@ -423,9 +427,17 @@ class ProvedorOpenRouter(ProvedorIA):
     transporte falso, em vez de a classe criar a conexão por conta própria.
     """
 
-    def __init__(self, chave_api: str | None = None, cliente: httpx.Client | None = None):
+    def __init__(
+        self,
+        chave_api: str | None = None,
+        cliente: httpx.Client | None = None,
+        ao_usar: Callable[[UsoDaChamada], None] | None = None,
+    ):
         self._chave_api = chave_api
         self._cliente = cliente or httpx.Client(base_url=ENDERECO_BASE, timeout=TEMPO_LIMITE)
+        self._ao_usar = ao_usar
+        """Chamada depois de cada conversa bem-sucedida, com o que ela consumiu (item 4.3).
+        O provedor não sabe o que fazer com isso (gravar, somar...): só avisa."""
 
     # ----------------------------------------------------------------------- #
     # Modelos
@@ -479,7 +491,7 @@ class ProvedorOpenRouter(ProvedorIA):
             f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_EXTRACAO, pedido)
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_EXTRACAO, pedido, operacao="extracao")
         bruto = _extrair_json(resposta)
         if bruto is None:
             raise ErroDoProvedorIA(
@@ -510,7 +522,7 @@ class ProvedorOpenRouter(ProvedorIA):
             f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_ESTADO, pedido)
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_ESTADO, pedido, operacao="estado")
         return EstadoSugerido(descricao=_interpretar_estado(resposta), modelo=modelo)
 
     def sugerir_identidade(
@@ -528,7 +540,7 @@ class ProvedorOpenRouter(ProvedorIA):
             f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_IDENTIDADE, pedido)
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_IDENTIDADE, pedido, operacao="identidade")
         return IdentidadeSugerida(descricao=_interpretar_identidade(resposta), modelo=modelo)
 
     def fundamentar_frame(
@@ -555,7 +567,7 @@ class ProvedorOpenRouter(ProvedorIA):
             f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME, pedido)
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME, pedido, operacao="fundamentacao")
         return FrameFundamentado(
             contexto=_interpretar_contexto(resposta), modelo=modelo
         )
@@ -582,7 +594,7 @@ class ProvedorOpenRouter(ProvedorIA):
         if comentario_do_usuario:
             pedido += f"\n\nCOMENTÁRIO DO USUÁRIO (prioridade máxima):\n{comentario_do_usuario}"
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido)
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido, operacao="prompt")
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
 
     def sugerir_perfil_renderizacao(
@@ -609,7 +621,7 @@ class ProvedorOpenRouter(ProvedorIA):
         )
 
         resposta = self._conversar(
-            modelo, _INSTRUCAO_DE_PERFIL, pedido, usar_busca_web=True
+            modelo, _INSTRUCAO_DE_PERFIL, pedido, operacao="perfil", usar_busca_web=True
         )
         bruto = _extrair_json(resposta)
         if bruto is None:
@@ -646,9 +658,18 @@ class ProvedorOpenRouter(ProvedorIA):
         conferir_se_cabe(texto, contexto_do_modelo)
 
     def _conversar(
-        self, modelo: str, instrucao: str, pedido: str, *, usar_busca_web: bool = False
+        self,
+        modelo: str,
+        instrucao: str,
+        pedido: str,
+        *,
+        operacao: str,
+        usar_busca_web: bool = False,
     ) -> str:
         """Faz uma chamada de conversa e devolve o texto da resposta.
+
+        ``operacao`` diz qual passo do fluxo chamou (``extracao``, ``estado``...): vai junto do
+        consumo informado ao ``ao_usar`` (item 4.3, "Custo das chamadas de IA").
 
         ``usar_busca_web`` liga o plugin de busca do OpenRouter — o modelo
         pode consultar a internet antes de responder. Custa mais e só faz
@@ -673,6 +694,8 @@ class ProvedorOpenRouter(ProvedorIA):
                 {"role": "system", "content": instrucao},
                 {"role": "user", "content": pedido},
             ],
+            # Pede o bloco "usage" completo, com o custo em dólares (item 4.3).
+            "usage": {"include": True},
         }
         if usar_busca_web:
             corpo["plugins"] = [{"id": "web"}]
@@ -680,11 +703,27 @@ class ProvedorOpenRouter(ProvedorIA):
         dados = self._pedir("POST", "/chat/completions", json=corpo, autenticado=True)
 
         try:
-            return dados["choices"][0]["message"]["content"] or ""
+            texto = dados["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError, TypeError) as erro:
             raise ErroDoProvedorIA(
                 f"O modelo {modelo} respondeu num formato inesperado."
             ) from erro
+
+        self._avisar_uso(operacao, modelo, dados)
+        return texto
+
+    def _avisar_uso(self, operacao: str, modelo: str, dados: dict) -> None:
+        """Passa ao ``ao_usar`` o que a chamada consumiu. **Nunca derruba a chamada.**
+
+        A resposta da IA já foi paga e está em mãos: se anotar o consumo falhar, perde-se uma linha de
+        métrica, não o capítulo analisado. Por isso qualquer erro aqui só vai para o log.
+        """
+        if self._ao_usar is None:
+            return
+        try:
+            self._ao_usar(_interpretar_uso(operacao, modelo, dados))
+        except Exception:  # noqa: BLE001 - de propósito: métrica nunca derruba a chamada
+            logging.getLogger(__name__).exception("Não foi possível anotar o consumo da chamada à IA.")
 
     def _pedir(
         self,
@@ -814,6 +853,33 @@ def _suporta_json(bruto: dict) -> bool:
     """
     suportados = set((bruto.get("supported_parameters") or []))
     return bool(suportados & {"response_format", "structured_outputs"})
+
+
+def _interpretar_uso(operacao: str, modelo: str, dados: dict) -> UsoDaChamada:
+    """Lê o bloco ``usage`` da resposta. Campo ausente ou estranho vira ``None``, nunca erro nem zero."""
+    uso = dados.get("usage") if isinstance(dados.get("usage"), dict) else {}
+
+    def inteiro(chave: str) -> int | None:
+        valor = uso.get(chave)
+        return valor if isinstance(valor, int) and not isinstance(valor, bool) else None
+
+    custo = None
+    bruto_custo = uso.get("cost")
+    if isinstance(bruto_custo, (int, float, str)) and not isinstance(bruto_custo, bool):
+        try:
+            custo = Decimal(str(bruto_custo))
+        except InvalidOperation:
+            custo = None
+
+    id_da_geracao = dados.get("id")
+    return UsoDaChamada(
+        operacao=operacao,
+        modelo=modelo,
+        tokens_entrada=inteiro("prompt_tokens"),
+        tokens_saida=inteiro("completion_tokens"),
+        custo=custo,
+        id_da_geracao=id_da_geracao if isinstance(id_da_geracao, str) else None,
+    )
 
 
 def _custo_de_saida(bruto: dict) -> float:

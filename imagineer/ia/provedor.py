@@ -10,6 +10,7 @@ adivinhar o formato da resposta nem repetir o trabalho de interpretá-la.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from imagineer.modelos import CategoriaEstilo, TipoElemento
 
@@ -134,6 +135,22 @@ class CenaSugerida:
     trecho_ancora: str | None = None
     """Citação literal do começo do momento, copiada do texto; o servidor a converte em
     posição (item 3.4g). Nulo quando a IA não tem certeza."""
+
+
+@dataclass
+class UsoDaChamada:
+    """O que uma chamada de conversa consumiu, como o provedor informou (item 4.3).
+
+    ``custo`` é em dólares e fica ``None`` quando o provedor não informa (nunca um zero inventado).
+    Quem usa o provedor recebe isto por ``ao_usar`` e decide o que fazer — o provedor não conhece o banco.
+    """
+
+    operacao: str
+    modelo: str
+    tokens_entrada: int | None = None
+    tokens_saida: int | None = None
+    custo: Decimal | None = None
+    id_da_geracao: str | None = None
 
 
 @dataclass
