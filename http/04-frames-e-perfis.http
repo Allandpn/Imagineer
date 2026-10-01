@@ -84,6 +84,9 @@ Content-Type: application/json
 # aqui — CENA é o padrão — mas fica explícito para diferenciar do exemplo
 # de PERSONAGEM logo abaixo (item 4.4: a distinção existe por enum, não por
 # heurística, exatamente para não confundir retrato solo com cena).
+# "posicao_no_texto" é opcional (o "Ilustrar aqui", item 3.4g): onde, no texto do capítulo, a pessoa
+# quer o frame, em UTF-16 desde o início do texto e sem passar do fim dele. Sem ela, o frame fica na
+# faixa "sem posição" (ou na posição da sugestão que o originou).
 POST {{baseUrl}}/capitulos/{{primeiroCapituloId}}/frames
 Content-Type: application/json
 
@@ -168,12 +171,14 @@ GET {{baseUrl}}/frames/{{frameId}}
 # Veja os ids em GET /capitulos/{{primeiroCapituloId}}/frames abaixo.
 GET {{baseUrl}}/frames/1
 
-### Ajusta título, descrição ou atributos situacionais do frame
+### Ajusta título, descrição, atributos situacionais ou a posição no texto do frame
+# "posicao_no_texto": um número move o frame; null tira da posição; omitir não mexe nela.
 PATCH {{baseUrl}}/frames/{{frameId}}
 Content-Type: application/json
 
 {
-  "humor": "tensão crescente"
+  "humor": "tensão crescente",
+  "posicao_no_texto": 0
 }
 
 ### Substitui a lista completa de estados do frame (o app manda o conjunto inteiro)

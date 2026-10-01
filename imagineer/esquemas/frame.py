@@ -36,6 +36,10 @@ class FrameResumo(BaseModel):
     horario: str | None
     clima: str | None
     humor: str | None
+    posicao_no_texto: int | None = Field(
+        default=None,
+        description="Onde a pessoa pôs o frame no texto (UTF-16, item 3.4g); nulo = sem escolha.",
+    )
     total_de_elementos: int
 
 
@@ -83,6 +87,14 @@ class FrameNovo(BaseModel):
     horario: str | None = Field(default=None, max_length=100)
     clima: str | None = Field(default=None, max_length=100)
     humor: str | None = Field(default=None, max_length=100)
+    posicao_no_texto: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Onde, no texto do capítulo, a pessoa escolheu pôr o frame (\"Ilustrar aqui\"): UTF-16 desde o "
+            "início do texto (item 3.4g). Nulo = sem escolha."
+        ),
+    )
     estados_ids: list[int] = Field(
         default_factory=list,
         description="Os estados de elemento que aparecem no frame.",
@@ -113,6 +125,14 @@ class FrameAjuste(BaseModel):
     horario: str | None = Field(default=None, max_length=100)
     clima: str | None = Field(default=None, max_length=100)
     humor: str | None = Field(default=None, max_length=100)
+    posicao_no_texto: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Onde, no texto do capítulo, a pessoa escolheu pôr o frame (\"Ilustrar aqui\"): UTF-16 desde o "
+            "início do texto (item 3.4g). Nulo = sem escolha."
+        ),
+    )
 
 
 class EstadosDoFrame(BaseModel):

@@ -57,6 +57,11 @@ def _inicio_do_paragrafo(texto: str, indice: int) -> int:
     return inicio
 
 
+def tamanho_em_utf16(texto: str) -> int:
+    """O tamanho do texto em unidades UTF-16: o limite de uma ``posicao_no_texto`` válida."""
+    return len(texto.encode("utf-16-le")) // 2
+
+
 def _em_utf16(texto: str, indice: int) -> int:
     """Converte um índice em caracteres Unicode para unidades UTF-16."""
     return len(texto[:indice].encode("utf-16-le")) // 2

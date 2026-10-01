@@ -751,7 +751,7 @@ Para o app mostrar cada sugestão e cada ilustração **no ponto do capítulo a 
 | `trecho_ancora` | texto (300) | sim | uma **citação literal e curta** do capítulo, devolvida pela IA junto com a sugestão (item 4.4, fase 1): para o elemento, a **primeira menção nesse capítulo**; para a cena, o **começo do momento** que ela descreve |
 | `posicao_no_texto` | inteiro | sim | o deslocamento, em caracteres, desde o início de `Capitulo.texto`, onde a citação foi encontrada. **Calculado pelo servidor**, nunca pela IA. Nulo = não foi encontrada |
 
-**Coluna nova em `Frame`:** `posicao_no_texto` (inteiro, nulo). Vem da sugestão quando o frame nasce de uma (`sugestao_cena_id`); num retrato, vem da sugestão do elemento **naquele capítulo**, se existir; e pode ser dada ou corrigida à mão pelo usuário ("Ilustrar aqui", item 7.5b). Sem valor, o frame continua funcionando e aparece na faixa "sem posição" do capítulo.
+**Coluna nova em `Frame`:** `posicao_no_texto` (inteiro, nulo). **Revisado em 01/10/2026: só guarda o que o usuário escolheu** ("Ilustrar aqui"); o frame **não herda** a posição da sugestão, porque o artefato já cai para ela quando o frame não tem a sua (ver o incremento 11, terceira fatia). *Texto original do plano:* vem da sugestão quando o frame nasce de uma (`sugestao_cena_id`); num retrato, vem da sugestão do elemento **naquele capítulo**, se existir; e pode ser dada ou corrigida à mão pelo usuário ("Ilustrar aqui", item 7.5b). Sem valor, o frame continua funcionando e aparece na faixa "sem posição" do capítulo.
 
 **Por que a IA devolve uma citação e não um número.** Modelos de linguagem contam caracteres mal: um deslocamento pedido direto viria errado com frequência. Citar um trecho do texto que eles acabaram de ler é bem mais confiável, e o servidor, que tem o texto inteiro, transforma a citação em número.
 
@@ -1536,8 +1536,8 @@ O casamento por tipo e nome normalizado (sem caixa, sem acento) foi verificado c
 | `GET /capitulos/{id}/sugestoes` | **Só leitura** das sugestões já salvas do capítulo — a mesma resposta do `POST`, **sem nunca chamar a IA** | **implementado** (30/09/2026, 8 testes; a função nem declara a dependência do provedor de IA, então a garantia é estrutural) |
 | `GET /capitulos/{id}/artefatos` | Tudo que o leitor do capítulo precisa desenhar sobre o texto, numa chamada só — **sem chamar a IA** | **implementado** — elementos (30/09/2026) e cenas (01/10/2026, a posição da cena só existe depois de analisar/reanalisar o capítulo) |
 | `GET /capitulos/{id}/marcadores` | **Obsoleta.** O nome antigo de `/artefatos`: mesmos dados, no campo `marcadores` em vez de `artefatos`. Mantida só até o app migrar; depois, removida | **implementado** como alias (01/10/2026) |
-| `PATCH /frames/{id}` | Passa a aceitar `posicao_no_texto` (item 3.4g) | especificado |
-| `POST /capitulos/{id}/frames` | Passa a aceitar `posicao_no_texto`; com `sugestao_cena_id`, herda a da sugestão | especificado |
+| `PATCH /frames/{id}` | Passa a aceitar `posicao_no_texto` (item 3.4g); `null` tira o frame da posição | **implementado** (01/10/2026) |
+| `POST /capitulos/{id}/frames` | Passa a aceitar `posicao_no_texto` (o "Ilustrar aqui"). **Divergência do plano:** com `sugestao_cena_id` o frame **não** copia a posição da sugestão (ver abaixo) | **implementado** (01/10/2026) |
 
 **Renomeado em 01/10/2026: "marcador" virou "artefato" (decisão do Allan, defeito D4).** "Marcador" passa a ser outra coisa — a posição de leitura (Etapa 8, D4). **Mudança de rota que o app já usa:** `GET /capitulos/{id}/marcadores` → `GET /capitulos/{id}/artefatos`, e o campo `marcadores` da resposta → `artefatos`. Os campos de cada item **não mudaram** (`tipo`, `tipo_do_elemento`, `sugestao_id`, `frame_id`, `rotulo`, `posicao_no_texto`, `situacao`, `imagem_id`), nem os valores de `tipo` (`ELEMENTO`, `CENA`). **A rota e o campo antigos continuam funcionando, como alias, até o app migrar** — o app em uso não quebra. Nos textos desta especificação, "artefato" é o ícone no texto do capítulo; onde se lê "marcador" referente a ele, é o nome antigo.
 
@@ -2394,13 +2394,31 @@ Regras de negócio, **E1 a E10**:
 - **D3 — O servidor converte a citação em posição ao gravar a sugestão** (em `_gerar_sugestoes`), nunca a IA. Ordem do 3.4g: **exata → normalizada (com mapa de índices) → só o começo, com 6 palavras e, se não achar, 5, 4 e 3** (menos que 3 é genérico demais); resultado = início do **parágrafo**, em **UTF-16**. Não achou = `posicao_no_texto` nula. A busca da citação **não** é por palavra inteira (é um trecho, não um nome); as de elemento continuam sendo.
 - **D4 — Mesmo formato de artefato:** `tipo=CENA`, `tipo_do_elemento` nulo, `rotulo` = título da cena, `sugestao_id`, `frame_id` (o `Frame` confirmado, se houver), `imagem_id` (a mais recente do frame). `situacao`: `SUGERIDO` (sem frame) → `CONFIRMADO` (frame sem prompt) → `PROMPT_PRONTO` → `ILUSTRADO`, como nos elementos. Entram na **mesma ordenação** (por posição; sem posição depois).
 - **D5 — Capítulos já analisados ficam sem posição nas cenas** até serem **reanalisados** (não há como saber onde a cena começa sem a IA). Seguem valendo, só sem ícone no texto. **Nenhuma reanálise automática**: custa IA e só o usuário decide. Cena **confirmada** (com `frame_id`) sobrevive à reanálise e, portanto, **não ganha posição retroativa** nesta fatia; só o "Ilustrar aqui" / `PATCH /frames` (próxima fatia) dá posição a um frame.
-- **D6 — Fora desta fatia:** `Frame.posicao_no_texto`, `PATCH /frames` e `POST /capitulos/{id}/frames` com posição, "Ilustrar aqui", a imagem entre os parágrafos e o lado do app (ícone de cena, E42 estendido).
+- **D6 — Fora desta fatia:** `Frame.posicao_no_texto`, `PATCH /frames` e `POST /capitulos/{id}/frames` com posição (**feitos na terceira fatia, logo abaixo**), "Ilustrar aqui", a imagem entre os parágrafos e o lado do app (ícone de cena, E42 estendido).
 
 **Em linguagem simples, o que foi feito.** Quando o usuário clica em "Analisar", a IA agora devolve, para cada cena, uma frase copiada do texto onde o momento começa. O servidor procura essa frase no capítulo (primeiro igual, depois ignorando acento e aspas, depois só o começo dela, caso a IA tenha inventado o fim) e guarda o número da posição. Quando o app pede os artefatos, as cenas vêm junto dos elementos, cada uma já com a posição. Se a IA não citou, ou a citação não existe no texto, a cena vem sem posição e continua valendo.
 
 **Divergência do plano:** o 3.4g previa as "primeiras palavras" sem dizer quantas. Um primeiro teste mostrou que fixar 6 falhava quando a IA acertava só as 4 primeiras; ficou **de 6 a 3, o mais longo primeiro**. O prompt de cena foi alterado (instrução de `trecho_ancora`), então **a taxa de acerto precisa ser reavaliada com IA real** (a medição de 30/09/2026 usou um prompt de teste) — ainda não foi feito. Migration `a1c3e5f7b9d2`.
 
 **Testes (feitos):** o serviço de citação (exata, normalizada com acento/aspas, primeiras palavras, não achada, UTF-16 depois de um emoji, início do parágrafo); o parser da IA (`trecho_ancora` presente, ausente, não-texto); `_gerar_sugestoes` gravando a posição; o artefato de cena em cada `situacao`, o descartado fora, a ordenação misturada com elementos e o `GET` sem chamar a IA.
+
+#### Incremento 11, terceira fatia — "Ilustrar aqui": a posição do frame (servidor; implementado em 01/10/2026, 12 testes; 500 no total; falta o app)
+
+**O quê.** `Frame` ganha `posicao_no_texto` (inteiro, nulo; migration `d4f6b8c0e2a3`). `POST /capitulos/{id}/frames` e `PATCH /frames/{id}` aceitam o campo, e `FrameResumo`/`FrameDetalhe` o devolvem. É o que o item 7.5b chama de "Ilustrar aqui": a pessoa toca e segura um parágrafo e cria (ou posiciona) um frame ali, para trechos que a IA não sugeriu.
+
+**Regra central: o frame manda na posição (decisão de desenho, 01/10/2026).** Uma imagem só existe num lugar, então o que o usuário põe no frame vale mais que o que a IA sugeriu:
+- Um artefato que tem **frame com `posicao_no_texto`** é desenhado **na posição do frame**, não na da sugestão (nem na do nome do elemento). É assim que o usuário **corrige** um lugar que a IA errou.
+- Sem posição no frame, vale o que já valia (a citação da cena, o nome do elemento).
+- **Um frame que nenhuma sugestão representa** (uma cena inventada à mão, ou o retrato de um elemento que não tem sugestão neste capítulo) **vira um artefato próprio**, com `sugestao_id` nulo. **Com ou sem posição:** sem posição, cai na faixa "Sem posição" do capítulo (item 7.5b), que é o lugar de "o que não se perde".
+- Um artefato de frame de **retrato** (`PERSONAGEM`) leva `tipo=ELEMENTO` e o `tipo_do_elemento` do elemento; um de **cena**, `tipo=CENA`.
+
+**Divergência do plano (item 3.4g):** o plano dizia que o frame **herda** a posição da sugestão ao nascer dela. Não herda: o artefato já **cai para a posição da sugestão** quando o frame não tem a sua, então copiar seria duplicar um dado que pode mudar (reanálise) e que o usuário não pediu. `Frame.posicao_no_texto` só guarda o que a pessoa **escolheu**.
+
+**Validações:** `posicao_no_texto` não pode ser negativa nem passar do fim do texto do capítulo, contada em **UTF-16** (422), como no marcador (item 3.4h).
+
+**Em linguagem simples.** Agora um frame pode ter um lugar no texto, escolhido pela pessoa. Quando o app pede os artefatos, esse lugar vale mais que o da IA, e um frame que a IA nunca sugeriu (uma cena inventada à mão) também aparece, com ou sem lugar. Nada muda para quem não usa a posição. **Falta, no app:** o gesto de tocar e segurar um parágrafo e o "Ilustrar aqui".
+
+**Testes:** o frame guarda e devolve a posição; recusa posição inválida; `PATCH` muda e `null` limpa; a posição do frame vence a da sugestão no artefato (cena e retrato); o frame sem sugestão vira artefato, com e sem posição; um frame que a sugestão representa **não** vira artefato repetido; confirmar uma cena não copia a posição.
 
 #### Navegação entre capítulos por gesto (item 7.5c, implementado em 30/09/2026; 489 testes no app; ainda a validar no tablet)
 

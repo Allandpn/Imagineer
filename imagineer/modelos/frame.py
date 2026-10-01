@@ -89,6 +89,11 @@ class Frame(Base):
     clima: Mapped[str | None] = mapped_column(String(100))
     humor: Mapped[str | None] = mapped_column(String(100))
 
+    posicao_no_texto: Mapped[int | None] = mapped_column()
+    """Onde, no texto do capítulo, a pessoa **escolheu** pôr este frame ("Ilustrar aqui", item 3.4g):
+    deslocamento em UTF-16 desde o início de ``Capitulo.texto``. Nulo = sem escolha: o artefato cai
+    para a posição da sugestão que o originou, se houver. **Não é copiada da sugestão.**"""
+
     contexto_do_livro: Mapped[str | None] = mapped_column(Text)
     """O que a leitura profunda do frame (item 4.4) confirmou no capítulo sobre
     quem, onde e o quê — só para ``tipo=CENA``.

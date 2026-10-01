@@ -31,6 +31,7 @@ from imagineer.modelos import (
     frames_estados_elemento,
 )
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
+from imagineer.servicos.posicao_no_texto import tamanho_em_utf16
 
 rotas_de_capitulo = APIRouter(prefix="/capitulos", tags=["Frames"])
 rotas = APIRouter(prefix="/frames", tags=["Frames"])
@@ -97,6 +98,7 @@ def criar_frame(
     if not estados_ids and sugestao is not None:
         estados_ids = _resolver_estados_da_sugestao(sessao, sugestao, capitulo)
 
+    _exigir_posicao_valida(capitulo, novo.posicao_no_texto)
     _exigir_contagem_valida(novo.tipo, estados_ids)
     estados = _estados_do_livro(sessao, estados_ids, capitulo.livro_id)
 
@@ -108,6 +110,7 @@ def criar_frame(
         horario=horario,
         clima=clima,
         humor=humor,
+        posicao_no_texto=novo.posicao_no_texto,
     )
     frame.estados_elemento = estados
 
@@ -132,8 +135,13 @@ def abrir_frame(frame_id: int, sessao: Session = Depends(obter_sessao)) -> Frame
 def ajustar_frame(
     frame_id: int, ajuste: FrameAjuste, sessao: Session = Depends(obter_sessao)
 ) -> FrameDetalhe:
-    """Muda título, descrição ou os atributos situacionais."""
+    """Muda título, descrição, os atributos situacionais ou a posição no texto.
+
+    ``posicao_no_texto: null`` tira o frame da posição (ele cai para a da sugestão, ou para a faixa
+    "sem posição").
+    """
     frame = _buscar_frame(sessao, frame_id)
+    _exigir_posicao_valida(frame.capitulo, ajuste.posicao_no_texto)
 
     for campo, valor in ajuste.model_dump(exclude_unset=True).items():
         setattr(frame, campo, valor)
@@ -183,6 +191,21 @@ def remover_frame(frame_id: int, sessao: Session = Depends(obter_sessao)) -> Non
 # --------------------------------------------------------------------------- #
 # Funções internas
 # --------------------------------------------------------------------------- #
+
+
+def _exigir_posicao_valida(capitulo: Capitulo, posicao: int | None) -> None:
+    """422 se a posição escolhida passa do fim do texto do capítulo, contado em UTF-16 (item 3.4g).
+
+    ``None`` é válido (sem posição); a negativa o esquema já recusa.
+    """
+    if posicao is None:
+        return
+    tamanho = tamanho_em_utf16(capitulo.texto)
+    if posicao > tamanho:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"A posição {posicao} passa do fim do capítulo, que tem {tamanho} unidades UTF-16.",
+        )
 
 
 def _exigir_contagem_valida(tipo: TipoDeFrame, estados_ids: list[int]) -> None:
@@ -386,6 +409,7 @@ def _resumo(frame: Frame, total: int) -> FrameResumo:
         horario=frame.horario,
         clima=frame.clima,
         humor=frame.humor,
+        posicao_no_texto=frame.posicao_no_texto,
         total_de_elementos=total,
     )
 

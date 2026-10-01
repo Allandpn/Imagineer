@@ -18,6 +18,7 @@ from imagineer.esquemas.leitura import (
     PinResposta,
 )
 from imagineer.modelos import Capitulo, Livro, Marcador, Pin
+from imagineer.servicos.posicao_no_texto import tamanho_em_utf16
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Leitura"])
 rotas_de_pin = APIRouter(prefix="/pins", tags=["Leitura"])
@@ -177,13 +178,9 @@ def _marcador_do_livro(sessao: Session, livro_id: int) -> Marcador | None:
     return sessao.scalar(select(Marcador).where(Marcador.livro_id == livro_id))
 
 
-def _tamanho_em_utf16(texto: str) -> int:
-    return len(texto.encode("utf-16-le")) // 2
-
-
 def _conferir_posicao(capitulo: Capitulo, posicao: int) -> None:
     """422 se a posição passa do fim do texto do capítulo (a negativa o esquema já recusa)."""
-    tamanho = _tamanho_em_utf16(capitulo.texto)
+    tamanho = tamanho_em_utf16(capitulo.texto)
     if posicao > tamanho:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
