@@ -14,6 +14,7 @@ from starlette.middleware.gzip import GZipMiddleware
 # Registra o ouvinte que sobe a revisão do livro a cada gravação (item 6.9). O simples import
 # basta: o decorador do módulo faz o registro.
 from imagineer.banco import revisao  # noqa: F401
+from imagineer.erros import registrar_tratadores
 from imagineer.rotas import (
     capitulos,
     configuracao,
@@ -34,6 +35,9 @@ aplicacao = FastAPI(
     ),
     version="0.1.0",
 )
+
+# Tradução dos erros do domínio (IA, trava de análise) para respostas HTTP, num lugar só.
+registrar_tratadores(aplicacao)
 
 # Compressão das respostas (item 6.9). O texto de um capítulo chega a ~110 KB e comprime bem; só
 # vale a pena acima de ~1 KB (abaixo disso o cabeçalho pesa mais que o ganho). As imagens (PNG,

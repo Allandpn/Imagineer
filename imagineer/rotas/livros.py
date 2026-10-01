@@ -24,8 +24,6 @@ from imagineer.esquemas.livro import (
 )
 from imagineer.esquemas.prompt import MidiaDeImagem, MidiasDoLivro
 from imagineer.ia.provedor import (
-    ChaveDeApiAusente,
-    ErroDoProvedorIA,
     ModeloNaoEscolhido,
     ProvedorIA,
 )
@@ -310,28 +308,16 @@ def sugerir_perfil_renderizacao(
     modelo_perfil = configuracao.modelo_perfil
 
     if not modelo_perfil:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=(
-                "Nenhum modelo de sugestão de perfil foi escolhido. Configure "
-                "'modelo_perfil' em /configuracao."
-            ),
+        raise ModeloNaoEscolhido(
+            "Nenhum modelo de sugestão de perfil foi escolhido. Configure "
+            "'modelo_perfil' em /configuracao."
         )
 
     categoria_estilo = pedido.categoria_estilo if pedido else None
 
-    try:
-        sugestao = provedor.sugerir_perfil_renderizacao(
-            livro.titulo, livro.autor, livro.idioma, categoria_estilo, modelo_perfil
-        )
-    except (ChaveDeApiAusente, ModeloNaoEscolhido) as erro:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
-        ) from erro
-    except ErroDoProvedorIA as erro:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
-        ) from erro
+    sugestao = provedor.sugerir_perfil_renderizacao(
+        livro.titulo, livro.autor, livro.idioma, categoria_estilo, modelo_perfil
+    )
 
     return PerfilRenderizacaoSugestao(
         estilo=sugestao.estilo,

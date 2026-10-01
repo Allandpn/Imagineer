@@ -21,8 +21,6 @@ from imagineer.esquemas.prompt import (
     PromptResumo,
 )
 from imagineer.ia.provedor import (
-    ChaveDeApiAusente,
-    ErroDoProvedorIA,
     ModeloNaoEscolhido,
     ProvedorIA,
 )
@@ -113,30 +111,19 @@ def criar_prompt(
     perfil = _resolver_perfil(sessao, corpo.perfil_renderizacao_id, livro)
     modelo_prompt = corpo.modelo or configuracao.modelo_prompt
     if not modelo_prompt:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Nenhum modelo de prompt foi escolhido. Configure um em /configuracao.",
-        )
+        raise ModeloNaoEscolhido("Nenhum modelo de prompt foi escolhido. Configure um em /configuracao.")
 
-    try:
-        _fazer_leitura_profunda(sessao, provedor, frame, configuracao)
-        contexto_do_livro = _fundamentar_se_necessario(sessao, provedor, frame, configuracao)
-        resultado = provedor.montar_prompt(
-            descricao_do_frame=_descricao_do_frame(frame),
-            elementos=_elementos_do_frame(frame),
-            perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
-            modelo=modelo_prompt,
-            contexto_do_livro=contexto_do_livro,
-            comentario_do_usuario=corpo.comentario,
-        )
-    except (ChaveDeApiAusente, ModeloNaoEscolhido) as erro:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
-        ) from erro
-    except ErroDoProvedorIA as erro:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
-        ) from erro
+    # Os erros do provedor sobem como estão: o tratador global os traduz para HTTP (imagineer/erros.py).
+    _fazer_leitura_profunda(sessao, provedor, frame, configuracao)
+    contexto_do_livro = _fundamentar_se_necessario(sessao, provedor, frame, configuracao)
+    resultado = provedor.montar_prompt(
+        descricao_do_frame=_descricao_do_frame(frame),
+        elementos=_elementos_do_frame(frame),
+        perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
+        modelo=modelo_prompt,
+        contexto_do_livro=contexto_do_livro,
+        comentario_do_usuario=corpo.comentario,
+    )
 
     prompt = Prompt(
         frame_id=frame.id,

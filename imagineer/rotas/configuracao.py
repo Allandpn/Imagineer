@@ -1,11 +1,11 @@
 """Rotas de configuração da integração com IA (Etapas 4.3 e 6.7)."""
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
-from imagineer.ia.provedor import ErroDoProvedorIA, ProvedorIA
+from imagineer.ia.provedor import ProvedorIA
 from imagineer.modelos import PrioridadeIA
 from imagineer.servicos.configuracao_ia import (
     construir_provedor,
@@ -184,13 +184,7 @@ def listar_modelos(
     público. É o que permite o usuário ver a lista antes de configurar a chave, que
     é a ordem em que ele faz as coisas.
     """
-    try:
-        modelos = provedor.listar_modelos()
-    except ErroDoProvedorIA as erro:
-        # 502: o problema não é do pedido nem nosso, é do serviço de fora.
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
-        ) from erro
+    modelos = provedor.listar_modelos()  # falha do serviço de fora vira 502 (imagineer/erros.py)
 
     filtrados = [
         ModeloDaLista(

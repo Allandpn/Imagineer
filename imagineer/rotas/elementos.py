@@ -46,11 +46,8 @@ from imagineer.esquemas.elemento import (
 )
 from imagineer.ia.openrouter import conferir_se_cabe
 from imagineer.ia.provedor import (
-    ChaveDeApiAusente,
-    ErroDoProvedorIA,
     ModeloNaoEscolhido,
     ProvedorIA,
-    TextoLongoDemais,
 )
 from imagineer.modelos import (
     Capitulo,
@@ -69,7 +66,7 @@ from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
 from imagineer.servicos.posicao_no_texto import posicao_da_citacao, posicao_da_primeira_mencao
-from imagineer.servicos.trava_de_analise import AnaliseEmAndamento, analise_exclusiva
+from imagineer.servicos.trava_de_analise import analise_exclusiva
 from imagineer.rotas._comum import (
     buscar_acrescimo as _buscar_acrescimo,
     buscar_capitulo as _buscar_capitulo,
@@ -750,14 +747,8 @@ def sugerir_elementos(
         rodar_ia = True
 
     if capitulo.sugestoes_geradas_em is None or rodar_ia:
-        try:
-            with analise_exclusiva(capitulo_id):
-                _gerar_sugestoes(sessao, provedor, capitulo)
-        except AnaliseEmAndamento as erro:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Já há uma análise deste capítulo em andamento. Aguarde terminar.",
-            ) from erro
+        with analise_exclusiva(capitulo_id):  # 409 se já há uma análise rodando (imagineer/erros.py)
+            _gerar_sugestoes(sessao, provedor, capitulo)
 
     _casar_sugestoes_pendentes(sessao, capitulo_id, capitulo.livro_id)
 
@@ -1244,29 +1235,19 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
     modelo_extracao = configuracao.modelo_extracao
 
     if not modelo_extracao:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Nenhum modelo de extração foi escolhido. Configure um em /configuracao.",
-        )
+        raise ModeloNaoEscolhido("Nenhum modelo de extração foi escolhido. Configure um em /configuracao.")
 
     elementos_conhecidos = _formatar_elementos_conhecidos(sessao, capitulo)
 
-    try:
-        contexto_do_modelo = next(
-            (m.contexto for m in provedor.listar_modelos() if m.id == modelo_extracao), 0
-        )
-        conferir_se_cabe(capitulo.texto, contexto_do_modelo)
-        extracao = provedor.extrair_elementos(
-            capitulo.texto, elementos_conhecidos, modelo_extracao, capitulo.orientacao_da_analise
-        )
-    except (ChaveDeApiAusente, ModeloNaoEscolhido, TextoLongoDemais) as erro:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)
-        ) from erro
-    except ErroDoProvedorIA as erro:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(erro)
-        ) from erro
+    # Os erros do provedor (chave ausente, texto longo demais, falha de rede...) sobem como estão: quem os
+    # traduz para HTTP é o tratador global (imagineer/erros.py).
+    contexto_do_modelo = next(
+        (m.contexto for m in provedor.listar_modelos() if m.id == modelo_extracao), 0
+    )
+    conferir_se_cabe(capitulo.texto, contexto_do_modelo)
+    extracao = provedor.extrair_elementos(
+        capitulo.texto, elementos_conhecidos, modelo_extracao, capitulo.orientacao_da_analise
+    )
 
     sessao.execute(
         delete(SugestaoDeElemento).where(
