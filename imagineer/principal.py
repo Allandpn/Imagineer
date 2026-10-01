@@ -19,6 +19,7 @@ from imagineer.rotas import (
     configuracao,
     elementos,
     frame,
+    leitura,
     livros,
     perfis_renderizacao,
     prompts,
@@ -42,6 +43,8 @@ aplicacao.add_middleware(GZipMiddleware, minimum_size=1000)
 
 aplicacao.include_router(saude.rotas)
 aplicacao.include_router(livros.rotas)
+aplicacao.include_router(leitura.rotas_de_livro)
+aplicacao.include_router(leitura.rotas_de_pin)
 aplicacao.include_router(capitulos.rotas)
 aplicacao.include_router(elementos.rotas_de_livro)
 aplicacao.include_router(elementos.rotas_de_capitulo)

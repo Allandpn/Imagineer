@@ -45,6 +45,7 @@ Segue a ordem do fluxo (Etapa 2 da especificação) e da Etapa 6:
 | `05-configuracao-ia.http` | Item 6.7 — chave, modelos, escolha de modelo |
 | `06-sugestoes.http` | Item 6.7 — `POST /capitulos/{id}/sugestoes` (passo 6, precisa de chave configurada) |
 | `07-prompts-e-imagens.http` | Item 6.6 — montar prompt, catálogo de imagens |
+| `08-leitura.http` | Item 6.10 — marcador (posição automática) e pins (posições à mão) |
 
 ## Sobre o arquivo EPUB de `01-livros.http`
 

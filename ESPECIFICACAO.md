@@ -800,6 +800,35 @@ Para o app mostrar cada sugestão e cada ilustração **no ponto do capítulo a 
 - **Uma chamada do haiku falhou** (`Server disconnected without sending a response`, 1 de 12), o tipo de erro de rede que a rota já traduz em 502 e que se resolve tentando de novo.
 - **Ressalva:** a mesma amostra pequena (4 livros, português e inglês); capítulos escolhidos por tamanho (6 mil a 45 mil caracteres), não aleatórios.
 
+#### (h) Marcador e Pin — onde o leitor parou (implementado no servidor em 01/10/2026; defeito D4)
+
+Duas entidades novas, **por livro**. O vocabulário é decisão do Allan: **marcador** = a posição de leitura **automática** (retomar de onde parou); **pin** = a posição marcada **à mão**, com nota opcional. Ambos ficam **no servidor**, para valer em qualquer aparelho, e viajam no "baixar livro" (item 6.9).
+
+**`Marcador`** (tabela `marcadores`) — **um por livro**:
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | |
+| `livro_id` | inteiro, FK → `livros` (apagar em cascata) | não | **único**: só existe um marcador por livro |
+| `capitulo_id` | inteiro, FK → `capitulos` (apagar em cascata) | não | o capítulo onde a pessoa parou |
+| `posicao_no_texto` | inteiro | não | deslocamento em **UTF-16** desde o início de `Capitulo.texto` — o **mesmo contrato do item 3.4g**, para não depender de como o app divide parágrafos. O app grava o início do parágrafo que está no topo da tela |
+| `lido_em` | data/hora com fuso | não | **quando a pessoa chegou ali**, segundo o aparelho (e não quando o servidor recebeu). É o que resolve o conflito entre aparelhos (abaixo) |
+
+**`Pin`** (tabela `pins`) — **vários por livro**:
+
+| Coluna | Tipo | Nulo? | Observação |
+|---|---|---|---|
+| `id` | inteiro | não | |
+| `livro_id` | inteiro, FK → `livros` (apagar em cascata) | não | |
+| `capitulo_id` | inteiro, FK → `capitulos` (apagar em cascata) | não | |
+| `posicao_no_texto` | inteiro | não | UTF-16, como acima |
+| `nota` | texto (1000) | sim | uma anotação curta do usuário; nulo = pin sem nota |
+| `criado_em` | data/hora com fuso | não | preenchido pelo banco (`NOW()`) |
+
+**Conflito entre dois aparelhos (decisão tomada com recomendação; fácil de rever).** O **marcador mais recente vence**, medido por `lido_em`, **não** pela hora em que a gravação chegou: um aparelho que ficou offline e só sincroniza horas depois **não** passa por cima de uma leitura mais nova feita em outro. O `PUT` aceita o valor se o `lido_em` dele for **igual ou mais novo** que o guardado, e **sempre devolve o marcador que ficou valendo** com `aceito: true/false` — assim o app que perdeu sabe que "outro aparelho leu mais recentemente" e pode oferecer continuar de lá. `lido_em` no futuro (relógio adiantado) é **limitado ao horário do servidor**, para um aparelho com relógio errado não travar o marcador. Não há identificação de aparelho (contas de usuário estão adiadas, item 7.0a). **Pins** não têm conflito: são linhas independentes; editar a nota do mesmo pin em dois aparelhos é "o último a gravar vence".
+
+**Marcador e pin NÃO sobem a `revisao` do livro (item 6.9) — de propósito.** A `revisao` diz "o que o leitor mostra da lista do livro mudou, releia". O marcador é gravado **a cada pouco de leitura**; se subisse a revisão, o app reler a lista do livro o tempo todo e o cache (A8) não serviria para nada. É a mesma lógica das duas exceções já documentadas em `banco/revisao.py`. O app lê o marcador e os pins **por rotas próprias** (item 6.10).
+
 #### (c) As duas chaves estrangeiras pendentes
 
 Com as tabelas acima criadas, os dois campos deixados de lado nas partes (a) e (b) passam a ser possíveis:
@@ -1188,6 +1217,7 @@ Migration `a92e5f1c8d3b`. 4 testes novos (311 no total). Verificado contra `Prov
 | App com **biblioteca de imagens (Coil)** e cache de imagens — **exceção** à regra "sem cache" do item 7.0 | A regra valia para *dados* (livros, capítulos). Imagens são grandes: sem cache, cada rolagem baixaria a figura de novo pela rede. Coil carrega só o que está na tela |
 | **Geração de imagem pelo app fica apenas reservada** (item 7.5b): lugar na interface, sem campo no banco nem rota | Continua só o OpenRouter (item 4.1). O contrato se define quando se verificar o que o OpenRouter oferece para imagem; criar campos antes seria abstração prematura |
 | **Custo de cada chamada de IA gravado em tabela própria** (`usos_ia`), em sessão separada e sem nunca derrubar a chamada (01/10/2026) | Pedido do Allan, para métricas futuras. O OpenRouter já devolve tokens e custo em dólares em cada resposta. Sessão própria porque a rota pode desfazer a transação dela depois de a chamada já ter sido cobrada; falha ao gravar só vai para o log. `custo` nulo (e não zero) quando o provedor não informa. *Alternativas descartadas:* gravar na sessão da rota (perderia o registro em chamadas cobradas cuja rota falhou) e acumular em memória (some ao reiniciar) |
+| **Marcador (posição automática) e pin (posição manual) guardados no servidor, por livro; o marcador mais recente vence pelo `lido_em` do aparelho, e nenhum dos dois sobe a `revisao`** (01/10/2026) | Decisão do Allan: servidor, para valer em qualquer aparelho e viajar no "baixar livro". O `lido_em` vem do aparelho (e não da hora em que a gravação chega) para um aparelho offline não sobrescrever uma leitura mais nova; o servidor limita um `lido_em` no futuro ao seu relógio. Não sobem a `revisao` porque o marcador é gravado o tempo todo e faria o app reler a lista do livro sem parar. Posição no mesmo contrato UTF-16 do item 3.4g. *Alternativas descartadas:* guardar só no aparelho (não sincroniza), hora do servidor para decidir o conflito (um aparelho que sincroniza tarde venceria), e um marcador por aparelho (exige identificar aparelhos, que as contas de usuário adiadas resolveriam melhor) |
 | O container da API **aplica as migrations sozinho ao subir** (`alembic upgrade head` antes do `uvicorn`), e a imagem passa a ter um `.dockerignore` (30/09/2026) | O servidor roda 24/7 num Raspberry Pi: depois de um reinício ou de uma atualização do código, ele precisa subir com o banco no formato que o código espera, sem ninguém lembrar de um comando à mão. Num banco já atualizado o comando não faz nada; num banco vazio cria tudo (verificado: 15 tabelas, versão `f9a4c6e8b0d3`). Risco aceito: uma migration com defeito impede a API de subir — o motivo aparece em `docker compose logs api`. O `.dockerignore` tira da imagem o `venv`, o `.git`, o `.env`, os testes e a documentação (build mais rápido no Pi e nenhum segredo dentro da imagem). *Alternativa descartada:* rodar `alembic upgrade head` à mão a cada atualização (fácil de esquecer; foi assim até aqui). |
 
 ---
@@ -1537,6 +1567,7 @@ Suporte do servidor ao item 7.0a. Nada aqui muda o que já existe: são acrésci
 | `GET /livros/{id}/textos` | O texto de **todos** os capítulos numa chamada só | **implementado** |
 | `GET /imagens/{id}/arquivo` | Cache imutável (`Cache-Control: immutable`) e `ETag`; `Imagem.tamanho_em_bytes` | **implementado** |
 | `GET /imagens/{id}/arquivo?tamanho=` | Tamanhos nomeados (`miniatura`, `leitura`, `original`) | especificado |
+| `GET /livros/{id}/marcador`, `GET /livros/{id}/pins` | Entram no pacote do "baixar livro" (item 6.10). **Não** sobem a `revisao` | **rotas implementadas** (item 6.10); a inclusão no pacote é do app |
 
 **Implementado em 30/09/2026 (primeira metade do contrato, 16 testes; 348 no backend):** compressão, cache imutável e tamanho das imagens, o manifesto de mídias e os textos do livro. Migration `d6e1a3b5c7f2` (`Imagem.tamanho_em_bytes`, nula nas imagens antigas; o manifesto a calcula do disco e a grava na primeira vez). **Ficam para depois:** os tamanhos nomeados de imagem (`?tamanho=`, que exige gerar e guardar versões reduzidas).
 
@@ -1555,6 +1586,29 @@ Suporte do servidor ao item 7.0a. Nada aqui muda o que já existe: são acrésci
 **`GET /livros/{id}/textos`** devolve `[{capitulo_id, texto}]` de **todos** os capítulos. Existe para "Baixar para ler offline": o texto de um livro tem ~0,7 MB em mediana (~0,3 MB comprimido), então uma chamada é melhor que 50. É uma **otimização**: sem ela, o app poderia baixar capítulo por capítulo.
 
 **Imagem: tamanhos nomeados e cache imutável.** `GET /imagens/{id}/arquivo` hoje devolve sempre o original (até 25 MB). Passa a aceitar `?tamanho=`: **`miniatura`** (margem do texto e listas), **`leitura`** (imagem entre os parágrafos) ou **`original`** (o padrão, como hoje e para ampliar). Tamanhos **nomeados e em número fixo**, e não uma largura livre: uma largura livre deixaria qualquer cliente gerar versões sem limite e encher o disco. A versão reduzida é gerada uma vez e guardada em disco (nome derivado do arquivo original). As três respostas levam `Cache-Control: public, max-age=31536000, immutable` — seguro porque o arquivo de uma imagem **nunca** muda — e `ETag`. *(O `FileResponse` do Starlette envia `ETag` e `Last-Modified`, mas **não** responde `304` a `If-None-Match`: isso só o `StaticFiles` faz. Não é necessário: com `immutable` de um ano, um cliente correto nem chega a revalidar, e os ids de imagem nunca mudam.)* *(Os valores exatos em pixels, como 400 e 1200, ficam para o momento de implementar, depois de ver imagens reais.)* Isto realiza a pendência "imagens reduzidas" já registrada no item 6.8.
+
+### 6.10 Marcador e pins do livro — implementado no servidor em 01/10/2026 (18 testes; falta o app)
+
+Rotas do item 3.4h. Todas respondem **404** se o livro (ou o pin) não existe.
+
+| Método e caminho | O que faz | Estado |
+|---|---|---|
+| `GET /livros/{id}/marcador` | O marcador do livro, ou `{"marcador": null}` se a pessoa ainda não leu nada (como `gerado_em` nulo no item 6.7: "nunca" é um estado normal, não um erro) | **implementado** |
+| `PUT /livros/{id}/marcador` | Grava o marcador. Corpo: `capitulo_id`, `posicao_no_texto`, `lido_em`. Regra de conflito acima. Devolve `{marcador, aceito}` | **implementado** |
+| `GET /livros/{id}/pins` | Os pins do livro, **na ordem do livro** (ordem do capítulo, depois posição) | **implementado** |
+| `POST /livros/{id}/pins` | Cria um pin: `capitulo_id`, `posicao_no_texto`, `nota` opcional. **201** | **implementado** |
+| `PATCH /pins/{id}` | Ajusta a `nota` (`null` apaga a nota). Devolve o pin | **implementado** |
+| `DELETE /pins/{id}` | Remove o pin. **204** | **implementado** |
+
+**Validações (422):** o `capitulo_id` precisa ser **deste livro**; `posicao_no_texto` não pode ser negativa nem passar do tamanho do texto do capítulo (em UTF-16); `nota` até 1000 caracteres. **O `PUT` não valida `lido_em` contra o relógio além do limite acima** (futuro é limitado, não recusado).
+
+**O que o app faz** (para o Claude do app; telas ficam a especificar na Etapa 7): grava o marcador **quando a pessoa para de rolar** (alguns segundos depois do último movimento) e **ao sair do capítulo/livro**, nunca a cada pixel; ao abrir o livro, lê o marcador e oferece "Continuar de onde parou"; se o `PUT` voltar com `aceito: false`, avisa que outro aparelho leu mais recentemente. Pin é criado por uma ação explícita na leitura (toque longo ou botão) e listado numa tela do livro.
+
+**Entra no "baixar livro" (item 6.9 e 7.0a):** o pacote offline passa a incluir `GET /livros/{id}/marcador` e `GET /livros/{id}/pins`, junto de `textos` e `midias`. Offline continua **só de leitura** (item 7.0a): o marcador lido offline fica guardado no aparelho e é enviado ao voltar a rede, e o `lido_em` é o que mantém a ordem certa. Criar ou apagar **pins** sem rede **não** é suportado por ora.
+
+**Em linguagem simples, o que foi feito (01/10/2026).** O servidor ganhou duas tabelas (`marcadores` e `pins`, migration `c3e5a7b9d1f2`) e as seis rotas acima. Quando o app avisa "parei aqui" (`PUT /livros/{id}/marcador`), o servidor compara a hora do aparelho com a do marcador já guardado: se a nova for mais recente (ou igual), substitui; se for mais antiga, não mexe e devolve `aceito: false` com o marcador que continua valendo. O servidor recusa capítulo de outro livro e posição além do fim do texto (contada em UTF-16, como o app conta). Os pins são independentes e voltam na ordem do livro. Nada disso sobe a `revisao` do livro (um teste prova). **Divergências do plano: nenhuma.** Testado também ao vivo no PostgreSQL (hora com fuso, limite de hora no futuro). **Falta, no app:** gravar o marcador ao parar de rolar e ao sair, "Continuar de onde parou", a tela de pins, e levar os dois no "baixar livro".
+
+**Fica para depois:** destaques de trecho; um `trecho` (amostra do texto) devolvido junto de cada pin para a lista (o app, com o texto baixado, consegue montá-lo); estatísticas de leitura; "continuar lendo" na Biblioteca (a rota `GET /livros` poderia trazer o marcador de cada livro — decidir quando a tela for especificada).
 
 ---
 
@@ -2471,7 +2525,7 @@ Teste do Allan com o app, depois do incremento 11 (ícones de elemento) e da nav
   - **"Pin"** é a posição **marcada à mão**, com nota opcional; vários por livro, numa lista. Destaques de trecho ficam para depois.
   - **Onde guardar: no servidor** (vale em qualquer aparelho). **E a informação viaja junto quando o livro for baixado** para ler offline (itens 6.9 e 7.0a): marcador e pins entram no que o "Baixar para ler offline" leva, e na `revisao` do livro.
   - **A posição usa o mesmo contrato do `posicao_no_texto` (item 3.4g):** deslocamento em **UTF-16** desde o início de `Capitulo.texto`, para não depender de como o app divide parágrafos.
-  - **Ainda a especificar** (antes de qualquer código): entidades e rotas (rascunho: um `PUT/GET /livros/{id}/marcador`, e `GET/POST /livros/{id}/pins` com `PATCH/DELETE /pins/{id}`); com que frequência o app grava o marcador; o que acontece quando o mesmo livro é lido em dois aparelhos (vence o mais recente?); e como o marcador e os pins aparecem nas telas.
+  - **Especificado em 01/10/2026** (itens 3.4h e 6.10): entidades `Marcador` e `Pin`, rotas, regra de conflito entre aparelhos (o mais recente pelo `lido_em` do aparelho vence) e o "baixar livro". **Servidor: implementado em 01/10/2026 (18 testes). App: a fazer — tela de pins, "continuar de onde parou" e a gravação automática.** Ainda em aberto, só para o app: como o marcador e os pins aparecem nas telas.
 - [x] **D5 — Sem rede, sair do livro para a Biblioteca mostra "não consegui conectar com o servidor". ~~Defeito~~ Esperado hoje (decisão do Allan, 01/10/2026).** Com o Wi-Fi desligado, a Biblioteca mostra só essa mensagem. O Allan considera **esse o comportamento esperado por ora**: a Biblioteca ainda depende do servidor, e a leitura offline vale para os **capítulos já guardados** (item 7.0a), não para a lista de livros. Fica como **melhoria possível, não pedida**: a Biblioteca mostrar os livros guardados no aparelho quando não há rede (o dado já existe no Room, `livro_local`).
 
 - [ ] **M1 — Reanálise com informação do usuário (melhoria pedida em 01/10/2026; a especificar).** Hoje "Reanalisar" só roda a IA de novo, igual. Esquecemos de permitir que o usuário **diga o que a análise não pegou**: por exemplo, um elemento ou uma cena que ficou de fora ("falta a cena em que X chega ao porto", "o objeto Y também aparece"). Ideia: o `POST /capitulos/{id}/sugestoes` (com `forcar=true`) aceitar um campo opcional de **orientação em texto livre**, repassado à IA junto do capítulo. Perguntas abertas: a orientação vale só para essa rodada ou fica guardada no capítulo; como não perder o que já foi confirmado (já é assim, item 3.4e); limite de tamanho do texto.

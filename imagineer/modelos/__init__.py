@@ -17,6 +17,7 @@ from imagineer.modelos.elemento import (
     TipoElemento,
 )
 from imagineer.modelos.frame import Frame, TipoDeFrame, frames_estados_elemento
+from imagineer.modelos.leitura import Marcador, Pin
 from imagineer.modelos.livro import Livro
 from imagineer.modelos.perfil_renderizacao import PerfilRenderizacao
 from imagineer.modelos.prompt import Imagem, Prompt
@@ -37,7 +38,9 @@ __all__ = [
     "HistoricoIdentidadeElemento",
     "Imagem",
     "Livro",
+    "Marcador",
     "PerfilRenderizacao",
+    "Pin",
     "PrioridadeIA",
     "Prompt",
     "SugestaoDeCena",

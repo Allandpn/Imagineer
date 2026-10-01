@@ -1,0 +1,58 @@
+### Onde a pessoa parou de ler: o marcador (item 6.10)
+# O marcador é a posição de leitura AUTOMÁTICA — um por livro. Devolve {"marcador": null} se
+# ainda não leu nada (não é erro). Precisa de livroId (01-livros.http).
+GET {{baseUrl}}/livros/{{livroId}}/marcador
+
+### Grava o marcador (o mais recente vence)
+# "posicao_no_texto" é em unidades UTF-16 desde o início do texto do capítulo (a mesma unidade
+# dos artefatos, item 3.4g) e não pode passar do fim dele. "lido_em" é a hora em que a pessoa
+# chegou ali, SEGUNDO O APARELHO, com fuso — é ele que decide o conflito entre dois aparelhos,
+# e não a hora em que esta chamada chega. Um valor no futuro é limitado ao relógio do servidor.
+# A resposta traz o marcador que FICOU valendo e "aceito": false se já havia um mais recente.
+# Precisa de livroId e primeiroCapituloId (01-livros.http).
+PUT {{baseUrl}}/livros/{{livroId}}/marcador
+Content-Type: application/json
+
+{
+  "capitulo_id": {{primeiroCapituloId}},
+  "posicao_no_texto": 0,
+  "lido_em": "2026-10-01T20:00:00-03:00"
+}
+
+> {%
+    client.test("Gravou o marcador", function () {
+        client.assert(response.status === 200, "esperava 200, veio " + response.status);
+    });
+%}
+
+### Cria um pin (posição marcada à mão)
+# "nota" é opcional (até 1000 caracteres; em branco vira "sem nota"). Vários por livro.
+POST {{baseUrl}}/livros/{{livroId}}/pins
+Content-Type: application/json
+
+{
+  "capitulo_id": {{primeiroCapituloId}},
+  "posicao_no_texto": 0,
+  "nota": "Começo da história"
+}
+
+> {%
+    client.test("Criou o pin", function () {
+        client.assert(response.status === 201, "esperava 201, veio " + response.status);
+    });
+    client.global.set("pinId", response.body.id);
+%}
+
+### Lista os pins do livro, na ordem do livro (capítulo e depois posição)
+GET {{baseUrl}}/livros/{{livroId}}/pins
+
+### Ajusta a nota de um pin (null apaga a nota)
+PATCH {{baseUrl}}/pins/{{pinId}}
+Content-Type: application/json
+
+{
+  "nota": "Aqui tudo começa"
+}
+
+### Remove um pin
+DELETE {{baseUrl}}/pins/{{pinId}}
