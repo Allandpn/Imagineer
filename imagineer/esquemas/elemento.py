@@ -357,6 +357,14 @@ class ElementoSugerido(BaseModel):
             "ainda não virou Estado."
         ),
     )
+    achado_no_texto: bool = Field(
+        default=True,
+        description=(
+            "False quando o nome (ou um pedaço que seja nome próprio) não aparece no texto do capítulo: "
+            "a IA pode ter listado um elemento que o capítulo não traz, ou o texto o chama por outro nome. "
+            "Só sinaliza, nunca apaga (item 6.7): o app pode ordenar por último e marcar \"confira\"."
+        ),
+    )
     elemento_casado: ElementoCasado | None = Field(
         default=None,
         description=(

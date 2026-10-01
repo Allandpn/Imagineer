@@ -70,6 +70,7 @@ from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
 from imagineer.servicos.posicao_no_texto import posicao_da_citacao, posicao_da_primeira_mencao
+from imagineer.servicos.trava_de_analise import AnaliseEmAndamento, analise_exclusiva
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Elementos"])
 rotas = APIRouter(prefix="/elementos", tags=["Elementos"])
@@ -752,7 +753,14 @@ def sugerir_elementos(
         rodar_ia = True
 
     if capitulo.sugestoes_geradas_em is None or rodar_ia:
-        _gerar_sugestoes(sessao, provedor, capitulo)
+        try:
+            with analise_exclusiva(capitulo_id):
+                _gerar_sugestoes(sessao, provedor, capitulo)
+        except AnaliseEmAndamento as erro:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Já há uma análise deste capítulo em andamento. Aguarde terminar.",
+            ) from erro
 
     _casar_sugestoes_pendentes(sessao, capitulo_id, capitulo.livro_id)
 
@@ -1498,6 +1506,7 @@ def _resposta_de_elemento(
         elemento_id=sugestao.elemento_id,
         casamento_automatico=sugestao.casamento_automatico,
         estado_id=_estado_id_no_capitulo(sessao, sugestao),
+        achado_no_texto=posicao_da_primeira_mencao(capitulo.texto, sugestao.nome) is not None,
         elemento_casado=casado,
         estado_vigente=estado_vigente,
         descartada=sugestao.descartada,

@@ -129,6 +129,7 @@ def teste_sugestoes_devolve_o_que_o_provedor_deu(
         "manter_estado_atual": False,
         "elemento_id": None,
         "casamento_automatico": False,
+        "achado_no_texto": False,  # o texto desse capítulo de teste não traz o nome "Jon"
         "estado_id": None,
         "elemento_casado": None,
         "estado_vigente": None,
