@@ -67,8 +67,10 @@ class GeradorDeImagemExterno(ABC):
         """``dormir`` e ``relogio`` vêm de fora para os testes não esperarem de verdade."""
 
     @abstractmethod
-    def gerar(self, prompt: str, id_do_modelo: str) -> ImagemGerada:
-        """Gera a imagem. Levanta ``ConteudoRecusado`` se o fornecedor recusar o conteúdo (F4)."""
+    def gerar(self, prompt: str, id_do_modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+        """Gera a imagem. Levanta ``ConteudoRecusado`` se o fornecedor recusar o conteúdo (F4).
+
+        ``sem_filtro_de_seguranca`` só existe no Replicate (F14); nos outros é recusado."""
 
     # ----------------------------------------------------------------------- #
     # Compartilhado
@@ -145,7 +147,10 @@ class GeradorFal(GeradorDeImagemExterno):
         except (ValueError, AttributeError):
             return
 
-    def gerar(self, prompt: str, id_do_modelo: str) -> ImagemGerada:
+    def gerar(self, prompt: str, id_do_modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+        if sem_filtro_de_seguranca:
+            # F14: o filtro só se desliga no Replicate. Quem chama já barrou isso; aqui é a segunda trava.
+            raise ErroDoProvedorIA("Desligar o filtro de segurança só é permitido no Replicate.")
         # F3: só o prompt. Nenhum parâmetro de segurança é enviado.
         envio = self._pedir("POST", f"https://queue.fal.run/{id_do_modelo}", json={"prompt": prompt})
         url_do_status, url_do_resultado = envio.get("status_url"), envio.get("response_url")
@@ -185,12 +190,16 @@ class GeradorReplicate(GeradorDeImagemExterno):
     def _cabecalho_de_autorizacao(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._chave_api}"}
 
-    def gerar(self, prompt: str, id_do_modelo: str) -> ImagemGerada:
-        # F3: só o prompt. Nenhum parâmetro de segurança é enviado.
+    def gerar(self, prompt: str, id_do_modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+        entrada: dict[str, object] = {"prompt": prompt}
+        if sem_filtro_de_seguranca:
+            # F12: o ÚNICO caso em que se manda um parâmetro de segurança, só por pedido explícito do usuário.
+            entrada["disable_safety_checker"] = True
+        # F3: fora disso, só o prompt.
         predicao = self._pedir(
             "POST",
             f"https://api.replicate.com/v1/models/{id_do_modelo}/predictions",
-            json={"input": {"prompt": prompt}},
+            json={"input": entrada},
             cabecalhos={"Prefer": "wait=60"},
         )
         inicio = self._relogio()

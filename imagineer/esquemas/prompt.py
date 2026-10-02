@@ -27,6 +27,10 @@ class ImagemResumo(BaseModel):
         default=None,
         description="O modelo de imagem que gerou esta imagem; nulo se foi importada (item 7.5b, Z1).",
     )
+    sem_filtro_de_seguranca: bool = Field(
+        default=False,
+        description="A imagem foi gerada com o filtro de segurança do modelo desligado, a pedido do usuário (F16).",
+    )
     origem: OrigemDaImagem = Field(
         default=OrigemDaImagem.IMPORTADA,
         description="`IMPORTADA` (o usuário a trouxe de fora) ou `GERADA` (o servidor a gerou): item 7.5b, T3.",
@@ -98,6 +102,10 @@ class PromptResumo(BaseModel):
         default=None,
         description="O modelo de imagem da última tentativa de gerar a imagem deste prompt; nulo se nunca foi tentado (Z1).",
     )
+    sem_filtro_de_seguranca: bool = Field(
+        default=False,
+        description="A última tentativa foi com o filtro de segurança do modelo desligado, a pedido do usuário (F16).",
+    )
 
 
 class PromptDetalhe(PromptResumo):
@@ -164,6 +172,14 @@ class PedidoDeGeracao(BaseModel):
         description=(
             "O modelo de imagem **só deste pedido** (Z3). Ausente ou em branco, vale o `modelo_imagem` da "
             "configuração. Não muda o padrão do servidor."
+        ),
+    )
+    sem_filtro_de_seguranca: bool = Field(
+        default=False,
+        description=(
+            "**Desliga o filtro de segurança do modelo** neste pedido (F12 a F18). Só vale se o prompt está `RECUSADO`, "
+            "se o `modelo` (obrigatório) é `replicate:` e está em `modelos_sem_filtro`, e se o prompt não traz sinal "
+            "de menor de idade; senão, 422. A chamada é direta: não suaviza nada."
         ),
     )
 

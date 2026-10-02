@@ -15,11 +15,13 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from imagineer.ia.fornecedores_de_imagem import separar_fornecedor
 from imagineer.ia.provedor import ConteudoRecusado, ImagemGerada, ModeloNaoEscolhido, ProvedorIA
 from imagineer.modelos import Configuracao, Imagem, Prompt
 from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao
 from imagineer.servicos.catalogo_imagens import salvar_imagem
 from imagineer.servicos.imagens_reduzidas import ler_dimensoes
+from imagineer.servicos.sinais_de_menor import sinal_de_menor
 
 EXTENSOES_POR_TIPO = {
     "image/png": ".png",
@@ -28,6 +30,10 @@ EXTENSOES_POR_TIPO = {
     "image/gif": ".gif",
 }
 """A extensão do arquivo gravado, pelo ``media_type`` que o provedor informou (padrão ``.png``)."""
+
+
+class SemFiltroNaoPermitido(Exception):
+    """O pedido de gerar **sem o filtro de segurança** não cumpre as regras F12 a F15 (vira 422 na rota)."""
 
 
 @dataclass
@@ -51,14 +57,26 @@ def gerar_imagem_do_prompt(
     configuracao: Configuracao,
     texto_editado: str | None = None,
     modelo: str | None = None,
+    sem_filtro_de_seguranca: bool = False,
 ) -> ResultadoDaGeracao:
     """Roda o fluxo S1 a S3 e devolve o desfecho. Erros que não são recusa de conteúdo propagam, sem suavizar (S4).
 
     ``modelo`` é o modelo de imagem **só deste pedido** (Z3); em branco, vale o da configuração. Todas as tentativas
     do pedido (o original, o suavizado, o editado) usam o mesmo modelo.
+
+    ``sem_filtro_de_seguranca`` (F12 a F18) é **outro caminho**: uma única chamada direta, com o filtro do modelo
+    desligado, sem suavizar. Antes dela, ``_validar_sem_filtro`` confere todas as regras e levanta
+    ``SemFiltroNaoPermitido`` se alguma falhar.
     """
     modelo_de_imagem = (modelo or "").strip() or configuracao.modelo_imagem
     texto = (texto_editado or "").strip()
+
+    if sem_filtro_de_seguranca:
+        _validar_sem_filtro(sessao, prompt, configuracao, (modelo or "").strip(), texto)
+        # A edição do usuário vira prompt novo (como em S3); sem edição, é o próprio prompt recusado que se reenvia.
+        alvo = _prompt_derivado(sessao, prompt, texto, modelo_ia=None) if texto and texto != prompt.texto.strip() else prompt
+        imagem = _tentar(sessao, provedor, alvo, modelo_de_imagem, sem_filtro=True)
+        return ResultadoDaGeracao(gerada=imagem is not None, suavizado=False, prompt=alvo, imagem=imagem)
 
     if texto and texto != prompt.texto.strip():
         # S3: o usuário editou à mão. Prompt novo, chamada direta, sem suavização.
@@ -84,6 +102,38 @@ def gerar_imagem_do_prompt(
     return ResultadoDaGeracao(gerada=imagem is not None, suavizado=True, prompt=suavizado, imagem=imagem)
 
 
+def _validar_sem_filtro(sessao: Session, prompt: Prompt, configuracao: Configuracao, modelo: str, texto: str) -> None:
+    """As regras de gerar sem o filtro (F12 a F15). Qualquer falha é ``SemFiltroNaoPermitido``, com a razão em português."""
+    if prompt.situacao_da_geracao != SituacaoDaGeracao.RECUSADO:
+        raise SemFiltroNaoPermitido("Só dá para tentar sem o filtro um prompt que o provedor recusou.")  # F12
+    if not modelo:
+        raise SemFiltroNaoPermitido("Escolha o modelo para gerar sem o filtro.")  # F12: nunca o padrão
+    if separar_fornecedor(modelo)[0] != "replicate":
+        raise SemFiltroNaoPermitido("O filtro só pode ser desligado em modelos do Replicate.")  # F14
+    if modelo not in (configuracao.modelos_sem_filtro or []):
+        raise SemFiltroNaoPermitido(
+            f"O modelo {modelo} não está na lista de modelos que permitem desligar o filtro (modelos_sem_filtro)."
+        )  # F13
+
+    # F15: o texto a enviar, o do prompt recusado e o dos prompts de onde ele saiu (o original pode dizer o que o suavizado tirou).
+    textos = [texto or prompt.texto, prompt.texto]
+    origem_id = prompt.prompt_original_id
+    visitados = {prompt.id}
+    while origem_id is not None and origem_id not in visitados:
+        origem = sessao.get(Prompt, origem_id)
+        if origem is None:
+            break
+        textos.append(origem.texto)
+        visitados.add(origem_id)
+        origem_id = origem.prompt_original_id
+    for candidato in textos:
+        sinal = sinal_de_menor(candidato)
+        if sinal:
+            raise SemFiltroNaoPermitido(
+                f"O prompt fala de uma pessoa menor de idade (\"{sinal}\"): o filtro de segurança não é desligado nesse caso."
+            )
+
+
 def _prompt_derivado(sessao: Session, origem: Prompt, texto: str, modelo_ia: str | None) -> Prompt:
     """Um prompt novo, ligado ao de onde saiu (S5). O de origem não é tocado."""
     novo = Prompt(
@@ -99,19 +149,26 @@ def _prompt_derivado(sessao: Session, origem: Prompt, texto: str, modelo_ia: str
     return novo
 
 
-def _tentar(sessao: Session, provedor: ProvedorIA, prompt: Prompt, modelo: str) -> Imagem | None:
-    """Uma tentativa de gerar a imagem. Grava a situação e o modelo do prompt; devolve a imagem, ou ``None`` se recusou."""
+def _tentar(sessao: Session, provedor: ProvedorIA, prompt: Prompt, modelo: str, sem_filtro: bool = False) -> Imagem | None:
+    """Uma tentativa de gerar a imagem. Grava a situação e o modelo do prompt; devolve a imagem, ou ``None`` se recusou.
+
+    ``sem_filtro`` guarda no prompt e na imagem que o filtro foi desligado (F16)."""
     try:
-        gerada = provedor.gerar_imagem(prompt.texto, modelo)
+        if sem_filtro:
+            gerada = provedor.gerar_imagem(prompt.texto, modelo, sem_filtro_de_seguranca=True)
+        else:
+            gerada = provedor.gerar_imagem(prompt.texto, modelo)
     except ConteudoRecusado as recusa:
         prompt.modelo_imagem = modelo  # Z1: a tentativa recusada também guarda o modelo
+        prompt.sem_filtro_de_seguranca = sem_filtro
         prompt.situacao_da_geracao = SituacaoDaGeracao.RECUSADO
         prompt.motivo_da_recusa = recusa.motivo
         sessao.commit()
         return None
 
-    imagem = _gravar_imagem(sessao, prompt, gerada, modelo)
+    imagem = _gravar_imagem(sessao, prompt, gerada, modelo, sem_filtro)
     prompt.modelo_imagem = modelo
+    prompt.sem_filtro_de_seguranca = sem_filtro
     prompt.situacao_da_geracao = SituacaoDaGeracao.COM_SUCESSO
     prompt.motivo_da_recusa = None
     sessao.commit()
@@ -119,7 +176,7 @@ def _tentar(sessao: Session, provedor: ProvedorIA, prompt: Prompt, modelo: str) 
     return imagem
 
 
-def _gravar_imagem(sessao: Session, prompt: Prompt, gerada: ImagemGerada, modelo: str) -> Imagem:
+def _gravar_imagem(sessao: Session, prompt: Prompt, gerada: ImagemGerada, modelo: str, sem_filtro: bool = False) -> Imagem:
     """Grava a imagem gerada pelo mesmo caminho da importação (disco, linha no catálogo, dimensões)."""
     extensao = EXTENSOES_POR_TIPO.get(gerada.tipo_de_midia.lower(), ".png")
     caminho = salvar_imagem(prompt.id, f"gerada{extensao}", gerada.conteudo)
@@ -132,6 +189,7 @@ def _gravar_imagem(sessao: Session, prompt: Prompt, gerada: ImagemGerada, modelo
         altura=dimensoes[1] if dimensoes else None,
         origem=OrigemDaImagem.GERADA,
         modelo=modelo,
+        sem_filtro_de_seguranca=sem_filtro,
     )
     sessao.add(imagem)
     return imagem

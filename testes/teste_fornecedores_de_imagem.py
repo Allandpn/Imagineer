@@ -299,6 +299,31 @@ def teste_f3_replicate_nunca_manda_parametro_de_seguranca() -> None:
     assert "safety" not in texto and "nsfw" not in texto
 
 
+def teste_f12_replicate_sem_filtro_manda_so_o_disable_safety_checker_alem_do_prompt() -> None:
+    """O ÚNICO parâmetro de segurança que o sistema envia, e só por pedido explícito (F12)."""
+    rede = Rede({("POST", PREDICAO): _json(_predicao("succeeded", output=SAIDA)), ("GET", SAIDA): _imagem()})
+
+    _replicate(rede).gerar("um prompt", "black-forest-labs/flux-schnell", sem_filtro_de_seguranca=True)
+
+    assert json.loads(rede.pedidos[0].content) == {"input": {"prompt": "um prompt", "disable_safety_checker": True}}
+
+
+def teste_f14_fal_recusa_desligar_o_filtro_e_nao_chama_a_rede() -> None:
+    rede = Rede({})
+
+    with pytest.raises(ErroDoProvedorIA, match="só é permitido no Replicate"):
+        GeradorFal("chave-fal", cliente=rede.cliente()).gerar("p", "fal-ai/flux/dev", sem_filtro_de_seguranca=True)
+
+    assert rede.pedidos == []
+
+
+def teste_f14_openrouter_recusa_desligar_o_filtro() -> None:
+    provedor = ProvedorOpenRouter(chave_api="sk-teste")
+
+    with pytest.raises(ErroDoProvedorIA, match="só é permitido no Replicate"):
+        provedor.gerar_imagem("p", "meta/muse-image", sem_filtro_de_seguranca=True)
+
+
 def teste_f6_replicate_a_saida_pode_ser_uma_url_so() -> None:
     rede = Rede({("POST", PREDICAO): _json(_predicao("succeeded", output=SAIDA)), ("GET", SAIDA): _imagem()})
 

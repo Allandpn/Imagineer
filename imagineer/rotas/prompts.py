@@ -53,7 +53,7 @@ from imagineer.servicos.catalogo_imagens import (
     salvar_imagem,
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
-from imagineer.servicos.geracao_de_imagem import gerar_imagem_do_prompt
+from imagineer.servicos.geracao_de_imagem import SemFiltroNaoPermitido, gerar_imagem_do_prompt
 from imagineer.servicos.identidade_de_elemento import identidade_vigente
 from imagineer.servicos.imagens_reduzidas import (
     TamanhoDeImagem,
@@ -259,9 +259,18 @@ def gerar_imagem(
     Recusa responde 200 (``RECUSADA``); só os outros erros do provedor viram 422/502, sem suavizar.
     """
     prompt = _buscar_prompt(sessao, prompt_id)
-    resultado = gerar_imagem_do_prompt(
-        sessao, provedor, prompt, obter_ou_criar(sessao), corpo.texto if corpo else None, corpo.modelo if corpo else None
-    )
+    try:
+        resultado = gerar_imagem_do_prompt(
+            sessao,
+            provedor,
+            prompt,
+            obter_ou_criar(sessao),
+            corpo.texto if corpo else None,
+            corpo.modelo if corpo else None,
+            sem_filtro_de_seguranca=bool(corpo and corpo.sem_filtro_de_seguranca),
+        )
+    except SemFiltroNaoPermitido as erro:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)) from erro
     return ResultadoDaGeracao(
         resultado="GERADA" if resultado.gerada else "RECUSADA",
         suavizado=resultado.suavizado,
@@ -656,6 +665,7 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
         motivo_da_recusa=prompt.motivo_da_recusa,
         prompt_original_id=prompt.prompt_original_id,
         modelo_imagem=prompt.modelo_imagem,
+        sem_filtro_de_seguranca=prompt.sem_filtro_de_seguranca,
     )
 
 

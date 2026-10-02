@@ -1176,6 +1176,164 @@ def teste_z4_modelo_com_mais_de_200_caracteres_da_422(cliente: TestClient, usar_
     assert resposta.status_code == 422
 
 
+# --------------------------------------------------------------------------- #
+# Gerar sem o filtro de segurança (item 7.5b, F12 a F18)
+# --------------------------------------------------------------------------- #
+
+MODELO_SEM_FILTRO = "replicate:black-forest-labs/flux-schnell"
+
+
+def _recusado_com_modelo_sem_filtro(cliente: TestClient, usar_provedor_falso, texto: str = "close-up, Auri, nude", **opcoes):
+    """Um prompt que o provedor recusou (as duas tentativas), com um modelo na lista de modelos sem filtro."""
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso, recusas_de_imagem=2, **opcoes)
+    cliente.put("/configuracao", json={"modelos_sem_filtro": [MODELO_SEM_FILTRO]})
+    cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")  # S1 e S2: recusa duas vezes
+    return provedor, prompt
+
+
+def teste_f12_gera_sem_o_filtro_um_prompt_recusado_e_registra_isso(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _recusado_com_modelo_sem_filtro(cliente, usar_provedor_falso)
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": MODELO_SEM_FILTRO, "sem_filtro_de_seguranca": True}
+    )
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["resultado"] == "GERADA"
+    assert corpo["suavizado"] is False  # chamada direta (F12, F18)
+    assert corpo["prompt"]["sem_filtro_de_seguranca"] is True  # F16
+    assert corpo["imagem"]["sem_filtro_de_seguranca"] is True
+    assert corpo["prompt"]["modelo_imagem"] == MODELO_SEM_FILTRO
+    assert provedor.chamadas_de_imagem[-1] == {
+        "prompt": provedor.chamadas_de_imagem[0]["prompt"],
+        "modelo": MODELO_SEM_FILTRO,
+        "sem_filtro_de_seguranca": True,
+    }
+    assert len(provedor.chamadas_de_suavizacao) == 1  # só a da primeira geração; esta não suavizou de novo
+
+
+def teste_f16_geracao_normal_nao_marca_sem_filtro(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem").json()
+
+    assert corpo["prompt"]["sem_filtro_de_seguranca"] is False
+    assert corpo["imagem"]["sem_filtro_de_seguranca"] is False
+
+
+def teste_f12_prompt_que_nunca_foi_recusado_nao_pode_ser_gerado_sem_filtro(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+    cliente.put("/configuracao", json={"modelos_sem_filtro": [MODELO_SEM_FILTRO]})
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": MODELO_SEM_FILTRO, "sem_filtro_de_seguranca": True}
+    )
+
+    assert resposta.status_code == 422
+    assert "recusou" in resposta.json()["detail"]
+
+
+def teste_f12_sem_modelo_no_pedido_nunca_usa_o_padrao(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _recusado_com_modelo_sem_filtro(cliente, usar_provedor_falso)
+
+    resposta = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"sem_filtro_de_seguranca": True})
+
+    assert resposta.status_code == 422
+    assert "Escolha o modelo" in resposta.json()["detail"]
+
+
+def teste_f13_modelo_fora_da_lista_da_422(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _recusado_com_modelo_sem_filtro(cliente, usar_provedor_falso)
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": "replicate:outro/modelo", "sem_filtro_de_seguranca": True},
+    )
+
+    assert resposta.status_code == 422
+    assert "modelos_sem_filtro" in resposta.json()["detail"]
+
+
+def teste_f14_so_o_replicate_pode_ficar_sem_filtro(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _recusado_com_modelo_sem_filtro(cliente, usar_provedor_falso)
+    # Mesmo na lista, um modelo de outro fornecedor é recusado.
+    cliente.put("/configuracao", json={"modelos_sem_filtro": ["fal:fal-ai/flux/dev", "meta/muse-image"]})
+
+    for modelo in ("fal:fal-ai/flux/dev", "meta/muse-image"):
+        resposta = cliente.post(
+            f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": modelo, "sem_filtro_de_seguranca": True}
+        )
+        assert resposta.status_code == 422
+        assert "Replicate" in resposta.json()["detail"]
+
+
+def teste_f15_prompt_com_sinal_de_menor_nunca_gera_sem_filtro(
+    cliente: TestClient, usar_provedor_falso, sessao_com_tabelas
+) -> None:
+    provedor, prompt = _recusado_com_modelo_sem_filtro(cliente, usar_provedor_falso)
+    sessao_com_tabelas.get(Prompt, prompt["id"]).texto = "a young girl in a field, nude"
+    sessao_com_tabelas.commit()
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": MODELO_SEM_FILTRO, "sem_filtro_de_seguranca": True}
+    )
+
+    assert resposta.status_code == 422
+    assert "menor de idade" in resposta.json()["detail"]
+    assert all("sem_filtro_de_seguranca" not in chamada for chamada in provedor.chamadas_de_imagem)
+
+
+def teste_f15_o_texto_editado_tambem_passa_pela_trava(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _recusado_com_modelo_sem_filtro(cliente, usar_provedor_falso)
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": MODELO_SEM_FILTRO, "sem_filtro_de_seguranca": True, "texto": "a 12-year-old child"},
+    )
+
+    assert resposta.status_code == 422
+
+
+def teste_f12_texto_editado_sem_filtro_vira_prompt_novo_e_vai_direto(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _recusado_com_modelo_sem_filtro(cliente, usar_provedor_falso)
+
+    corpo = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": MODELO_SEM_FILTRO, "sem_filtro_de_seguranca": True, "texto": "close-up, Auri, adult woman"},
+    ).json()
+
+    assert corpo["prompt"]["id"] != prompt["id"]
+    assert corpo["prompt"]["prompt_original_id"] == prompt["id"]
+    assert corpo["prompt"]["sem_filtro_de_seguranca"] is True
+    assert provedor.chamadas_de_imagem[-1]["prompt"] == "close-up, Auri, adult woman"
+
+
+def teste_f17_se_recusar_mesmo_sem_filtro_volta_recusada_sem_subir_de_nivel(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _recusado_com_modelo_sem_filtro(cliente, usar_provedor_falso)
+    provedor._recusas_de_imagem = 99  # recusa tudo
+
+    corpo = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": MODELO_SEM_FILTRO, "sem_filtro_de_seguranca": True}
+    ).json()
+
+    assert corpo["resultado"] == "RECUSADA"
+    assert corpo["prompt"]["sem_filtro_de_seguranca"] is True
+    assert provedor.chamadas_de_imagem[-1]["sem_filtro_de_seguranca"] is True
+    assert len(provedor.chamadas_de_suavizacao) == 1  # nada de suavizar de novo
+
+
+def teste_f16_uma_geracao_normal_depois_limpa_a_marca_do_prompt(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _recusado_com_modelo_sem_filtro(cliente, usar_provedor_falso)
+    cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": MODELO_SEM_FILTRO, "sem_filtro_de_seguranca": True}
+    )
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "outro/modelo"}).json()
+
+    assert corpo["prompt"]["sem_filtro_de_seguranca"] is False
+
+
 def teste_z1_erro_do_provedor_nao_grava_o_modelo_no_prompt(cliente: TestClient, usar_provedor_falso) -> None:
     """Um 502 não foi uma tentativa concluída: o prompt continua como estava."""
     provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)

@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -88,6 +88,9 @@ class Prompt(Base):
     """O modelo de imagem da **última tentativa** de gerar a imagem deste prompt, inclusive a recusada (Z1).
 
     Nulo se o prompt nunca foi tentado. O prompt suavizado e o editado guardam o modelo com que foram enviados."""
+
+    sem_filtro_de_seguranca: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    """A **última tentativa** deste prompt foi com o filtro de segurança do modelo desligado, a pedido do usuário (F16)."""
 
     situacao_da_geracao: Mapped[SituacaoDaGeracao] = mapped_column(
         Enum(
@@ -177,6 +180,9 @@ class Imagem(Base):
 
     modelo: Mapped[str | None] = mapped_column(String(200))
     """O modelo de imagem que **gerou** esta imagem (Z1). Nulo se foi importada ou é anterior a esta coluna."""
+
+    sem_filtro_de_seguranca: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    """A imagem foi gerada com o filtro de segurança do modelo desligado, a pedido do usuário (F16)."""
 
     origem: Mapped[OrigemDaImagem] = mapped_column(
         Enum(

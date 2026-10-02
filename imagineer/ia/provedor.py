@@ -443,8 +443,11 @@ class ProvedorIA(ABC):
         """
 
     @abstractmethod
-    def gerar_imagem(self, prompt: str, modelo: str) -> ImagemGerada:
+    def gerar_imagem(self, prompt: str, modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
         """Gera a imagem a partir do prompt (item 6.6, "Gerar a imagem").
+
+        ``sem_filtro_de_seguranca`` desliga o filtro opcional do modelo, **só no Replicate** (F12 a F14); em outro
+        fornecedor é um erro de programação (``ErroDoProvedorIA``), porque o serviço já o barra antes.
 
         Raises:
             ConteudoRecusado: o provedor recusou o conteúdo (moderação). A recusa não cobra.

@@ -231,8 +231,11 @@ class ProvedorFalso(ProvedorIA):
             raise self._erro
         return PromptMontado(texto=self._prompt_suavizado, modelo=modelo)
 
-    def gerar_imagem(self, prompt: str, modelo: str) -> ImagemGerada:
-        self.chamadas_de_imagem.append({"prompt": prompt, "modelo": modelo})
+    def gerar_imagem(self, prompt: str, modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+        chamada = {"prompt": prompt, "modelo": modelo}
+        if sem_filtro_de_seguranca:  # só aparece quando é verdadeiro, para os testes de antes não mudarem
+            chamada["sem_filtro_de_seguranca"] = True
+        self.chamadas_de_imagem.append(chamada)
         if self._erro is not None:
             raise self._erro
         if len(self.chamadas_de_imagem) <= self._recusas_de_imagem:
