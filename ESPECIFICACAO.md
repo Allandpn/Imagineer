@@ -2620,6 +2620,8 @@ Vieram do teste real no tablet (01 e 02/10). Seis pontos, na ordem em que serão
 
 **Implementado (02/10/2026): T3, o servidor.** `Imagem.origem` (`IMPORTADA` por padrão, `GERADA` quando o servidor gera), migração `c9d1e3f5a7b9` (testada em Postgres: sobe, desce, sobe; `alembic check` limpo), devolvida em `ImagemResumo`. 2 testes novos. **Para o app:** campo **novo** na resposta das imagens; o app atual ignora campos desconhecidos. As telas (T1, T2) vêm na fatia do app.
 
+**Implementado no app (02/10/2026): R e T.** Cada prompt da lista tem **Editar** (abre o mesmo campo do diálogo da recusa, agora um componente comum: `DialogoDoTextoDoPrompt`) e **Gerar imagem com este texto** (R1, R2). O botão de importar saiu dos prompts (T4): a área do frame ganhou, **no fim da lista de prompts**, a seção **"Imagens importadas"** (T2) com as miniaturas de todas as importadas e **um só botão "Importar imagem"**, que leva a imagem para o prompt **mais recente** (T1); sem prompt, a seção não aparece. Cada prompt mostra só as imagens **geradas**. A importação ganhou um mapa de mensagens próprio (`mensagensDeImportacao`), separado do da geração, para o recado de cada uma aparecer no lugar certo. 9 testes novos ou ajustados (641 no app). **Para ver no tablet:** precisa do backend com a coluna `origem` (rebuild do container); sem ela, o app trata todas as imagens como importadas.
+
 ##### U — Excluir, compartilhar e salvar a imagem
 
 Na **tela cheia** da imagem (J4), três ações:
