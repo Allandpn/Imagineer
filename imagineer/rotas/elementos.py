@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.elemento import (
+    CenaDoElemento,
     ElementoAjuste,
     ElementoDetalhe,
     ElementoMesclagem,
@@ -22,18 +23,24 @@ from imagineer.esquemas.elemento import (
     EstadoNovo,
     EstadoResumo,
     EstadosDeSugestoes,
+    GaleriaDoElemento,
     HistoricoIdentidadeAjuste,
     HistoricoIdentidadeNovo,
     HistoricoIdentidadeResumo,
+    ImagemDoElemento,
 )
 from imagineer.modelos import (
     Capitulo,
     Elemento,
     EstadoElemento,
+    Frame,
     HistoricoIdentidadeElemento,
     Imagem,
+    Prompt,
     SugestaoDeElemento,
+    TipoDeFrame,
     TipoElemento,
+    frames_estados_elemento,
 )
 from imagineer.rotas._comum import (
     buscar_acrescimo as _buscar_acrescimo,
@@ -43,6 +50,7 @@ from imagineer.rotas._comum import (
     buscar_livro as _buscar_livro,
 )
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
+from imagineer.servicos.imagens_reduzidas import orientacao_de
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Elementos"])
 rotas = APIRouter(prefix="/elementos", tags=["Elementos"])
@@ -147,6 +155,68 @@ def abrir_elemento(
 ) -> ElementoDetalhe:
     """O elemento com todos os seus estados, em ordem narrativa."""
     return _detalhe(sessao, _buscar_elemento(sessao, elemento_id))
+
+
+@rotas.get(
+    "/{elemento_id}/galeria",
+    response_model=GaleriaDoElemento,
+    summary="As imagens e as cenas do elemento, para a ficha dele",
+)
+def galeria_do_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao)) -> GaleriaDoElemento:
+    """As imagens dos **retratos** do elemento e as **cenas** em que ele participa (FI1 a FI3). Nunca chama a IA.
+
+    ``imagens``: de todos os frames de retrato dele (``PERSONAGEM``, só ele), mais recentes primeiro. ``cenas``: os frames
+    ``CENA`` em que um estado dele participa, por ordem narrativa; cena sem imagem também aparece.
+    """
+    elemento = _buscar_elemento(sessao, elemento_id)
+    ancoras = {elemento.imagem_ancora_padrao_id} | {e.imagem_ancora_id for e in elemento.estados}
+    ancoras.discard(None)
+
+    imagens: dict[int, ImagemDoElemento] = {}
+    cenas: dict[int, CenaDoElemento] = {}
+    for estado in elemento.estados:
+        for frame in estado.frames:
+            capitulo = frame.capitulo
+            if frame.tipo == TipoDeFrame.PERSONAGEM and len(frame.estados_elemento) == 1:
+                for prompt in frame.prompts:
+                    for imagem in prompt.imagens:
+                        orientacao = orientacao_de(imagem.largura, imagem.altura)
+                        imagens[imagem.id] = ImagemDoElemento(
+                            id=imagem.id,
+                            prompt_id=prompt.id,
+                            frame_id=frame.id,
+                            capitulo_id=capitulo.id,
+                            titulo_do_capitulo=capitulo.titulo,
+                            ordem_do_capitulo=capitulo.ordem,
+                            largura=imagem.largura,
+                            altura=imagem.altura,
+                            orientacao=orientacao.value if orientacao else None,
+                            modelo=imagem.modelo,
+                            origem=imagem.origem.value,
+                            sem_filtro_de_seguranca=imagem.sem_filtro_de_seguranca,
+                            data_importacao=imagem.data_importacao,
+                            ancora=imagem.id in ancoras,
+                        )
+            elif frame.tipo == TipoDeFrame.CENA and frame.id not in cenas:
+                todas = [i for prompt in frame.prompts for i in prompt.imagens]
+                ultima = max(todas, key=lambda i: i.id) if todas else None
+                orientacao = orientacao_de(ultima.largura, ultima.altura) if ultima else None
+                cenas[frame.id] = CenaDoElemento(
+                    frame_id=frame.id,
+                    titulo=frame.titulo,
+                    descricao=frame.descricao,
+                    capitulo_id=capitulo.id,
+                    titulo_do_capitulo=capitulo.titulo,
+                    ordem_do_capitulo=capitulo.ordem,
+                    participantes=sorted(e.elemento.nome for e in frame.estados_elemento if e.elemento_id != elemento.id),
+                    total_de_imagens=len(todas),
+                    imagem_id=ultima.id if ultima else None,
+                    imagem_orientacao=orientacao.value if orientacao else None,
+                )
+    return GaleriaDoElemento(
+        imagens=sorted(imagens.values(), key=lambda i: i.id, reverse=True),
+        cenas=sorted(cenas.values(), key=lambda c: (c.ordem_do_capitulo, c.frame_id)),
+    )
 
 
 @rotas.patch("/{elemento_id}", response_model=ElementoDetalhe, summary="Ajusta um elemento")
@@ -541,6 +611,7 @@ def _montar_resumos(
     )
 
     vigentes = estado_vigente_por_elemento(sessao, livro_id, ordem_limite)
+    capas = _capas_dos_elementos(sessao, [elemento.id for elemento in elementos])
 
     contagens = dict(
         sessao.execute(
@@ -559,6 +630,7 @@ def _montar_resumos(
             nome=elemento.nome,
             descricao=elemento.descricao,
             total_de_estados=contagens.get(elemento.id, 0),
+            imagem_de_capa_id=elemento.imagem_ancora_padrao_id or capas.get(elemento.id),
             estado_vigente=(
                 EstadoResumo.model_validate(vigentes[elemento.id])
                 if elemento.id in vigentes
@@ -567,6 +639,36 @@ def _montar_resumos(
         )
         for elemento in elementos
     ]
+
+
+def _capas_dos_elementos(sessao: Session, elementos_ids: list[int]) -> dict[int, int]:
+    """A imagem mais recente do **retrato** de cada elemento, numa consulta só (FI4).
+
+    Retrato = frame ``PERSONAGEM`` com o elemento como **único** estado (item 3.4c). A âncora padrão, quando existe,
+    tem prioridade sobre esta (quem chama a prefere).
+    """
+    if not elementos_ids:
+        return {}
+    de_um_estado_so = (
+        select(frames_estados_elemento.c.frame_id)
+        .group_by(frames_estados_elemento.c.frame_id)
+        .having(func.count(frames_estados_elemento.c.estado_elemento_id) == 1)
+    )
+    return dict(
+        sessao.execute(
+            select(EstadoElemento.elemento_id, func.max(Imagem.id))
+            .join(frames_estados_elemento, frames_estados_elemento.c.estado_elemento_id == EstadoElemento.id)
+            .join(Frame, Frame.id == frames_estados_elemento.c.frame_id)
+            .join(Prompt, Prompt.frame_id == Frame.id)
+            .join(Imagem, Imagem.prompt_id == Prompt.id)
+            .where(
+                Frame.tipo == TipoDeFrame.PERSONAGEM,
+                Frame.id.in_(de_um_estado_so),
+                EstadoElemento.elemento_id.in_(elementos_ids),
+            )
+            .group_by(EstadoElemento.elemento_id)
+        ).all()
+    )
 
 
 def _detalhe(sessao: Session, elemento: Elemento) -> ElementoDetalhe:

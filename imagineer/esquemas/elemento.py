@@ -192,6 +192,13 @@ class ElementoResumo(BaseModel):
             "não tinha aparecido — o que significa primeira aparição."
         ),
     )
+    imagem_de_capa_id: int | None = Field(
+        default=None,
+        description=(
+            "A imagem que ilustra o elemento na lista (FI4): a âncora padrão, senão a imagem mais recente de um "
+            "retrato dele; nulo se ainda não tem imagem. O arquivo vem de `GET /imagens/{id}/arquivo`."
+        ),
+    )
 
 
 class ElementoDetalhe(BaseModel):
@@ -583,3 +590,44 @@ class SugestaoDeElementoBuscada(BaseModel):
             "'casada, mas ainda não virou Estado' (item 3.4e)."
         ),
     )
+
+
+class ImagemDoElemento(BaseModel):
+    """Uma imagem de um retrato do elemento, na ficha dele (FI2)."""
+
+    id: int
+    prompt_id: int
+    frame_id: int
+    capitulo_id: int
+    titulo_do_capitulo: str | None = None
+    ordem_do_capitulo: int
+    largura: int | None = None
+    altura: int | None = None
+    orientacao: str | None = Field(default=None, description="`RETRATO` ou `PAISAGEM` pela imagem real; nulo sem dimensões.")
+    modelo: str | None = None
+    origem: str = Field(description="`IMPORTADA` ou `GERADA`.")
+    sem_filtro_de_seguranca: bool = False
+    data_importacao: datetime
+    ancora: bool = Field(description="É a referência principal do elemento (a padrão ou a do estado), item 4.5.")
+
+
+class CenaDoElemento(BaseModel):
+    """Uma cena em que o elemento participa, na ficha dele (FI3). Cena sem imagem também aparece."""
+
+    frame_id: int
+    titulo: str
+    descricao: str | None = None
+    capitulo_id: int
+    titulo_do_capitulo: str | None = None
+    ordem_do_capitulo: int
+    participantes: list[str] = Field(description="Os nomes dos **outros** elementos da cena.")
+    total_de_imagens: int
+    imagem_id: int | None = Field(default=None, description="A imagem mais recente da cena; nulo se ainda não tem.")
+    imagem_orientacao: str | None = None
+
+
+class GaleriaDoElemento(BaseModel):
+    """O que a ficha mostra além dos textos: as imagens dele e as cenas em que aparece (FI1)."""
+
+    imagens: list[ImagemDoElemento]
+    cenas: list[CenaDoElemento]

@@ -190,3 +190,9 @@ GET {{baseUrl}}/capitulos/3/estados-vigentes
 
 ### Remove o elemento e todos os seus estados
 # DELETE {{baseUrl}}/elementos/{{elementoId}}
+
+### As imagens e as cenas do elemento, para a ficha (item 7.5b, FI1 a FI3)
+# imagens: as dos retratos dele (mais recentes primeiro), com o capitulo e a ancora marcada.
+# cenas: onde ele participa, por ordem narrativa, com os outros participantes e a imagem mais recente (ou sem imagem).
+# Nunca gasta IA. A lista do livro (GET /livros/{id}/elementos) traz "imagem_de_capa_id" (FI4).
+GET {{baseUrl}}/elementos/{{elementoId}}/galeria
