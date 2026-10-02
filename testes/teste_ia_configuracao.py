@@ -536,10 +536,11 @@ def teste_a_instrucao_do_estado_manda_descrever_so_o_primeiro_instante() -> None
         lambda p: p.sugerir_estado("texto", TipoElemento.PERSONAGEM, "Auri", None, None, "modelo/x")
     )
 
-    assert "UM SÓ INSTANTE: o PRIMEIRO em que o elemento aparece no capítulo" in instrucao
-    assert "sem misturar com os instantes seguintes" in instrucao
-    assert "traços permanentes (cabelo, pele, porte, jeito de ser)" in instrucao
-    assert "nunca para roupa ou pose que contradigam o primeiro instante" in instrucao
+    assert "UM SÓ INSTANTE, o PRIMEIRO em que o elemento aparece no capítulo" in instrucao
+    assert "sem misturar com os seguintes" in instrucao
+    # A1/A2: os traços permanentes têm parte própria, que pode vir de qualquer ponto do capítulo.
+    assert "Pode vir de QUALQUER ponto do capítulo" in instrucao
+    assert "Nunca roupa, pose, humor" in instrucao
 
 
 def teste_a_instrucao_do_prompt_manda_escolher_um_instante_e_nao_misturar() -> None:
@@ -548,7 +549,7 @@ def teste_a_instrucao_do_prompt_manda_escolher_um_instante_e_nao_misturar() -> N
 
     assert "Um só instante" in instrucao
     assert "numa cena, o que a descrição da cena indica" in instrucao
-    assert "num retrato (sem cena), o PRIMEIRO momento descrito" in instrucao
+    assert 'num retrato (sem cena), o "Neste instante:"' in instrucao
     assert "NUNCA roupa ou pose que contradigam o instante escolhido" in instrucao
     assert '"nude" com roupa' in instrucao
     assert "comentário do usuário, se houver, pode indicar outro momento e vale mais que esta regra" in instrucao
@@ -644,6 +645,70 @@ def teste_sugerir_estado_interpreta_o_json() -> None:
 
     assert sugestao.descricao == "Capa de pele, barba grisalha."
     assert sugestao.modelo == "algum/modelo"
+
+
+def teste_a_instrucao_do_estado_pede_aparencia_fixa_instante_e_ambiente() -> None:
+    """02/10 (A1 a A4): o retrato perdeu a aparência fixa e saía com um fundo qualquer."""
+    instrucao = _instrucao_enviada(
+        lambda p: p.sugerir_estado("texto", TipoElemento.PERSONAGEM, "Auri", None, None, "modelo/x")
+    )
+
+    for campo in ('"aparencia_fixa"', '"instante"', '"ambiente"'):
+        assert campo in instrucao
+    assert "um sujeito em primeiro plano com um fundo qualquer quebra a imagem" in instrucao
+    assert "devolva null em vez de inventar um cenário" in instrucao
+    assert 'nada de "depois", "mais tarde", "em seguida", "finalmente"' in instrucao
+
+
+def teste_a_instrucao_do_prompt_usa_o_ambiente_no_retrato() -> None:
+    """02/10 (A5, A6): num retrato o cenário vem do "Onde está:"; numa cena, da descrição da cena."""
+    instrucao = _instrucao_enviada(lambda p: p.montar_prompt("", ["Auri: x"], "estilo: x", "modelo/x"))
+
+    assert '"Aparência fixa:" (traços que não mudam: sempre entram no prompt' in instrucao
+    assert 'num retrato, os do "Onde está:" do elemento' in instrucao
+    assert "nunca um fundo genérico ou neutro" in instrucao
+    assert 'Numa cena, o cenário é o da descrição da cena' in instrucao
+    assert "pule num retrato" not in instrucao and "só se houver cena — num retrato, pule" not in instrucao
+
+
+def teste_sugerir_estado_junta_as_tres_partes_com_rotulos() -> None:
+    resposta = json.dumps(
+        {
+            "aparencia_fixa": "Mulher jovem, pequena e esguia, pele pálida, cabelo dourado e longo.",
+            "instante": "De camisola, sorri e ergue os braços.",
+            "ambiente": "Quarto de pedra com uma nesga de luz na janela.",
+        }
+    )
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_estado("texto", TipoElemento.PERSONAGEM, "Auri", None, None, "algum/modelo")
+
+    assert sugestao.descricao == (
+        "Aparência fixa: Mulher jovem, pequena e esguia, pele pálida, cabelo dourado e longo.\n"
+        "Neste instante: De camisola, sorri e ergue os braços.\n"
+        "Onde está: Quarto de pedra com uma nesga de luz na janela."
+    )
+
+
+def teste_sugerir_estado_sem_ambiente_nao_poe_o_rotulo() -> None:
+    """Texto que não diz onde o elemento está: a parte do ambiente some, nada é inventado (A4)."""
+    resposta = json.dumps({"aparencia_fixa": "Barba grisalha.", "instante": "De pé.", "ambiente": None})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_estado("texto", TipoElemento.PERSONAGEM, "Ned", None, None, "algum/modelo")
+
+    assert "Onde está" not in sugestao.descricao
+    assert sugestao.descricao == "Aparência fixa: Barba grisalha.\nNeste instante: De pé."
+
+
+def teste_sugerir_estado_aceita_o_formato_antigo_de_um_campo() -> None:
+    """A7: resposta só com `descricao` continua valendo."""
+    resposta = json.dumps({"descricao": "Capa de pele.", "ambiente": "Um salão de pedra."})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_estado("texto", TipoElemento.PERSONAGEM, "Ned", None, None, "algum/modelo")
+
+    assert sugestao.descricao == "Capa de pele.\nOnde está: Um salão de pedra."
 
 
 def teste_sugerir_estado_manda_so_o_elemento_pedido() -> None:

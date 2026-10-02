@@ -67,6 +67,15 @@ Generoso de propósito: modelos gratuitos ficam em fila, e um capítulo de 25 mi
 tokens leva tempo. Um limite curto transformaria lentidão em erro.
 """
 
+ROTULO_DA_APARENCIA_FIXA = "Aparência fixa:"
+ROTULO_DO_INSTANTE = "Neste instante:"
+ROTULO_DO_AMBIENTE = "Onde está:"
+"""Os rótulos das três partes do estado de um elemento (A1).
+
+O estado continua sendo **um texto só** (o app mostra e o usuário edita como sempre); os rótulos em português
+é que deixam o gerador de prompt saber qual parte é qual, sem coluna nova no banco.
+"""
+
 _INSTRUCAO_DE_EXTRACAO = """\
 Você analisa um capítulo de livro e identifica os elementos visuais que aparecem \
 nele, para que alguém possa depois gerar imagens das cenas. Nesta etapa você só \
@@ -175,22 +184,40 @@ baixo, ombros curvados").
 - Um instante congelado, não uma ação contínua: descreva UMA pose ou gesto \
 específico do capítulo, como se fosse um fotograma parado — não "ele entra, \
 pega o livro e sai", mas o momento em que a mão toca a página.
-- Luz e atmosfera **só quando o texto do capítulo realmente sustenta isso** \
-para este elemento (uma vela, o sol poente, poeira no ar) — não invente uma \
-fonte de luz que o texto não menciona; isso é papel da cena, não do elemento.
 
-Expressão e postura NUNCA ficam de fora: toda descrição de pessoa ou criatura inclui a \
-expressão do rosto (sorriso, olhar, tensão) e a postura ou o gesto do instante descrito, \
-sempre que o texto os sustenta, e também o humor que se vê (animada, nervosa, cansada), \
-traduzido em músculo e postura. Uma descrição só com cabelo, pele e roupa é pobre demais \
-para virar imagem: ela perde a emoção da cena.
+Você devolve TRÊS partes, porque cada uma tem um papel diferente na imagem:
 
-UM SÓ INSTANTE: o PRIMEIRO em que o elemento aparece no capítulo. Se o elemento muda de \
-roupa, de pose ou de estado ao longo do capítulo (por exemplo, aparece de camisola e \
-depois sem roupa), descreva a roupa, a pose, a expressão e o humor do PRIMEIRO instante \
-em que ele aparece, sem misturar com os instantes seguintes. Os outros momentos só \
-servem para traços permanentes (cabelo, pele, porte, jeito de ser), nunca para roupa ou \
-pose que contradigam o primeiro instante.
+1. "aparencia_fixa": os traços que NÃO mudam ao longo do livro — idade aparente, porte, \
+pele, rosto, cor, comprimento e tipo do cabelo, marcas permanentes. Pode vir de QUALQUER \
+ponto do capítulo (e do estado já registrado), não só do primeiro instante. Nunca roupa, \
+pose, humor, nem como o cabelo está (NÃO escreva "preso", "solto", "rabo de cavalo", \
+"trança": isso muda e vai no instante; aqui só cor, comprimento e tipo). Sem isso a imagem \
+perde a identidade da pessoa, então inclua tudo que o texto disser, e não comente o que o \
+texto NÃO diz (nada de "altura não informada"). Para um lugar ou um objeto: forma, tamanho \
+e materiais.
+
+2. "instante": UM SÓ INSTANTE, o PRIMEIRO em que o elemento aparece no capítulo. Se o \
+elemento muda de roupa, de pose ou de estado ao longo do capítulo (por exemplo, aparece de \
+camisola e depois sem roupa), descreva a roupa, a pose, a expressão e o humor do PRIMEIRO \
+instante, sem misturar com os seguintes. É um fotograma parado, não uma linha do tempo: \
+nada de "depois", "mais tarde", "em seguida", "finalmente".
+
+Expressão e postura NUNCA ficam de fora do instante: toda descrição de pessoa ou criatura \
+inclui a expressão do rosto (sorriso, olhar, tensão) e a postura ou o gesto, sempre que o \
+texto os sustenta, e também o humor que se vê (animada, nervosa, cansada), traduzido em \
+músculo e postura. Uma descrição só com cabelo, pele e roupa é pobre demais para virar \
+imagem: ela perde a emoção da cena.
+
+3. "ambiente": ONDE o elemento está nesse mesmo instante, para a imagem ter imersão — um \
+sujeito em primeiro plano com um fundo qualquer quebra a imagem. Descreva o lugar e o que \
+se vê ao redor e atrás dele: materiais, tamanho, objetos próximos, e a luz e o que há no ar \
+(uma vela, o sol por uma fresta, poeira) quando o texto sustenta. Escreva só o que APARECERIA \
+NO QUADRO: o lugar e uns 4 a 6 detalhes visuais marcantes, não um inventário (nada de contar \
+saídas, portas ou o que está fora de vista). Nomes inventados pelo livro (de lugares, criaturas, \
+objetos) não dizem nada a quem vai desenhar: escreva sempre o que SE VÊ ("um filhote de luz azul \
+num prato"), e o nome só junto disso. Só o que o texto diz ou \
+implica com segurança: se ele não diz onde o elemento está, devolva null em vez de inventar \
+um cenário. Para um elemento que é o próprio lugar (AMBIENTE, EDIFICACAO), devolva null.
 
 Regras de fidelidade ao texto (mais importantes que o estilo de escrita acima):
 - Descreva só o que o texto diz ou implica com segurança. Não invente detalhes \
@@ -205,14 +232,16 @@ registrada a menos que o texto diga explicitamente que ela mudou (idade que \
 avança, um ferimento permanente); atualize a parte situacional com o que este \
 capítulo mostra.
 - Se o elemento pedido não aparecer de forma clara neste capítulo, ou se o \
-texto não descrever sua aparência, devolva a descrição de estado já \
-registrada, sem inventar nada novo e sem deduzir a partir do gênero ou tom do \
+texto não descrever sua aparência, devolva o estado já registrado (nas três \
+partes acima), sem inventar nada novo e sem deduzir a partir do gênero ou tom do \
 livro.
 
 Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 
 {
-  "descricao": "a aparência do elemento neste capítulo, seguindo as regras acima"
+  "aparencia_fixa": "os traços que não mudam, seguindo as regras acima",
+  "instante": "o primeiro instante: roupa, pose, expressão e humor",
+  "ambiente": "onde está nesse instante, ou null se o texto não diz"
 }
 
 Escreva em português.
@@ -290,8 +319,14 @@ ferramenta — o bloco final de estética (ver abaixo) é estruturado, mas ainda
 faz parte do mesmo texto único, não uma resposta separada.
 
 Se não vier nenhuma descrição de cena (só um elemento na lista), monte um \
-RETRATO: use exclusivamente a aparência desse elemento e o estilo pedido — não \
-mencione, sugira ou implique a presença de mais ninguém.
+RETRATO: use exclusivamente a descrição desse elemento e o estilo pedido — não \
+mencione, sugira ou implique a presença de mais ninguém. Um retrato NÃO é um sujeito \
+solto num fundo qualquer: ele acontece no lugar onde o elemento está (veja abaixo).
+
+A descrição de cada elemento pode vir em até três partes rotuladas: "Aparência fixa:" \
+(traços que não mudam: sempre entram no prompt, mesmo que o instante não os cite), \
+"Neste instante:" (roupa, pose, expressão e humor do momento) e "Onde está:" (o lugar \
+e o que o cerca naquele momento).
 
 Monte o prompt seguindo esta ordem de blocos, separados por vírgula (pule um \
 bloco se não houver informação para ele — nunca invente para preencher):
@@ -302,8 +337,12 @@ low-angle, over-the-shoulder) coerente com a cena ou o retrato.
 ou gesto específico e parado — nunca uma ação contínua ("ele caminha e olha \
 para trás" vira "mid-stride, glancing back").
 3. Vestuário, texturas e expressão física de cada elemento presente.
-4. Cenário imediato e objetos ao redor (só se houver cena — num retrato, pule).
-5. Ambiente de fundo, arquitetura e época (só se houver cena).
+4. Cenário imediato e objetos ao redor: numa cena, os da cena; num retrato, os do "Onde \
+está:" do elemento (se não houver esse campo, pule — não invente).
+5. Ambiente de fundo, arquitetura e época: numa cena, os da cena; num retrato, o lugar \
+do "Onde está:", com os detalhes concretos que ele traz (materiais, objetos, o que se vê \
+atrás do sujeito), para que a imagem tenha imersão e o fundo seja o do livro, nunca um \
+fundo genérico ou neutro.
 6. Iluminação e atmosfera: fonte de luz (candlelight, golden hour, cool \
 moonlight, harsh neon) e o que há no ar (dust motes, mist, smoke) — derive isso \
 do horário/clima informados e do estilo pedido, não invente uma fonte que \
@@ -344,10 +383,22 @@ só no bloco final de estética, traduzidas literalmente, e nunca na prosa da ce
 - **Um só instante.** A descrição de um elemento pode trazer mais de um momento do \
 livro (por exemplo, vestido e depois sem roupa). Escolha UM instante e descreva só o \
 que vale nele: numa cena, o que a descrição da cena indica; num retrato (sem cena), o \
-PRIMEIRO momento descrito. Dos outros momentos use apenas traços permanentes (cabelo, \
+"Neste instante:" (ou, sem rótulos, o PRIMEIRO momento descrito). Dos outros momentos use apenas traços permanentes (cabelo, \
 pele, porte, humor), e NUNCA roupa ou pose que contradigam o instante escolhido: o \
 prompt não pode juntar, por exemplo, "nude" com roupa, nem duas poses incompatíveis. O \
 comentário do usuário, se houver, pode indicar outro momento e vale mais que esta regra.
+- **Penteado e roupa vêm só do instante.** Se a "Aparência fixa:" fala de cabelo preso ou solto, \
+ignore isso e use o que o "Neste instante:" diz; se o instante não diz, escreva só cor, \
+comprimento e tipo do cabelo, sem dizer preso nem solto.
+- **Só o que se vê.** Os nomes inventados pelo livro (lugares, criaturas, objetos) não dizem \
+nada ao modelo de imagem: no prompt, troque-os pelo que se vê ("a small glowing blue creature \
+on a plate", não "Foxen"; "a small stone room", não "the Manto"). Só a pessoa do retrato pode \
+aparecer pelo nome. Não conte saídas, portas ou coisas fora do quadro, e não repita o mesmo \
+elemento duas vezes.
+- **O lugar vem da cena; num retrato, do "Onde está:".** Numa cena, o cenário é o da \
+descrição da cena; o "Onde está:" dos elementos só preenche o que a cena não diz, e nunca \
+a contradiz. Num retrato, o "Onde está:" é o cenário: descreva o sujeito dentro dele, em \
+primeiro plano e com o ambiente reconhecível ao redor.
 - Incorpore o estilo, a iluminação e a paleta do perfil indicado.
 - **Gênero de cada pessoa presente, sempre que a identidade ou a aparência \
 informada permitir concluir com segurança**: deixe isso inequívoco no prompt \
@@ -1252,12 +1303,26 @@ def _interpretar_estado(resposta: str) -> str:
             "pequenos não seguem bem instruções de formato."
         )
 
-    descricao = _texto_ou_nulo(bruto.get("descricao"))
-    if descricao is None:
-        raise ErroDoProvedorIA(
-            "O modelo devolveu um JSON sem o campo 'descricao'."
-        )
-    return descricao
+    aparencia_fixa = _texto_ou_nulo(bruto.get("aparencia_fixa"))
+    instante = _texto_ou_nulo(bruto.get("instante"))
+    ambiente = _texto_ou_nulo(bruto.get("ambiente"))
+    if aparencia_fixa is None and instante is None:
+        # Resposta no formato antigo (um campo só): ainda vale, para não perder o que o modelo escreveu.
+        descricao = _texto_ou_nulo(bruto.get("descricao"))
+        if descricao is None:
+            raise ErroDoProvedorIA(
+                "O modelo devolveu um JSON sem os campos 'aparencia_fixa' e 'instante'."
+            )
+        return descricao if ambiente is None else f"{descricao}\n{ROTULO_DO_AMBIENTE} {ambiente}"
+
+    linhas = []
+    if aparencia_fixa:
+        linhas.append(f"{ROTULO_DA_APARENCIA_FIXA} {aparencia_fixa}")
+    if instante:
+        linhas.append(f"{ROTULO_DO_INSTANTE} {instante}")
+    if ambiente:
+        linhas.append(f"{ROTULO_DO_AMBIENTE} {ambiente}")
+    return "\n".join(linhas)
 
 
 def _interpretar_identidade(resposta: str) -> str | None:
