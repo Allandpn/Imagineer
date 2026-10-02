@@ -2494,6 +2494,8 @@ O ciclo do fluxo (item 2.1, passos 9 a 11): o prompt foi copiado ou compartilhad
 - **J9 — Nada disto gasta IA.**
 - **J10 — O que não entra:** **desenhar a imagem no texto** (segunda fatia), **remover** uma imagem, **trocar** a imagem principal, gerar a imagem no app, e a cópia **offline** das imagens (passo 3 do armazenamento local, item 7.0a).
 
+**Implementado (01/10/2026), em linguagem simples.** Cada prompt, no modal e na lista, ganhou o botão **Importar imagem**: ele abre o seletor de arquivos do Android só com imagens. Antes de enviar, o app confere a extensão e os 25 MB (J2), para não subir um arquivo grande só para ouvir "não". O envio mostra uma barra de progresso, um por prompt de cada vez, e o erro do servidor aparece como veio (J3). Depois de importar, a miniatura aparece no cartão do prompt, a mais nova primeiro, e o app relê os artefatos para o ícone no texto virar `ILUSTRADO` (J6). Ao abrir um frame, a listagem só diz **quantas** imagens cada prompt tem; o app pede `GET /prompts/{id}` **só dos que têm** e, se esse pedido falhar, o prompt aparece sem as miniaturas (J5). Tocar na miniatura abre a imagem em tela cheia, com zoom por pinça. O **Coil 3.3.0** (com o cliente OkHttp) baixa e guarda em cache as imagens. Nenhuma mudança no servidor. 16 testes novos (611 no app, todos passando).
+
 #### Incremento 11 do app, primeira fatia — os ícones dos elementos no texto (implementado em 30/09/2026)
 
 **Pedido do Allan:** ao analisar o capítulo, as sugestões aparecem no painel de IA **e também como ícones no texto**. Fatia combinada com ele, dada a pouca cota do dia: **só os elementos, de ponta a ponta**; as cenas entram depois.
