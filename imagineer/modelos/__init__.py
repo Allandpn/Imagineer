@@ -16,7 +16,7 @@ from imagineer.modelos.elemento import (
     HistoricoIdentidadeElemento,
     TipoElemento,
 )
-from imagineer.modelos.frame import Frame, TipoDeFrame, frames_estados_elemento
+from imagineer.modelos.frame import Frame, TipoDeFrame, frames_estados_elemento, frames_estados_vinculados
 from imagineer.modelos.leitura import Marcador, Pin
 from imagineer.modelos.livro import Livro
 from imagineer.modelos.perfil_renderizacao import PerfilRenderizacao
@@ -51,5 +51,6 @@ __all__ = [
     "TipoElemento",
     "UsoDeIA",
     "frames_estados_elemento",
+    "frames_estados_vinculados",
     "sugestoes_participante",
 ]

@@ -20,6 +20,7 @@ from imagineer.esquemas.frame import (
     FrameDetalhe,
     FrameNovo,
     FrameResumo,
+    VinculosDoFrame,
 )
 from imagineer.modelos import (
     Capitulo,
@@ -28,6 +29,7 @@ from imagineer.modelos import (
     Frame,
     SugestaoDeCena,
     TipoDeFrame,
+    TipoElemento,
     frames_estados_elemento,
 )
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
@@ -105,6 +107,8 @@ def criar_frame(
     _exigir_posicao_valida(capitulo, novo.posicao_no_texto)
     _exigir_contagem_valida(novo.tipo, estados_ids)
     estados = _estados_do_livro(sessao, estados_ids, capitulo.livro_id)
+    vinculados = _estados_do_livro(sessao, novo.estados_vinculados_ids, capitulo.livro_id)
+    _exigir_vinculos_validos(novo.tipo, estados, vinculados)
 
     frame = Frame(
         capitulo_id=capitulo.id,
@@ -117,6 +121,7 @@ def criar_frame(
         posicao_no_texto=novo.posicao_no_texto,
     )
     frame.estados_elemento = estados
+    frame.estados_vinculados = vinculados
 
     sessao.add(frame)
     sessao.commit()
@@ -173,7 +178,34 @@ def definir_estados(
     _exigir_contagem_valida(frame.tipo, corpo.estados_ids)
     capitulo = _buscar_capitulo(sessao, frame.capitulo_id)
 
-    frame.estados_elemento = _estados_do_livro(sessao, corpo.estados_ids, capitulo.livro_id)
+    novos = _estados_do_livro(sessao, corpo.estados_ids, capitulo.livro_id)
+    # V4: trocar o sujeito revalida os vínculos que ele já tinha (o novo sujeito pode ser um personagem, que é individual).
+    _exigir_vinculos_validos(frame.tipo, novos, list(frame.estados_vinculados))
+    frame.estados_elemento = novos
+    sessao.commit()
+    sessao.refresh(frame)
+    return _detalhe(sessao, frame)
+
+
+@rotas.put(
+    "/{frame_id}/vinculos",
+    response_model=FrameDetalhe,
+    summary="Define os elementos vinculados ao sujeito do retrato",
+)
+def definir_vinculos(
+    frame_id: int, corpo: VinculosDoFrame, sessao: Session = Depends(obter_sessao)
+) -> FrameDetalhe:
+    """Substitui os vinculados do retrato pelos que vieram (V4); lista vazia tira todos.
+
+    Só vale em frame ``PERSONAGEM`` cujo sujeito **não** é um personagem, e só com vinculados que também não o sejam (V2, V3).
+    **Não** refaz os prompts que já existem (V7): o próximo **Novo prompt** usa estes vínculos.
+    """
+    frame = _buscar_frame(sessao, frame_id)
+    capitulo = _buscar_capitulo(sessao, frame.capitulo_id)
+    vinculados = _estados_do_livro(sessao, corpo.estados_ids, capitulo.livro_id)
+    _exigir_vinculos_validos(frame.tipo, list(frame.estados_elemento), vinculados)
+
+    frame.estados_vinculados = vinculados
     sessao.commit()
     sessao.refresh(frame)
     return _detalhe(sessao, frame)
@@ -228,6 +260,46 @@ def _exigir_contagem_valida(tipo: TipoDeFrame, estados_ids: list[int]) -> None:
                 "elementos interagindo."
             ),
         )
+
+
+MAXIMO_DE_VINCULADOS = 4
+"""Quantos elementos podem se vincular ao sujeito de um retrato (V3)."""
+
+
+def _exigir_vinculos_validos(
+    tipo: TipoDeFrame, sujeitos: list[EstadoElemento], vinculados: list[EstadoElemento]
+) -> None:
+    """As regras V2 e V3 do retrato com elementos vinculados. Sem vinculados não há o que conferir.
+
+    **Personagem é individual** (decisão do Allan, 02/10/2026): nem o sujeito nem um vinculado pode ser ``PERSONAGEM``.
+    O sujeito é o único estado do frame de retrato (``_exigir_contagem_valida`` garante isso).
+    """
+    if not vinculados:
+        return
+
+    def _422(detalhe: str) -> HTTPException:
+        return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detalhe)
+
+    if tipo != TipoDeFrame.PERSONAGEM:
+        raise _422("Vínculos só valem num retrato (tipo PERSONAGEM): a cena já tem os seus participantes.")
+    if len(vinculados) > MAXIMO_DE_VINCULADOS:
+        raise _422(f"No máximo {MAXIMO_DE_VINCULADOS} elementos vinculados por retrato.")
+    sujeito = sujeitos[0].elemento if sujeitos else None
+    if sujeito is not None and sujeito.tipo == TipoElemento.PERSONAGEM:
+        raise _422(
+            f"{sujeito.nome} é um personagem: o retrato de um personagem é sempre só dele. "
+            "Para um personagem junto de outro elemento, use uma cena."
+        )
+    vistos: set[int] = set()
+    for estado in vinculados:
+        elemento = estado.elemento
+        if elemento.tipo == TipoElemento.PERSONAGEM:
+            raise _422(f"{elemento.nome} é um personagem e fica individual: não pode ser vinculado a outro retrato.")
+        if sujeito is not None and elemento.id == sujeito.id:
+            raise _422(f"{elemento.nome} é o próprio sujeito do retrato: não pode ser vinculado a si mesmo.")
+        if elemento.id in vistos:
+            raise _422(f"{elemento.nome} aparece duas vezes entre os vinculados.")
+        vistos.add(elemento.id)
 
 
 def _resolver_titulo(
@@ -450,9 +522,22 @@ def _detalhe(sessao: Session, frame: Frame) -> FrameDetalhe:
         for estado_id, elemento_id, tipo, nome, descricao, capitulo_id in linhas
     ]
 
+    vinculados = [
+        EstadoComElemento(
+            estado_id=estado.id,
+            elemento_id=estado.elemento.id,
+            tipo=estado.elemento.tipo,
+            nome=estado.elemento.nome,
+            descricao=estado.descricao,
+            capitulo_id=estado.capitulo_id,
+        )
+        for estado in sorted(frame.estados_vinculados, key=lambda e: (e.elemento.tipo.name, e.elemento.nome))
+    ]
+
     return FrameDetalhe(
         **_resumo(frame, len(elementos)).model_dump(),
         elementos=elementos,
+        vinculados=vinculados,
         contexto_do_livro=frame.contexto_do_livro,
     )
 

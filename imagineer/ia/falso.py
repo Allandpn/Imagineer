@@ -211,17 +211,19 @@ class ProvedorFalso(ProvedorIA):
         modelo: str,
         contexto_do_livro: str | None = None,
         comentario_do_usuario: str | None = None,
+        elementos_vinculados: list[str] | None = None,
     ) -> PromptMontado:
-        self.chamadas_de_prompt.append(
-            {
-                "descricao_do_frame": descricao_do_frame,
-                "elementos": elementos,
-                "perfil_renderizacao": perfil_renderizacao,
-                "modelo": modelo,
-                "contexto_do_livro": contexto_do_livro,
-                "comentario_do_usuario": comentario_do_usuario,
-            }
-        )
+        chamada = {
+            "descricao_do_frame": descricao_do_frame,
+            "elementos": elementos,
+            "perfil_renderizacao": perfil_renderizacao,
+            "modelo": modelo,
+            "contexto_do_livro": contexto_do_livro,
+            "comentario_do_usuario": comentario_do_usuario,
+        }
+        if elementos_vinculados:  # só aparece quando há vinculados, para os testes de antes não mudarem
+            chamada["elementos_vinculados"] = elementos_vinculados
+        self.chamadas_de_prompt.append(chamada)
         if self._erro is not None:
             raise self._erro
         return PromptMontado(texto=self._prompt, modelo=modelo)

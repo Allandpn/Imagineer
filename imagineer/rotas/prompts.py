@@ -178,6 +178,7 @@ def criar_prompt(
         modelo=modelo_prompt,
         contexto_do_livro=contexto_do_livro,
         comentario_do_usuario=corpo.comentario,
+        elementos_vinculados=_elementos_vinculados(frame) or None,
     )
 
     prompt = Prompt(
@@ -410,7 +411,8 @@ def _fazer_leitura_profunda(
     entender o capítulo é a mesma tarefa da fase 1, não a de escrever texto
     criativo que ``montar_prompt`` faz.
     """
-    estados = list(frame.estados_elemento)
+    # V6: os vinculados também são relidos, para a aparência deles valer neste capítulo.
+    estados = list(frame.estados_elemento) + list(frame.estados_vinculados)
     a_reler = [
         estado
         for estado in estados
@@ -601,6 +603,11 @@ def _descricao_do_frame(frame: Frame) -> str:
     return "\n".join(partes)
 
 
+def _elementos_vinculados(frame: Frame) -> list[str]:
+    """As linhas "Nome (identidade): aparência" dos elementos **vinculados** ao sujeito de um retrato (V5)."""
+    return _linhas_de_estados(frame.estados_vinculados)
+
+
 def _elementos_do_frame(frame: Frame) -> list[str]:
     """"Nome (identidade): aparência", para cada elemento que aparece no frame.
 
@@ -610,8 +617,13 @@ def _elementos_do_frame(frame: Frame) -> list[str]:
     só a leitura profunda de UM estado (``sugerir_estado``) recebia (item 4.4).
     Omitida quando o elemento não tem identidade registrada.
     """
+    return _linhas_de_estados(frame.estados_elemento)
+
+
+def _linhas_de_estados(estados) -> list[str]:
+    """"Nome (identidade): aparência" para cada estado, por tipo e nome."""
     partes = []
-    for estado in sorted(frame.estados_elemento, key=lambda e: (e.elemento.tipo.name, e.elemento.nome)):
+    for estado in sorted(estados, key=lambda e: (e.elemento.tipo.name, e.elemento.nome)):
         nome = estado.elemento.nome
         if estado.elemento.descricao:
             partes.append(f"{nome} ({estado.elemento.descricao}): {estado.descricao}")

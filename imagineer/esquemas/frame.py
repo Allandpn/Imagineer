@@ -47,6 +47,10 @@ class FrameDetalhe(FrameResumo):
     """O frame com os elementos que aparecem nele, em seus estados."""
 
     elementos: list[EstadoComElemento]
+    vinculados: list[EstadoComElemento] = Field(
+        default_factory=list,
+        description="Os elementos vinculados ao sujeito do retrato (V4); vazia na cena e no retrato solo.",
+    )
     contexto_do_livro: str | None = Field(
         default=None,
         description=(
@@ -99,6 +103,14 @@ class FrameNovo(BaseModel):
         default_factory=list,
         description="Os estados de elemento que aparecem no frame.",
     )
+    estados_vinculados_ids: list[int] = Field(
+        default_factory=list,
+        max_length=4,
+        description=(
+            "Só em frame PERSONAGEM (retrato): os estados dos elementos **vinculados** ao sujeito, que aparecem junto "
+            "dele (V1 a V3). Nenhum deles, nem o sujeito, pode ser `PERSONAGEM`: personagem é individual."
+        ),
+    )
     sugestao_cena_id: int | None = Field(
         default=None,
         description=(
@@ -133,6 +145,12 @@ class FrameAjuste(BaseModel):
             "início do texto (item 3.4g). Nulo = sem escolha."
         ),
     )
+
+
+class VinculosDoFrame(BaseModel):
+    """A lista completa de estados **vinculados** ao sujeito de um retrato (V4). Vazia = sem vínculos."""
+
+    estados_ids: list[int] = Field(max_length=4)
 
 
 class EstadosDoFrame(BaseModel):

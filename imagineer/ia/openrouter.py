@@ -324,6 +324,12 @@ RETRATO: use exclusivamente a descrição desse elemento e o estilo pedido — n
 mencione, sugira ou implique a presença de mais ninguém. Um retrato NÃO é um sujeito \
 solto num fundo qualquer: ele acontece no lugar onde o elemento está (veja abaixo).
 
+Se vierem **ELEMENTOS VINCULADOS AO SUJEITO**, o retrato continua sendo do **sujeito \
+principal** (o primeiro da lista de elementos), mas os vinculados **aparecem junto dele, como \
+parte do que se vê** (o objeto que ele carrega, o lugar onde está, a criatura ao lado), com a \
+aparência informada para cada um e **sem acrescentar mais ninguém**. O enquadramento pode \
+abrir para caber o conjunto; o sujeito segue em primeiro plano.
+
 A descrição de cada elemento pode vir em até três partes rotuladas: "Aparência fixa:" \
 (traços que não mudam: sempre entram no prompt, mesmo que o instante não os cite), \
 "Neste instante:" (roupa, pose, expressão e humor do momento) e "Onde está:" (o lugar \
@@ -804,6 +810,7 @@ class ProvedorOpenRouter(ProvedorIA):
         modelo: str,
         contexto_do_livro: str | None = None,
         comentario_do_usuario: str | None = None,
+        elementos_vinculados: list[str] | None = None,
     ) -> PromptMontado:
         """Pede ao modelo o prompt de imagem (passo 8)."""
         lista = "\n".join(f"- {elemento}" for elemento in elementos) or "(nenhum)"
@@ -813,6 +820,9 @@ class ProvedorOpenRouter(ProvedorIA):
             f"ELEMENTOS QUE APARECEM, COM A APARÊNCIA DE CADA UM:\n{lista}\n\n"
             f"ESTILO VISUAL:\n{perfil_renderizacao}"
         )
+        if elementos_vinculados:
+            vinculados = "\n".join(f"- {elemento}" for elemento in elementos_vinculados)
+            pedido += f"\n\nELEMENTOS VINCULADOS AO SUJEITO (aparecem junto dele neste retrato):\n{vinculados}"
         if contexto_do_livro:
             pedido += f"\n\nCONTEXTO DO LIVRO (apoio, não substitui a cena acima):\n{contexto_do_livro}"
         if comentario_do_usuario:

@@ -435,6 +435,7 @@ class ProvedorIA(ABC):
         modelo: str,
         contexto_do_livro: str | None = None,
         comentario_do_usuario: str | None = None,
+        elementos_vinculados: list[str] | None = None,
     ) -> PromptMontado:
         """Monta o prompt de imagem a partir do que foi escolhido (passo 8).
 
@@ -449,6 +450,8 @@ class ProvedorIA(ABC):
                 menor que ``descricao_do_frame``.
             comentario_do_usuario: uma correção pontual do usuário, com
                 prioridade sobre tudo o mais (item 4.4).
+            elementos_vinculados: só num retrato (V5): as linhas "Nome (identidade): aparência" dos elementos que
+                aparecem **junto** do sujeito (o objeto que ele carrega, o lugar onde está).
         """
 
     @abstractmethod

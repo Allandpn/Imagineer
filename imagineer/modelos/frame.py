@@ -25,6 +25,22 @@ frames_estados_elemento = Table(
         primary_key=True,
     ),
 )
+frames_estados_vinculados = Table(
+    "frames_estados_vinculados",
+    Base.metadata,
+    Column("frame_id", ForeignKey("frames.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "estado_elemento_id",
+        ForeignKey("estados_elemento.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+"""Liga o frame de um **retrato** aos estados dos elementos **vinculados** ao sujeito dele (item 7.5b, V1).
+
+Separada de ``frames_estados_elemento`` de propósito: o retrato continua com **exatamente um** estado (o sujeito), e os
+vinculados — o objeto que ele carrega, o lugar onde está — entram aqui, sem mexer em nada que já procura "o retrato do
+elemento"."""
+
 """Liga um Frame aos estados dos elementos que aparecem nele.
 
 A ligação é com o **EstadoElemento**, não com o Elemento — e essa é a escolha
@@ -117,6 +133,11 @@ class Frame(Base):
         secondary=frames_estados_elemento,
         back_populates="frames",
     )
+
+    estados_vinculados: Mapped[list["EstadoElemento"]] = relationship(  # noqa: F821
+        secondary=frames_estados_vinculados,
+    )
+    """Os elementos vinculados ao sujeito de um retrato (V1); vazia na cena e no retrato solo."""
 
     prompts: Mapped[list["Prompt"]] = relationship(  # noqa: F821
         back_populates="frame",

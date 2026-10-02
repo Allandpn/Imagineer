@@ -180,3 +180,24 @@ Content-Type: application/json
   "modelo": "replicate:bytedance/seedream-4.5",
   "imagens_de_referencia": [12, 15]
 }
+
+### Os elementos VINCULADOS ao sujeito de um retrato (item 7.5b, V1 a V10)
+# Substitui a lista inteira; lista vazia tira todos. So vale em frame PERSONAGEM (retrato) cujo sujeito NAO e personagem,
+# com ate 4 vinculados que tambem nao sejam personagens (personagem e individual: para um personagem junto de outro
+# elemento, use uma cena). Nao refaz os prompts que ja existem: o proximo "Novo prompt" usa estes vinculos.
+PUT {{baseUrl}}/frames/{{frameId}}/vinculos
+Content-Type: application/json
+
+{
+  "estados_ids": [12, 15]
+}
+
+### Cria o retrato ja com vinculados (campo opcional "estados_vinculados_ids")
+POST {{baseUrl}}/capitulos/{{capituloId}}/frames
+Content-Type: application/json
+
+{
+  "tipo": "PERSONAGEM",
+  "estados_ids": [7],
+  "estados_vinculados_ids": [12, 15]
+}
