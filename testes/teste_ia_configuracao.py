@@ -530,6 +530,30 @@ def teste_a_instrucao_do_prompt_poe_o_clima_da_cena_acima_do_do_perfil() -> None
     assert 'só no bloco final de estética, traduzidas literalmente, e nunca na prosa da cena' in instrucao
 
 
+def teste_a_instrucao_do_estado_manda_descrever_so_o_primeiro_instante() -> None:
+    """02/10 (Y1): o estado juntava a Auri vestida e nua; só traços permanentes vêm dos outros momentos."""
+    instrucao = _instrucao_enviada(
+        lambda p: p.sugerir_estado("texto", TipoElemento.PERSONAGEM, "Auri", None, None, "modelo/x")
+    )
+
+    assert "UM SÓ INSTANTE: o PRIMEIRO em que o elemento aparece no capítulo" in instrucao
+    assert "sem misturar com os instantes seguintes" in instrucao
+    assert "traços permanentes (cabelo, pele, porte, jeito de ser)" in instrucao
+    assert "nunca para roupa ou pose que contradigam o primeiro instante" in instrucao
+
+
+def teste_a_instrucao_do_prompt_manda_escolher_um_instante_e_nao_misturar() -> None:
+    """02/10 (Y2): "completely nude... soft dress texture" juntava dois momentos no mesmo prompt."""
+    instrucao = _instrucao_enviada(lambda p: p.montar_prompt("", ["Auri: x"], "estilo: x", "modelo/x"))
+
+    assert "Um só instante" in instrucao
+    assert "numa cena, o que a descrição da cena indica" in instrucao
+    assert "num retrato (sem cena), o PRIMEIRO momento descrito" in instrucao
+    assert "NUNCA roupa ou pose que contradigam o instante escolhido" in instrucao
+    assert '"nude" com roupa' in instrucao
+    assert "comentário do usuário, se houver, pode indicar outro momento e vale mais que esta regra" in instrucao
+
+
 def teste_montar_prompt_sem_comentario_nao_menciona_prioridade() -> None:
     """Sem comentário, não sobra rastro de um campo vazio na mensagem."""
     capturado = {}

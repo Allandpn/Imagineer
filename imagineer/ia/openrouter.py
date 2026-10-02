@@ -179,6 +179,13 @@ sempre que o texto os sustenta, e também o humor que se vê (animada, nervosa, 
 traduzido em músculo e postura. Uma descrição só com cabelo, pele e roupa é pobre demais \
 para virar imagem: ela perde a emoção da cena.
 
+UM SÓ INSTANTE: o PRIMEIRO em que o elemento aparece no capítulo. Se o elemento muda de \
+roupa, de pose ou de estado ao longo do capítulo (por exemplo, aparece de camisola e \
+depois sem roupa), descreva a roupa, a pose, a expressão e o humor do PRIMEIRO instante \
+em que ele aparece, sem misturar com os instantes seguintes. Os outros momentos só \
+servem para traços permanentes (cabelo, pele, porte, jeito de ser), nunca para roupa ou \
+pose que contradigam o primeiro instante.
+
 Regras de fidelidade ao texto (mais importantes que o estilo de escrita acima):
 - Descreva só o que o texto diz ou implica com segurança. Não invente detalhes \
 que o texto não sustenta, mesmo que pareçam plausíveis para o gênero da obra.
@@ -328,6 +335,13 @@ animação, sorriso ou energia, o prompt NÃO pode soar contemplativo, triste ou
 melancólico. Do perfil use só a técnica (pincelada, luz, paleta, formato, referência). \
 As palavras de clima do perfil (como "contemplativa", "introspectiva", "onírica") entram \
 só no bloco final de estética, traduzidas literalmente, e nunca na prosa da cena.
+- **Um só instante.** A descrição de um elemento pode trazer mais de um momento do \
+livro (por exemplo, vestido e depois sem roupa). Escolha UM instante e descreva só o \
+que vale nele: numa cena, o que a descrição da cena indica; num retrato (sem cena), o \
+PRIMEIRO momento descrito. Dos outros momentos use apenas traços permanentes (cabelo, \
+pele, porte, humor), e NUNCA roupa ou pose que contradigam o instante escolhido: o \
+prompt não pode juntar, por exemplo, "nude" com roupa, nem duas poses incompatíveis. O \
+comentário do usuário, se houver, pode indicar outro momento e vale mais que esta regra.
 - Incorpore o estilo, a iluminação e a paleta do perfil indicado.
 - **Gênero de cada pessoa presente, sempre que a identidade ou a aparência \
 informada permitir concluir com segurança**: deixe isso inequívoco no prompt \
@@ -384,23 +398,30 @@ vestido, pano, túnica nem qualquer peça de vestuário que o prompt não citava
 continua como o autor a descreveu, só sem as palavras explícitas. Não use nude, naked, \
 topless nem bare body. O "novo" de um trecho de nudez tem de dizer DUAS coisas: o que \
 APARECE (por exemplo, ombros e braços) E o que COBRE o resto, escrito por extenso (por \
-exemplo "her long hair falling over her body", "one arm across her chest", "half in \
-shadow"). Apagar só a palavra "nude", ou escrever só "bare shoulders and arms", NÃO \
+exemplo "her torso softly lost in shadow", "half in shadow", "the lower body outside the \
+frame"). Apagar só a palavra "nude", ou escrever só "bare shoulders and arms", NÃO \
 basta: sem a cobertura escrita, a ideia do autor se perde. A cobertura vem da \
-COMPOSIÇÃO: o cabelo caindo sobre o corpo, um braço ou uma mão, a pose, a sombra, o \
-enquadramento ou objetos do cenário na frente. A cobertura NÃO pode contradizer o resto \
+COMPOSIÇÃO: a sombra, o enquadramento, um braço ou uma mão, a pose, o cabelo caindo \
+sobre o corpo (só se o prompt não o descreve preso) ou objetos do cenário na frente. \
+A cobertura NÃO pode contradizer o resto \
 do prompt: se o cabelo está preso, não o faça cair sobre o corpo; se os braços estão \
 levantados, não os cruze nem os abaixe. Quando a pose e o cabelo já estão descritos no \
 prompt, cubra com SOMBRA ou ENQUADRAMENTO, que não conflitam com nada ("her torso softly \
 lost in shadow", "the lower body outside the frame", "soft shadows across her chest").
   Exemplo CERTO: "nude with pale, smooth skin" -> "bare shoulders and arms, pale, smooth \
-skin, her long hair falling over her body".
+skin, her torso softly lost in shadow".
   Exemplo ERRADO 1: "nude with pale, smooth skin" -> "pale, smooth skin" (só apagou a \
 palavra: a ideia do autor se perdeu).
   Exemplo ERRADO 2: "nude with pale, smooth skin" -> "wearing a loose linen dress" (isso \
 muda o que o autor descreveu).
-- Violência: sempre sem sangue e sem nada explícito. Sugira pelo instante antes ou \
+- Violência: sempre sem sangue e sem nada explícito: troque também a ferida aberta, o \
+corte e o corpo mutilado, não só a palavra "blood". Sugira pelo instante antes ou \
 depois, por sombras, pela expressão e pela postura.
+  Exemplo CERTO: "a deep gaping wound across his chest with blood pouring out" -> "a \
+dark shadow across his chest, his torn armor stained".
+  Exemplo ERRADO: "a deep gaping wound across his chest with blood pouring out" -> "a \
+deep gaping wound across his chest" (só tirou a palavra "blood": a ferida aberta, que é o \
+explícito, ficou).
 - Menores de idade: SÓ quando o prompt disser ou deixar claro que a pessoa é criança, \
 adolescente ou tem menos de 18 anos ("child", "girl", "boy", "teenager", uma idade \
 abaixo de 18), ela fica sempre vestida e nunca em cena sensual. "Young woman" e "young \
@@ -746,11 +767,16 @@ class ProvedorOpenRouter(ProvedorIA):
             raise ErroDoProvedorIA("O prompt a suavizar está vazio.")
         pedido = f"PROMPT RECUSADO PELO PROVEDOR DE IMAGEM:\n{texto}"
 
+        motivo_anterior: str | None = None
         for _ in range(TENTATIVAS_DA_SUAVIZACAO):
+            # Na segunda tentativa, diz por que a primeira foi recusada: sem isso o modelo repetiria a mesma resposta.
+            pedido_atual = pedido
+            if motivo_anterior:
+                pedido_atual += f"\n\nATENÇÃO: a sua resposta anterior foi recusada porque {motivo_anterior}. Corrija."
             resposta = self._conversar(
-                modelo, _INSTRUCAO_DE_SUAVIZACAO, pedido, operacao="suavizacao", temperatura=TEMPERATURA_DA_SUAVIZACAO
+                modelo, _INSTRUCAO_DE_SUAVIZACAO, pedido_atual, operacao="suavizacao", temperatura=TEMPERATURA_DA_SUAVIZACAO
             )
-            suave = _aplicar_trocas(texto, resposta)
+            suave, motivo_anterior = _aplicar_trocas(texto, resposta)
             if suave is not None:
                 return PromptMontado(texto=suave, modelo=modelo)
         raise ErroDoProvedorIA(
@@ -1240,40 +1266,65 @@ FRACAO_MAXIMA_TROCADA = 0.5
 """No máximo metade do texto pode ser trocada: acima disso o modelo reescreveu o prompt, em vez de suavizá-lo."""
 
 
-def _aplicar_trocas(texto: str, resposta: str) -> str | None:
-    """Aplica ao ``texto`` as trocas que o modelo apontou, ou devolve ``None`` se a resposta não serve.
+CONTRADICOES_CONHECIDAS = (
+    (
+        re.compile(r"\b(ponytail|tied|braid|braided|bun|pulled back|secured|bound)\b", re.I),
+        re.compile(
+            r"hair[^,.;]{0,30}\b(falling|cascading|flowing|draped|spilling)\b[^,.;]{0,25}"
+            r"\b(over|across|around)\b[^,.;]{0,15}\b(body|torso|chest|breasts?)\b",
+            re.I,
+        ),
+        "o cabelo está preso no prompt e a troca o faz cair sobre o corpo (cubra com sombra, enquadramento ou o braço)",
+    ),
+    (
+        re.compile(r"\barms? (raised|up|overhead|stretched up)\b|\braised arms\b", re.I),
+        re.compile(r"\barms? (crossed|folded)\b|\bcrossed arms\b|\b(one|an) arm across\b", re.I),
+        "os braços estão levantados no prompt e a troca os cruza (cubra com sombra ou enquadramento)",
+    ),
+)
+"""Pares (o que o prompt original diz, o que a troca não pode dizer, o motivo) que os modelos de suavização violaram
+em testes reais (02/10/2026): cobrir uma pessoa de cabelo preso com "cabelo caindo sobre o corpo", ou cruzar braços já
+levantados. É uma rede de segurança fácil de estender; a regra geral (não contradizer o prompt) está na instrução."""
+
+
+def _aplicar_trocas(texto: str, resposta: str) -> tuple[str | None, str | None]:
+    """Aplica ao ``texto`` as trocas que o modelo apontou. Devolve ``(texto novo, None)`` ou ``(None, motivo)``.
 
     Cada troca é ``{"trecho": ..., "novo": ...}``. Serve se: há pelo menos uma; todo ``trecho`` existe **literalmente** no
-    texto; ``trecho`` e ``novo`` não são vazios e são diferentes; nenhuma troca passa de ``TAMANHO_MAXIMO_DE_UMA_TROCA``;
-    duas trocas não se sobrepõem; e o total trocado não passa de ``FRACAO_MAXIMA_TROCADA`` do texto. O que fica fora das
-    trocas é copiado **sem alteração**.
+    texto; ``trecho`` e ``novo`` não são vazios nem iguais; nenhuma troca passa de ``TAMANHO_MAXIMO_DE_UMA_TROCA``;
+    duas trocas não se sobrepõem; o total trocado não passa de ``FRACAO_MAXIMA_TROCADA`` do texto; e nenhum ``novo`` cai
+    em ``CONTRADICOES_CONHECIDAS``. O que fica fora das trocas é copiado **sem alteração**. O ``motivo`` só vem quando
+    há algo a dizer ao modelo na nova tentativa (hoje, as contradições); nos outros casos é ``None``.
     """
     dado = _extrair_json(resposta)
     trocas = dado.get("trocas") if dado else None
     if not isinstance(trocas, list) or not trocas:
-        return None
+        return None, None
 
     achadas: list[tuple[int, int, str]] = []  # (início, fim, novo)
     for troca in trocas:
         if not isinstance(troca, dict):
-            return None
+            return None, None
         trecho, novo = troca.get("trecho"), troca.get("novo")
         if not (isinstance(trecho, str) and isinstance(novo, str)):
-            return None
+            return None, None
         trecho, novo = trecho.strip(), novo.strip()
         if not trecho or not novo or trecho == novo or len(trecho) > TAMANHO_MAXIMO_DE_UMA_TROCA:
-            return None
+            return None, None
         inicio = texto.find(trecho)
         if inicio == -1:
-            return None
+            return None, None
+        for no_original, no_novo, motivo in CONTRADICOES_CONHECIDAS:
+            if no_original.search(texto) and no_novo.search(novo):
+                return None, motivo
         achadas.append((inicio, inicio + len(trecho), novo))
 
     achadas.sort()
     for (_, fim_anterior, _), (inicio_seguinte, _, _) in zip(achadas, achadas[1:]):
         if inicio_seguinte < fim_anterior:
-            return None  # duas trocas no mesmo pedaço
+            return None, None  # duas trocas no mesmo pedaço
     if sum(fim - inicio for inicio, fim, _ in achadas) > len(texto) * FRACAO_MAXIMA_TROCADA:
-        return None
+        return None, None
 
     pedacos: list[str] = []
     cursor = 0
@@ -1282,7 +1333,7 @@ def _aplicar_trocas(texto: str, resposta: str) -> str | None:
         pedacos.append(novo)
         cursor = fim
     pedacos.append(texto[cursor:])
-    return "".join(pedacos)
+    return "".join(pedacos), None
 
 
 def _extrair_json(resposta: str) -> dict | None:

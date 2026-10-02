@@ -189,7 +189,7 @@ def _provedor_em_sequencia(respostas: list[dict], usos: list | None = None):
     return ProvedorOpenRouter(chave_api="chave-de-teste", cliente=cliente, ao_usar=usos.append if usos is not None else None), pedidos
 
 
-TROCA_CERTA = ("nude with pale, smooth skin", "bare shoulders and arms, pale, smooth skin, her long hair falling over her body")
+TROCA_CERTA = ("nude with pale, smooth skin", "bare shoulders and arms, pale, smooth skin, her torso softly lost in shadow")
 
 
 def teste_suavizar_troca_so_o_trecho_explicito_e_deixa_o_resto_identico() -> None:
@@ -200,7 +200,7 @@ def teste_suavizar_troca_so_o_trecho_explicito_e_deixa_o_resto_identico() -> Non
 
     # Tudo o que não é a troca é idêntico ao original, inclusive as vírgulas, os espaços duplos e as quebras de linha.
     assert suave.texto == PROMPT_RECUSADO.replace(TROCA_CERTA[0], TROCA_CERTA[1])
-    assert suave.texto.startswith("medium shot, Auri, bare shoulders and arms, pale, smooth skin, her long hair falling over her body, long golden hair")
+    assert suave.texto.startswith("medium shot, Auri, bare shoulders and arms, pale, smooth skin, her torso softly lost in shadow, long golden hair")
     assert "oil painting style,  --v 5 --q 2 --ar 3:4\n\nStyle: oil painting." in suave.texto
     assert suave.modelo == "openai/gpt-4o-mini"
     assert "PROMPT RECUSADO PELO PROVEDOR DE IMAGEM:\n" + PROMPT_RECUSADO == json.loads(pedidos[0].content)["messages"][1]["content"]
@@ -217,14 +217,14 @@ def teste_suavizar_usa_temperatura_baixa() -> None:
 
 def teste_suavizar_aplica_mais_de_uma_troca() -> None:
     provedor, _ = _provedor_em_sequencia(
-        [_resposta_de_trocas(("nude", "bare shoulders, covered by her hair"), ("slender arms raised", "slender arms crossed"))]
+        [_resposta_de_trocas(("nude", "bare shoulders, covered by her hair"), ("slender arms raised", "slender arms reaching toward the light"))]
     )
 
     original = "close-up, Auri, nude, long golden hair, slender arms raised, soft diffuse light, oil painting style, 2:3"
     suave = provedor.suavizar_prompt(original, "openai/gpt-4o-mini")
 
     assert suave.texto == (
-        "close-up, Auri, bare shoulders, covered by her hair, long golden hair, slender arms crossed, "
+        "close-up, Auri, bare shoulders, covered by her hair, long golden hair, slender arms reaching toward the light, "
         "soft diffuse light, oil painting style, 2:3"
     )
 
@@ -243,7 +243,7 @@ def teste_suavizar_recusa_troca_invalida_e_tenta_de_novo(troca: tuple[str, str])
 
     suave = provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
-    assert "her long hair falling over her body" in suave.texto
+    assert "her torso softly lost in shadow" in suave.texto
     assert len(pedidos) == 2
 
 
@@ -346,7 +346,7 @@ def teste_a_instrucao_de_suavizacao_manda_sugerir_e_nao_vestir_nem_so_apagar() -
     assert "DUAS coisas" in texto_corrido and "APARECE" in texto_corrido and "COBRE o resto" in texto_corrido
     assert "Apagar só a palavra" in texto_corrido and "NÃO basta" in texto_corrido
     assert "Exemplo CERTO" in instrucao and "Exemplo ERRADO 1" in instrucao and "Exemplo ERRADO 2" in instrucao
-    assert "her long hair falling over her body" in instrucao
+    assert "her torso softly lost in shadow" in instrucao
     assert "cabelo, tecido" not in instrucao  # "tecido" saiu da lista: o modelo o entendia como roupa
 
 
@@ -383,3 +383,65 @@ def teste_a_instrucao_de_suavizacao_pede_o_trecho_completo_com_os_adjetivos() ->
 
     texto = " ".join(json.loads(pedidos[0].content)["messages"][0]["content"].split())
     assert "COMPLETO" in texto and "sem partir a expressão no meio" in texto
+
+
+def teste_a_instrucao_de_suavizacao_manda_tirar_a_ferida_aberta_e_nao_so_a_palavra_sangue() -> None:
+    """02/10: o gpt-4.1-mini tirava "blood" e mantinha "a deep gaping wound" (4 de 4 gerações)."""
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(TROCA_CERTA)])
+
+    provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
+
+    texto = " ".join(json.loads(pedidos[0].content)["messages"][0]["content"].split())
+    assert "troque também a ferida aberta, o corte e o corpo mutilado, não só a palavra" in texto
+    assert 'a dark shadow across his chest, his torn armor stained' in texto  # o exemplo certo
+    assert "só tirou a palavra" in texto  # o exemplo errado
+
+
+def teste_suavizar_recusa_cabelo_caindo_sobre_o_corpo_quando_o_prompt_diz_que_esta_preso() -> None:
+    """02/10: os dois modelos cobriam a Auri (cabelo em rabo de cavalo) com "cabelo caindo sobre o corpo"."""
+    ruim = _resposta_de_trocas(("nude with pale, smooth skin", "bare shoulders and arms, her long hair falling over her body"))
+    provedor, pedidos = _provedor_em_sequencia([ruim, _resposta_de_trocas(TROCA_SOMBRA)])
+
+    suave = provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4.1-mini")
+
+    assert "her torso softly lost in shadow" in suave.texto
+    assert "falling over her body" not in suave.texto
+    assert len(pedidos) == 2
+    # A segunda tentativa diz por que a primeira foi recusada.
+    segundo = json.loads(pedidos[1].content)["messages"][1]["content"]
+    assert "ATENÇÃO: a sua resposta anterior foi recusada porque o cabelo está preso no prompt" in segundo
+    assert "ATENÇÃO" not in json.loads(pedidos[0].content)["messages"][1]["content"]
+
+
+def teste_suavizar_aceita_cabelo_caindo_se_o_prompt_nao_diz_que_esta_preso() -> None:
+    provedor, pedidos = _provedor_em_sequencia(
+        [_resposta_de_trocas(("nude", "bare shoulders, her long hair falling over her body"))]
+    )
+
+    suave = provedor.suavizar_prompt("close-up, Auri, nude, long golden hair, oil painting", "openai/gpt-4.1-mini")
+
+    assert "falling over her body" in suave.texto
+    assert len(pedidos) == 1
+
+
+def teste_suavizar_recusa_cruzar_bracos_que_o_prompt_diz_que_estao_levantados() -> None:
+    cruzado = _resposta_de_trocas(("nude", "bare shoulders, one arm across her chest"))
+    provedor, pedidos = _provedor_em_sequencia([cruzado, _resposta_de_trocas(("nude", "bare shoulders, half in shadow"))])
+
+    suave = provedor.suavizar_prompt("close-up, Auri, nude, slender arms raised, oil painting", "openai/gpt-4.1-mini")
+
+    assert "half in shadow" in suave.texto
+    assert "os braços estão levantados no prompt" in json.loads(pedidos[1].content)["messages"][1]["content"]
+
+
+def teste_suavizar_que_contradiz_duas_vezes_e_erro() -> None:
+    ruim = _resposta_de_trocas(("nude with pale, smooth skin", "bare shoulders, her long hair falling over her body"))
+    provedor, pedidos = _provedor_em_sequencia([ruim, ruim])
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4.1-mini")
+
+    assert len(pedidos) == 2
+
+
+TROCA_SOMBRA = ("nude with pale, smooth skin", "bare shoulders and arms, her torso softly lost in shadow, pale, smooth skin")

@@ -2745,6 +2745,44 @@ Na **tela cheia** da imagem (J4), três ações:
 
 **Leitura:** (1) **X1 funcionou**: o `gpt-4o-mini` foi de 3/4 para 5/5 em humor e pose. (2) **Mas há um custo**: com a instrução de humor e pose, o `gpt-4o-mini` passou a **omitir a nudez no estado** (1/5; era 3/4), porque descreve o momento anterior (espreguiçando, de camisola). (3) O **`flash-lite` é o pior** nos dois critérios (0/5 de nudez, 0/5 de pose): **descartado** para extração. (4) `gemini-2.5-flash` e `gpt-4.1-mini` seguram humor, pose e nudez juntos, pelo mesmo custo; o primeiro falhou o JSON uma vez em cinco, o segundo mostrou mais invenções antes. (5) **Nenhum resultado de clima "triste" na prosa (0 em 19 prompts)**, mas as palavras de clima do perfil (*introspective, dreamy, ethereal*) ainda aparecem na prosa em média 0,6 a 2,0 vezes por prompt: o X2 reduz, não elimina; não há base de comparação *antes* (não medi). **O achado que importa: a mistura de momentos agora é visível e prejudica**: o estado junta a Auri vestida (camisola, vestido, caixa de cedro) e nua, e o prompt sai contraditório (*"completely nude… soft dress texture"*; *"wearing a soft camisole before transitioning to her favorite dress, finally nude"*). **A regra do "momento" (parada por decisão do Allan) é a que falta.** **Proposta refinada, sem o risco de "ficar sem insumos":** o prompt escolhe **um instante** (o do **primeiro** momento em que o elemento aparece, ou o que a cena indica) e descreve só o que vale nele; os outros momentos servem **apenas para traços permanentes** (cabelo, pele, humor, porte), **nunca para roupa ou pose** que contradigam o instante. **Pendente do Allan.** **Recomendação de `modelo_extracao`:** `google/gemini-2.5-flash` ou `openai/gpt-4.1-mini` (o `flash-lite` não).
 
+**A regra do momento (Y1 a Y4, 02/10/2026, decidida com o Allan).** Do achado acima (o estado junta a Auri vestida e nua, e o prompt sai contraditório). **Decisão:** um **instante só**, sem deixar a IA sem insumos.
+
+- **Y1 — O estado descreve o primeiro instante (item 4.4, fase 2).** Se o elemento muda de roupa, pose ou estado ao longo do capítulo, a leitura descreve **roupa, pose, expressão e humor do PRIMEIRO instante em que ele aparece**. Os outros momentos servem **só para traços permanentes** (cabelo, pele, porte, jeito de ser), nunca para roupa ou pose que contradigam o primeiro instante.
+- **Y2 — O prompt escolhe um instante (item 4.4, passo 8).** **Em uma cena**, o instante é o que a **descrição da cena** indica. **Em um retrato** (sem cena), é o **primeiro momento descrito**. Dos outros momentos entram só os traços permanentes; **nunca** roupa ou pose que contradigam o instante (o prompt não junta *"nude"* com roupa, nem duas poses incompatíveis). O **comentário do usuário** continua com a prioridade máxima: é por ele que se pede outro momento.
+- **Y3 — Consequência para a Auri (capítulo 6).** O primeiro instante dela no capítulo é **acordando e se arrumando, de camisola**, não a cena final nua com o cabelo preso. O **retrato** passa a sair desse primeiro instante. Para a cena final, usar uma **cena** com a descrição escrita, ou o **ajuste** do *Novo prompt* (*"o momento em que fica nua e prende o cabelo"*).
+- **Y4 — Modelos padrão (decisão do Allan, 02/10/2026).** `modelo_extracao` e `modelo_prompt` = **`openai/gpt-4.1-mini`**. Ficam como **configuração do Allan** (nada no código os impõe: a configuração continua nascendo vazia, item 3.4d). A comparação do `gemini-2.5-flash` com o `gpt-4.1-mini` para o **perfil** e a **suavização** vem a seguir.
+
+**Implementado (02/10/2026, noite): Y1, Y2 e Y4; trava de contradição na suavização; comparação de modelos para o perfil e a suavização** (614 testes no backend; 11 novos no dia desta rodada).
+
+**Y1 e Y2, medidos** (a Auri; estado e prompt pelo `gpt-4.1-mini`, 6 rodadas): humor **6/6**, pose **6/6**, alegria no prompt **6/6**, **nude + roupa no mesmo prompt: 0/6** (era comum antes). O estado agora descreve o **primeiro instante** (acordando e sorrindo para a nesga de luz, depois se arrumando). **Consequência (Y3):** o retrato da Auri deixa de ser a cena nua final. O `gemini-2.5-flash` como extração **ignora o "primeiro instante"** e ainda vai ao momento nu (5/6), e por isso o `gpt-4.1-mini` é o padrão (Y4, configurado na máquina do Allan).
+
+**A suavização tinha um defeito na própria instrução.** O *"Exemplo CERTO"* dela era `her long hair falling over her body`, e os modelos o copiavam: em prompts de **cabelo preso** (rabo de cavalo) isso é uma contradição (cabelo preso e solto), e ela aparecia em **15 de 32** gerações. **Correções:** (1) o exemplo certo passou a ser com **sombra** (`her torso softly lost in shadow`) e o cabelo caindo só vale se o prompt não o descreve preso; (2) **trava no servidor** (`CONTRADICOES_CONHECIDAS`): uma troca que faz o cabelo preso cair sobre o corpo, ou cruza braços já levantados, é recusada e, na segunda tentativa, o modelo recebe o **motivo** (*"ATENÇÃO: a sua resposta anterior foi recusada porque..."*); duas contradições seguidas = erro; (3) exemplo de **violência** (*"a deep gaping wound... with blood pouring out"* → *"a dark shadow across his chest, his torn armor stained"*), porque o `gpt-4.1-mini` tirava só a palavra *blood* e mantinha a ferida aberta. 6 testes novos.
+
+**Comparação para a suavização** (`gemini-2.5-flash` contra `gpt-4.1-mini`; 8 gerações por caso; 3 casos: a Auri com cabelo preso e braços levantados, a Auri em plano médio nua, e uma cena de violência sintética; **depois das correções acima**):
+
+| Critério | `gemini-2.5-flash` | `gpt-4.1-mini` |
+|---|---|---|
+| explícito removido | 24/24 | 24/24 |
+| com cobertura escrita | 24/24 | 24/24 |
+| roupa acrescentada | 0/24 | 0/24 |
+| contradição com o prompt | 0/24 | 0/24 |
+| US$ por suavização | 0,00049 a 0,00058 | **0,00029 a 0,00052** |
+| tempo | 1,8 a 2,0 s | 1,6 a 2,0 s |
+
+**Empate técnico**; o `gpt-4.1-mini` é um pouco mais barato. **Antes das correções** os dois erravam a regra de não contradizer cerca de metade das vezes (em casos opostos), então o que decidia o resultado era a instrução e a trava, não o modelo.
+
+**Comparação para o perfil** (`sugerir_perfil_renderizacao` do livro *A música do silêncio*, categoria pintura a óleo; 3 gerações por modelo, com busca na web):
+
+| Critério | `gemini-2.5-flash` | `gpt-4.1-mini` |
+|---|---|---|
+| reconheceu a obra | 3/3 | 3/3 |
+| campos preenchidos (de 5) | 5,0 | 5,0 |
+| palavras de clima no `estilo` (média) | **1,7** | **0,7** |
+| US$ por perfil | 0,0084 | **0,0048** (varia: a busca na web muda o custo) |
+| tempo | 3,7 s | 2,9 s |
+
+Exemplo (`estilo`): Gemini *"pintura a óleo com pinceladas visíveis... atmosfera onírica e **melancólica**"*; `gpt-4.1-mini` *"pintura a óleo, pinceladas visíveis, iluminação suave e difusa"*. **Leitura:** o Gemini é mais evocativo e específico (sépia, verde acinzentado, ambiente subterrâneo), mas **carrega clima** (*melancólica*), justamente o que empurrou a imagem da Auri para o triste; o `gpt-4.1-mini` é mais neutro e mais genérico (*"tons suaves e terrosos"*). Os dois sugeriram *John William Waterhouse*, e o perfil que o Allan escreveu (Friedrich) é melhor que ambos. O perfil é **um por livro**, então o custo quase não pesa. **Recomendação:** `gpt-4.1-mini` para o perfil, por ser neutro no clima (a decisão é do Allan). **Limites:** poucas gerações, um livro, avaliação minha.
+
 #### Incremento 11 do app, primeira fatia — os ícones dos elementos no texto (implementado em 30/09/2026)
 
 **Pedido do Allan:** ao analisar o capítulo, as sugestões aparecem no painel de IA **e também como ícones no texto**. Fatia combinada com ele, dada a pouca cota do dia: **só os elementos, de ponta a ponta**; as cenas entram depois.
