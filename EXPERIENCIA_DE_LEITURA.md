@@ -55,7 +55,7 @@ A mudança de visão: o Imagineer passa a ser o lugar onde o livro é **lido**, 
 | Estatísticas de leitura (tempo, sequência) | Parcial | Sim | Sim | Não | **Não existe** | Baixa |
 | Texto-pra-voz (TTS) | Sim | Sim | Sim | Sim (Siri) | **Não existe** | Avaliar com cautela (foge do propósito visual/afantasia — só priorizar se pedido explícito) |
 | Fontes customizadas/embutidas do EPUB | Parcial | Sim | Parcial | Parcial | **Não existe** (texto extraído, sem preservar fonte) | Baixa, nicho |
-| Dicionário/tradução por seleção de palavra | Sim | Sim | Sim | Sim | **Não existe** | Baixa |
+| Dicionário/tradução por seleção de palavra | Sim | Sim | Sim | Sim | **Não existe** | Baixa, mas Allan já tem arquivos `.dict` prontos — ver seção 8 |
 | Catalogação de elementos/personagens por capítulo com evolução temporal | Não (X-Ray é estático) | Não | Não | Não | **Sim — já é o core do Imagineer** | **Diferencial nosso, nenhum concorrente tem** |
 | Geração de imagem de cena/personagem | Não | Não | Não | Não | **Sim — já é o core do Imagineer** | **Diferencial nosso** |
 
@@ -97,7 +97,30 @@ Nenhuma dessas é uma decisão tomada — são direções que valem a conversa q
 
 ---
 
-## 7. Como usar este documento
+## 7. Modo dicionário/tradutor offline com arquivos `.dict` (02/10/2026)
+
+Ideia levantada por Allan: ele já tem vários arquivos `.dict` e quer incorporá-los ao app como um modo dicionário/tradutor, consultado por seleção de palavra durante a leitura.
+
+**Viabilidade (avaliação inicial, sem compromisso de implementação):** parece viável. `.dict` é normalmente parte do formato **StarDict/dictd** (o mesmo usado por GoldenDict, Aard, etc.), composto por um conjunto de arquivos junto do `.dict`:
+- `.ifo` — metadados em texto puro (nome do dicionário, idioma, quantidade de entradas).
+- `.idx` (às vezes `.idx.gz`) — índice ordenado alfabeticamente, palavra → posição/tamanho no arquivo `.dict`.
+- `.dict` (às vezes `.dict.dz`, comprimido) — o conteúdo das definições em si.
+
+É um formato aberto, bem documentado publicamente, sem necessidade de biblioteca de terceiros pesada — leitura binária simples + busca binária no índice (já vem ordenado), o que funciona bem mesmo com dicionários grandes. Funciona **inteiramente offline**, sem custo de API nem dependência de internet — compatível com a filosofia self-hosted/privada já registrada como diferencial do Imagineer (`ESPECIFICACAO.md` → "Análise de mercado e diferenciação").
+
+**Perguntas em aberto, ainda sem decisão:**
+- Allan confirma que os arquivos que ele tem são de fato StarDict/dictd (checar as extensões companheiras — `.ifo`/`.idx` junto do `.dict`) antes de especificar o parser; se for outro formato com a mesma extensão `.dict`, o parser muda.
+- Como os arquivos entram no app: importados pelo usuário via seletor de arquivo (mesmo padrão já usado pra importar imagem — item 7.7) ou embutidos como asset do próprio APK?
+- Um dicionário por idioma, ou vários simultâneos com prioridade/fallback entre eles (útil se Allan tiver, por ex., um `.dict` inglês-português e outro de sinônimos)?
+- A consulta é só definição/tradução "dicionário clássico" (parecido com o item já listado na seção 3, "dicionário por seleção de palavra") ou ele imagina algo mais parecido com tradução de frase inteira — isso muda bastante o escopo, porque StarDict é fundamentalmente palavra/expressão curta, não tradução de frase.
+- Onde os arquivos ficam armazenados no dispositivo (mesma pasta de dados do app, ou local escolhido pelo usuário) e o que acontece se o arquivo for grande (alguns dicionários StarDict passam de 100MB).
+- Isso se conecta à funcionalidade de seleção de texto que a leitura completa (seção 4, item "marcadores e destaques") também vai precisar — faz sentido especificar os dois juntos, já que ambos dependem do mesmo mecanismo de "usuário seleciona um trecho do texto durante a leitura".
+
+Prioridade: hoje listado como "baixa" na tabela da seção 3 (não bloqueia a experiência central de leitura), mas sobe de interesse por já ter o material (arquivos `.dict`) em mãos — custo de aquisição de conteúdo já pago, resta só o custo de implementação.
+
+---
+
+## 8. Como usar este documento
 
 Quando Allan (ou uma sessão futura do Claude Code) quiser avançar num desses pontos:
 1. Ler a seção 4 (lacunas priorizadas) pra saber por onde começar.
