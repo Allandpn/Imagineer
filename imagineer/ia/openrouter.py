@@ -173,6 +173,12 @@ pega o livro e sai", mas o momento em que a mão toca a página.
 para este elemento (uma vela, o sol poente, poeira no ar) — não invente uma \
 fonte de luz que o texto não menciona; isso é papel da cena, não do elemento.
 
+Expressão e postura NUNCA ficam de fora: toda descrição de pessoa ou criatura inclui a \
+expressão do rosto (sorriso, olhar, tensão) e a postura ou o gesto do instante descrito, \
+sempre que o texto os sustenta, e também o humor que se vê (animada, nervosa, cansada), \
+traduzido em músculo e postura. Uma descrição só com cabelo, pele e roupa é pobre demais \
+para virar imagem: ela perde a emoção da cena.
+
 Regras de fidelidade ao texto (mais importantes que o estilo de escrita acima):
 - Descreva só o que o texto diz ou implica com segurança. Não invente detalhes \
 que o texto não sustenta, mesmo que pareçam plausíveis para o gênero da obra.
@@ -316,6 +322,12 @@ nenhuma; e nunca omita, atenue ou troque por conta própria nudez, violência ou
 qualquer outro conteúdo sensível, nem para "proteger" a imagem. Outra etapa do sistema \
 cuida disso depois, só se o provedor de imagem recusar o prompt; aqui o seu trabalho é \
 ser fiel. Também não acrescente nada que a descrição não diga.
+- **O clima emocional vem da cena, não do perfil de estilo.** O humor da imagem é o da \
+expressão e da postura descritas para a pessoa e para a cena: se a descrição mostra \
+animação, sorriso ou energia, o prompt NÃO pode soar contemplativo, triste ou \
+melancólico. Do perfil use só a técnica (pincelada, luz, paleta, formato, referência). \
+As palavras de clima do perfil (como "contemplativa", "introspectiva", "onírica") entram \
+só no bloco final de estética, traduzidas literalmente, e nunca na prosa da cena.
 - Incorpore o estilo, a iluminação e a paleta do perfil indicado.
 - **Gênero de cada pessoa presente, sempre que a identidade ou a aparência \
 informada permitir concluir com segurança**: deixe isso inequívoco no prompt \

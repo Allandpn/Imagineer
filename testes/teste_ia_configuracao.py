@@ -495,6 +495,41 @@ def teste_a_instrucao_do_prompt_manda_ser_fiel_ao_autor_inclusive_no_que_e_delic
     assert "não invente nenhuma" in instrucao  # fidelidade vale nos dois sentidos: nada a mais
 
 
+def _instrucao_enviada(chamar) -> str:
+    """Roda `chamar(provedor)` contra um transporte falso e devolve a instrução (mensagem de sistema) enviada."""
+    capturado: dict = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado.update(json.loads(pedido.content))
+        return httpx.Response(200, json=_resposta_de_conversa('{"descricao": "x"}'))
+
+    cliente = httpx.Client(base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder))
+    chamar(ProvedorOpenRouter(chave_api="chave", cliente=cliente))
+    return " ".join(capturado["messages"][0]["content"].split())
+
+
+def teste_a_instrucao_do_estado_exige_expressao_e_postura() -> None:
+    """02/10 (X1): o estado da Auri saiu sem sorriso nem pose e o retrato perdeu a alegria."""
+    instrucao = _instrucao_enviada(
+        lambda p: p.sugerir_estado("texto", TipoElemento.PERSONAGEM, "Auri", None, None, "modelo/x")
+    )
+
+    assert "Expressão e postura NUNCA ficam de fora" in instrucao
+    assert "expressão do rosto (sorriso, olhar, tensão)" in instrucao
+    assert "o humor que se vê" in instrucao
+    assert "pobre demais para virar imagem" in instrucao
+
+
+def teste_a_instrucao_do_prompt_poe_o_clima_da_cena_acima_do_do_perfil() -> None:
+    """02/10 (X2): o clima "introspectivo" do perfil estava vencendo a alegria da cena."""
+    instrucao = _instrucao_enviada(lambda p: p.montar_prompt("", ["Auri: sorri"], "estilo: x", "modelo/x"))
+
+    assert "O clima emocional vem da cena, não do perfil de estilo" in instrucao
+    assert "NÃO pode soar contemplativo, triste ou melancólico" in instrucao
+    assert "Do perfil use só a técnica" in instrucao
+    assert 'só no bloco final de estética, traduzidas literalmente, e nunca na prosa da cena' in instrucao
+
+
 def teste_montar_prompt_sem_comentario_nao_menciona_prioridade() -> None:
     """Sem comentário, não sobra rastro de um campo vazio na mensagem."""
     capturado = {}
