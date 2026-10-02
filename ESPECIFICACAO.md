@@ -2707,6 +2707,24 @@ Na **tela cheia** da imagem (J4), três ações:
 
 **O achado maior, que não é de modelo: todos misturam os dois momentos do capítulo** (a Auri se espreguiçando de vestido, e depois nua prendendo o cabelo), e só 0 a 2 de cada 4 respeitaram a regra de "um instante congelado". O estado é uma **linha do tempo do capítulo**, e o retrato não diz qual momento quer. Resultado: prompts com *"nua, braços levantados, nas pontas dos pés"*, que o capítulo nunca mostra juntos. **Proposta (não implementada, decisão do Allan):** para o retrato (sem descrição de cena), o *montar_prompt* deve **escolher UM momento, o último do capítulo em que o elemento aparece**, e ignorar os outros; e/ou o *Novo prompt* aceitar "qual momento" no ajuste. **Recomendação de configuração** (também do Allan; nada foi alterado): `modelo_extracao` = `google/gemini-2.5-flash-lite` e `modelo_prompt` = `google/gemini-2.5-flash-lite` (ou manter o `gpt-4o-mini` no prompt, sem perda mensurável); `modelo_suavizacao` = `google/gemini-2.5-flash` (teste anterior). O custo do texto de uma imagem fica em **cerca de US$ 0,0005**, contra **US$ 0,01** da imagem.
 
+**Teste de modelos de imagem com o prompt suavizado da Auri (02/10/2026, noite).** O prompt suavizado (em português, *"ombros e braços nus, com longos cabelos dourados caindo sobre o corpo e presos em um rabo de cavalo..."*) foi **recusado pelo `meta/muse-image`**. O Allan pediu um modelo que o aceitasse, fiel e de custo baixo. Uma geração por modelo, pelo `POST /api/v1/images`, com o prompt **exatamente como colado**. **Limites:** uma imagem por modelo, avaliação visual minha, um prompt só.
+
+| Modelo | US$ reais | Tempo | Resultado e fidelidade ao prompt |
+|---|---|---|---|
+| `bytedance-seed/seedream-5-0-flash` | 0,018 | 22 s | gerou; ombros e braços nus, rabo de cavalo com a tira cinza, paisagem e paleta; **acrescentou um pano de linho cobrindo o torso**; quadrada |
+| `microsoft/mai-image-2.6-flash` | 0,020 | 12 s | gerou; perfil, ombros nus, rabo de cavalo com a tira, paisagem; **vestido escuro acrescentado**; quadrada |
+| `sourceful/riverflow-v2.5-fast` | 0,023 | 25 s | gerou; ombros e costas nus, laço cinza; **pano branco no peito**; sem paisagem |
+| `black-forest-labs/flux.2-pro` | 0,030 | 40 s | gerou; costas nuas, **trança** (não rabo de cavalo) com fita cinza; **saia cinza acrescentada** |
+| `qwen/qwen-image-3` | 0,030 | 84 s | gerou; perfil, ombro e braço nus, rabo de cavalo com a tira, paisagem à Friedrich, **formato retrato (3:4)**; **vestido escuro acrescentado**; lento |
+| `recraft/recraft-v4.1` | 0,035 | 7 s | gerou; **o cabelo cobre o corpo** (o que o prompt pede), faixa no cabelo, pincelada de óleo forte, paleta azul e ocre, retrato; sem paisagem |
+| `google/gemini-2.5-flash-image` | 0,039 | 8 s | gerou; **costas e ombros nus**, rabo de cavalo com a tira, paisagem de ruínas e névoa à Friedrich; quadrada; mostra mais pele que o prompt |
+| `x-ai/grok-imagine-image-2.0` | 0,060 | 66 s | gerou; costas nuas, rabo de cavalo com a tira, pano no quadril; o mais caro e lento |
+| `krea/krea-2-medium-turbo` | 0,015 | 15 s | gerou, mas **corta o rosto e deixa um seio parcialmente visível**: mais explícito que o prompt; **descartado** |
+| `black-forest-labs/flux-3-image` | | | **recusou** (400, *flagged for sexual or adult content*), mesmo com o prompt suavizado |
+| `openai/gpt-image-1-mini`, `meta/muse-image` | | | **não rodaram**: *Key limit exceeded (total limit)* — o **limite total da chave do OpenRouter foi atingido durante a rodada** (a rodada custou US$ 0,27) |
+
+**Leitura:** os oito que geraram são **compatíveis com o código atual** (todos devolveram base64 e `media_type`; extensões `.jpg`, `.png` e `.webp` já mapeadas). Quase todos **acrescentaram pano ou vestido** (o modelo "se protege"), o que a suavização não pediu; só o **Recraft** fez o cabelo cobrir o corpo. Custo: de **1,5 a 6 vezes** o do `muse-image` (US$ 0,01). Candidatos para o Allan, que decide em `modelo_imagem`: `bytedance-seed/seedream-5-0-flash` (o mais barato aceitável), `recraft/recraft-v4.1` (o que melhor cobre com o cabelo) e `google/gemini-2.5-flash-image` (rápido, e o de cenário mais fiel, mas mostra mais pele). **Observação:** os prompts agora saem **em português** (o `modelo_prompt` novo ignora o *"em inglês"* da instrução); não medi o efeito na geração. **Atenção:** o limite da chave precisa ser aumentado no OpenRouter antes de novos testes.
+
 #### Incremento 11 do app, primeira fatia — os ícones dos elementos no texto (implementado em 30/09/2026)
 
 **Pedido do Allan:** ao analisar o capítulo, as sugestões aparecem no painel de IA **e também como ícones no texto**. Fatia combinada com ele, dada a pouca cota do dia: **só os elementos, de ponta a ponta**; as cenas entram depois.
