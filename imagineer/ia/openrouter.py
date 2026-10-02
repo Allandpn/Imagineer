@@ -336,40 +336,53 @@ sem numerar os blocos.
 """
 
 _INSTRUCAO_DE_SUAVIZACAO = """\
-Você reescreve um prompt de geração de imagem que o provedor de imagem RECUSOU por \
-conteúdo (moderação). O prompt chega dividido em TRECHOS numerados, na ordem em que \
-foi escrito. Reescreva **cada trecho**, um por um, e devolva a lista inteira.
+Você revisa um prompt de geração de imagem que o provedor de imagem RECUSOU por \
+conteúdo (moderação). O prompt vem de uma descrição escrita por um autor, e a ideia \
+dele tem de continuar legível. Sua tarefa é ACHAR os trechos que têm algo explícito e \
+reescrever SÓ esses. Todo o resto do prompt o sistema mantém EXATAMENTE como está: \
+você não o devolve e não pode mudá-lo.
 
-Responda APENAS com um JSON neste formato, com EXATAMENTE o mesmo número de itens e \
-na mesma ordem dos trechos recebidos:
-{"trechos": ["novo trecho 1", "novo trecho 2", "..."]}
+Responda APENAS com um JSON neste formato:
+{"trocas": [{"trecho": "texto EXATO tirado do prompt", "novo": "a nova redação desse trecho"}]}
 
-Regras de fidelidade (o mais importante: o prompt vem da descrição de um autor, e \
-nada do que ele descreveu pode se perder):
-- Cada item da lista é a nova redação do trecho de MESMO número. Nunca junte dois \
-trechos, nunca pule um, nunca acrescente um item novo, nunca devolva um item vazio.
-- Trecho sem nada explícito: devolva-o IDÊNTICO, palavra por palavra. Isso vale para \
-pele, cabelo, expressão, postura, objetos, luz, cenário e estilo (inclusive o bloco \
-final de estética, como "cinematic style" e "2:3").
-- Trecho com algo explícito: mude o MÍNIMO. Troque só a palavra ou a expressão \
-explícita e mantenha o resto do trecho como está; não troque por sinônimos o que não \
-era problema.
+Regras das trocas:
+- "trecho" tem de ser copiado LETRA POR LETRA do prompt (o sistema o procura no texto). \
+Pegue só o pedaço mínimo que precisa mudar, com poucas palavras, mas COMPLETO: inclua \
+os adjetivos ligados ao trecho explícito, sem partir a expressão no meio (por exemplo \
+"nude with pale, smooth skin" inteiro, e não só "nude with pale"). Nunca uma frase \
+inteira nem o prompt todo.
+- Só entram trechos que precisam mudar. O que não é explícito NÃO entra na lista: pele, \
+cabelo, expressão, postura, objetos, luz, cenário, estilo e o bloco final de estética \
+ficam como estão.
+- Se mais de um trecho for explícito, uma troca para cada um. Nunca devolva "novo" vazio.
+- Mude o MÍNIMO: troque só a palavra ou a expressão explícita e mantenha, no "novo", o \
+que era do trecho e não era problema (como "pale, smooth skin"). Não troque por \
+sinônimos o que não era problema.
 
-O que é "explícito" e como suavizar:
+O que é "explícito" e como reescrever:
 - Nudez: o objetivo é SUGERIR, e não vestir. NÃO acrescente roupa, tecido, manto, \
-vestido, pano, túnica nem qualquer peça de vestuário que o trecho original não citava: \
-a pessoa continua como o autor a descreveu, só sem as palavras explícitas. Não use \
-nude, naked, topless nem bare body. A cobertura parcial vem da COMPOSIÇÃO: o cabelo \
-caindo sobre o corpo, um braço ou uma mão, a pose, a sombra, o enquadramento \
-(close-up, do ombro para cima) ou objetos do cenário na frente. Ombros e braços podem \
-aparecer.
-  Exemplo CERTO: "nude with pale smooth skin" -> "pale smooth skin, bare shoulders and \
-arms, her long hair falling over her body".
-  Exemplo ERRADO: "nude with pale smooth skin" -> "wearing a loose linen dress" (isso \
+vestido, pano, túnica nem qualquer peça de vestuário que o prompt não citava: a pessoa \
+continua como o autor a descreveu, só sem as palavras explícitas. Não use nude, naked, \
+topless nem bare body. O "novo" de um trecho de nudez tem de dizer DUAS coisas: o que \
+APARECE (por exemplo, ombros e braços) E o que COBRE o resto, escrito por extenso (por \
+exemplo "her long hair falling over her body", "one arm across her chest", "half in \
+shadow"). Apagar só a palavra "nude", ou escrever só "bare shoulders and arms", NÃO \
+basta: sem a cobertura escrita, a ideia do autor se perde. A cobertura vem da \
+COMPOSIÇÃO: o cabelo caindo sobre o corpo, um braço ou uma mão, a pose, a sombra, o \
+enquadramento ou objetos do cenário na frente. A cobertura NÃO pode contradizer o resto \
+do prompt: se o cabelo está preso, não o faça cair sobre o corpo; se os braços estão \
+levantados, não os cruze nem os abaixe. Quando a pose e o cabelo já estão descritos no \
+prompt, cubra com SOMBRA ou ENQUADRAMENTO, que não conflitam com nada ("her torso softly \
+lost in shadow", "the lower body outside the frame", "soft shadows across her chest").
+  Exemplo CERTO: "nude with pale, smooth skin" -> "bare shoulders and arms, pale, smooth \
+skin, her long hair falling over her body".
+  Exemplo ERRADO 1: "nude with pale, smooth skin" -> "pale, smooth skin" (só apagou a \
+palavra: a ideia do autor se perdeu).
+  Exemplo ERRADO 2: "nude with pale, smooth skin" -> "wearing a loose linen dress" (isso \
 muda o que o autor descreveu).
 - Violência: sempre sem sangue e sem nada explícito. Sugira pelo instante antes ou \
 depois, por sombras, pela expressão e pela postura.
-- Menores de idade: SÓ quando o trecho disser ou deixar claro que a pessoa é criança, \
+- Menores de idade: SÓ quando o prompt disser ou deixar claro que a pessoa é criança, \
 adolescente ou tem menos de 18 anos ("child", "girl", "boy", "teenager", uma idade \
 abaixo de 18), ela fica sempre vestida e nunca em cena sensual. "Young woman" e "young \
 man" são adultos: não aplique esta regra a eles, e nunca vista alguém só por precaução.
@@ -702,33 +715,27 @@ class ProvedorOpenRouter(ProvedorIA):
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
 
     def suavizar_prompt(self, texto: str, modelo: str) -> PromptMontado:
-        """Suaviza um prompt recusado **trecho a trecho**, sem perder nenhum (S7 revisada, item 6.6).
+        """Suaviza um prompt recusado trocando **só os trechos explícitos**, e deixa o resto idêntico (S7 revisada).
 
-        O prompt é uma lista separada por vírgulas (item 4.4). O modelo recebe os trechos numerados e tem de
-        devolver **o mesmo número de itens**, cada um a nova redação do trecho de mesmo número; o servidor junta
-        na ordem. Com isso o modelo não consegue suprimir em silêncio um ponto da descrição do autor. Número
-        diferente (ou item vazio) = uma nova tentativa; errando de novo, ``ErroDoProvedorIA``, e **nunca** um
-        prompt com trechos faltando.
+        O modelo recebe o prompt inteiro e devolve **pares** ``trecho exato -> nova redação``. O servidor confere que
+        cada trecho existe **literalmente** no prompt e faz a troca; todo o resto do texto fica como o autor o escreveu
+        **por construção**: o modelo não consegue suprimir um ponto da descrição, porque não devolve o texto, só as
+        trocas. Troca inválida (trecho que não existe, vazio, igual, que se sobrepõe a outra ou grande demais) ou
+        nenhuma troca = uma nova tentativa; errando de novo, ``ErroDoProvedorIA``.
         """
-        trechos = dividir_em_trechos(texto)
-        if not trechos:
+        if not texto.strip():
             raise ErroDoProvedorIA("O prompt a suavizar está vazio.")
-        lista = "\n".join(f"{numero}. {trecho}" for numero, trecho in enumerate(trechos, start=1))
-        pedido = (
-            f"TRECHOS DO PROMPT RECUSADO PELO PROVEDOR DE IMAGEM ({len(trechos)} no total):\n{lista}\n\n"
-            f'Devolva o JSON com exatamente {len(trechos)} itens em "trechos".'
-        )
+        pedido = f"PROMPT RECUSADO PELO PROVEDOR DE IMAGEM:\n{texto}"
 
         for _ in range(TENTATIVAS_DA_SUAVIZACAO):
             resposta = self._conversar(
                 modelo, _INSTRUCAO_DE_SUAVIZACAO, pedido, operacao="suavizacao", temperatura=TEMPERATURA_DA_SUAVIZACAO
             )
-            novos = _ler_trechos_suavizados(resposta, quantos=len(trechos))
-            if novos is not None:
-                return PromptMontado(texto=", ".join(novos), modelo=modelo)
+            suave = _aplicar_trocas(texto, resposta)
+            if suave is not None:
+                return PromptMontado(texto=suave, modelo=modelo)
         raise ErroDoProvedorIA(
-            f"O modelo {modelo} não devolveu os {len(trechos)} trechos da suavização, "
-            "e um prompt com trechos faltando mudaria o que o autor descreveu."
+            f"O modelo {modelo} não apontou trocas válidas para suavizar o prompt. Edite o prompt à mão e tente de novo."
         )
 
     def gerar_imagem(self, prompt: str, modelo: str) -> ImagemGerada:
@@ -1205,25 +1212,58 @@ def _interpretar_contexto(resposta: str) -> str:
 
 
 TENTATIVAS_DA_SUAVIZACAO = 2
-"""Quantas vezes se pede a suavização se o modelo errar o número de trechos: a primeira e mais uma."""
+"""Quantas vezes se pede a suavização se o modelo não apontar trocas válidas: a primeira e mais uma."""
+
+TAMANHO_MAXIMO_DE_UMA_TROCA = 200
+"""O maior trecho (em caracteres) que uma troca pode substituir: trocar uma frase inteira, ou o prompt todo, não é suavizar."""
+
+FRACAO_MAXIMA_TROCADA = 0.5
+"""No máximo metade do texto pode ser trocada: acima disso o modelo reescreveu o prompt, em vez de suavizá-lo."""
 
 
-def dividir_em_trechos(texto: str) -> list[str]:
-    """Divide um prompt em trechos pelas vírgulas, descartando os vazios (item 4.4: o prompt é uma lista)."""
-    return [trecho.strip() for trecho in texto.split(",") if trecho.strip()]
+def _aplicar_trocas(texto: str, resposta: str) -> str | None:
+    """Aplica ao ``texto`` as trocas que o modelo apontou, ou devolve ``None`` se a resposta não serve.
 
-
-def _ler_trechos_suavizados(resposta: str, quantos: int) -> list[str] | None:
-    """Os trechos que o modelo devolveu, ou ``None`` se não servem: sem JSON, sem lista, número diferente ou item vazio."""
+    Cada troca é ``{"trecho": ..., "novo": ...}``. Serve se: há pelo menos uma; todo ``trecho`` existe **literalmente** no
+    texto; ``trecho`` e ``novo`` não são vazios e são diferentes; nenhuma troca passa de ``TAMANHO_MAXIMO_DE_UMA_TROCA``;
+    duas trocas não se sobrepõem; e o total trocado não passa de ``FRACAO_MAXIMA_TROCADA`` do texto. O que fica fora das
+    trocas é copiado **sem alteração**.
+    """
     dado = _extrair_json(resposta)
-    if dado is None:
+    trocas = dado.get("trocas") if dado else None
+    if not isinstance(trocas, list) or not trocas:
         return None
-    itens = dado.get("trechos")
-    if not isinstance(itens, list) or len(itens) != quantos:
+
+    achadas: list[tuple[int, int, str]] = []  # (início, fim, novo)
+    for troca in trocas:
+        if not isinstance(troca, dict):
+            return None
+        trecho, novo = troca.get("trecho"), troca.get("novo")
+        if not (isinstance(trecho, str) and isinstance(novo, str)):
+            return None
+        trecho, novo = trecho.strip(), novo.strip()
+        if not trecho or not novo or trecho == novo or len(trecho) > TAMANHO_MAXIMO_DE_UMA_TROCA:
+            return None
+        inicio = texto.find(trecho)
+        if inicio == -1:
+            return None
+        achadas.append((inicio, inicio + len(trecho), novo))
+
+    achadas.sort()
+    for (_, fim_anterior, _), (inicio_seguinte, _, _) in zip(achadas, achadas[1:]):
+        if inicio_seguinte < fim_anterior:
+            return None  # duas trocas no mesmo pedaço
+    if sum(fim - inicio for inicio, fim, _ in achadas) > len(texto) * FRACAO_MAXIMA_TROCADA:
         return None
-    if not all(isinstance(item, str) and item.strip() for item in itens):
-        return None
-    return [item.strip() for item in itens]
+
+    pedacos: list[str] = []
+    cursor = 0
+    for inicio, fim, novo in achadas:
+        pedacos.append(texto[cursor:inicio])
+        pedacos.append(novo)
+        cursor = fim
+    pedacos.append(texto[cursor:])
+    return "".join(pedacos)
 
 
 def _extrair_json(resposta: str) -> dict | None:

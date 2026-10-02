@@ -10,7 +10,7 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from imagineer.ia.openrouter import ENDERECO_BASE, ProvedorOpenRouter, dividir_em_trechos
+from imagineer.ia.openrouter import ENDERECO_BASE, ProvedorOpenRouter
 from imagineer.ia.provedor import (
     ChaveDeApiAusente,
     ConteudoRecusado,
@@ -162,14 +162,19 @@ def teste_resposta_fora_do_formato_vira_erro_do_provedor(resposta: dict) -> None
 
 
 # --------------------------------------------------------------------------- #
-# suavizar_prompt (trecho a trecho, S7 revisada)
+# suavizar_prompt (troca só os trechos explícitos, S7 revisada)
 # --------------------------------------------------------------------------- #
 
-PROMPT_RECUSADO = "close-up, Auri, nude with pale smooth skin, long golden hair, joyful smile, cinematic style, 2:3"
+# O prompt real que o Allan testou em 02/10/2026 (com a vírgula dentro de "pale, smooth skin" e o bloco final em outra linha).
+PROMPT_RECUSADO = (
+    "medium shot, Auri, nude with pale, smooth skin, long golden hair tied in a ponytail, slender arms raised, "
+    "oil painting style,  --v 5 --q 2 --ar 3:4\n\nStyle: oil painting. Lighting: soft diffuse light. Format: portrait."
+)
 
 
-def _resposta_de_trechos(*trechos: str) -> dict:
-    return {"choices": [{"message": {"content": json.dumps({"trechos": list(trechos)})}}]}
+def _resposta_de_trocas(*trocas: tuple[str, str]) -> dict:
+    corpo = {"trocas": [{"trecho": trecho, "novo": novo} for trecho, novo in trocas]}
+    return {"choices": [{"message": {"content": json.dumps(corpo)}}]}
 
 
 def _provedor_em_sequencia(respostas: list[dict], usos: list | None = None):
@@ -184,69 +189,109 @@ def _provedor_em_sequencia(respostas: list[dict], usos: list | None = None):
     return ProvedorOpenRouter(chave_api="chave-de-teste", cliente=cliente, ao_usar=usos.append if usos is not None else None), pedidos
 
 
-def teste_suavizar_manda_os_trechos_numerados_e_junta_a_resposta_na_ordem() -> None:
+TROCA_CERTA = ("nude with pale, smooth skin", "bare shoulders and arms, pale, smooth skin, her long hair falling over her body")
+
+
+def teste_suavizar_troca_so_o_trecho_explicito_e_deixa_o_resto_identico() -> None:
     usos: list[UsoDaChamada] = []
-    provedor, pedidos = _provedor_em_sequencia(
-        [
-            _resposta_de_trechos(
-                "close-up", "Auri", "bare shoulders, pale smooth skin, covered by her hair", "long golden hair",
-                "joyful smile", "cinematic style", "2:3",
-            )
-        ],
-        usos,
-    )
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(TROCA_CERTA)], usos)
 
     suave = provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
-    assert suave.texto == (
-        "close-up, Auri, bare shoulders, pale smooth skin, covered by her hair, long golden hair, "
-        "joyful smile, cinematic style, 2:3"
-    )
+    # Tudo o que não é a troca é idêntico ao original, inclusive as vírgulas, os espaços duplos e as quebras de linha.
+    assert suave.texto == PROMPT_RECUSADO.replace(TROCA_CERTA[0], TROCA_CERTA[1])
+    assert suave.texto.startswith("medium shot, Auri, bare shoulders and arms, pale, smooth skin, her long hair falling over her body, long golden hair")
+    assert "oil painting style,  --v 5 --q 2 --ar 3:4\n\nStyle: oil painting." in suave.texto
     assert suave.modelo == "openai/gpt-4o-mini"
-    corpo = json.loads(pedidos[0].content)
-    pedido = corpo["messages"][1]["content"]
-    assert "1. close-up" in pedido and "3. nude with pale smooth skin" in pedido and "7. 2:3" in pedido
-    assert "(7 no total)" in pedido
+    assert "PROMPT RECUSADO PELO PROVEDOR DE IMAGEM:\n" + PROMPT_RECUSADO == json.loads(pedidos[0].content)["messages"][1]["content"]
     assert usos[0].operacao == "suavizacao"
 
 
 def teste_suavizar_usa_temperatura_baixa() -> None:
-    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a", "b")])
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(TROCA_CERTA)])
 
-    provedor.suavizar_prompt("a, b", "openai/gpt-4o-mini")
+    provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
     assert json.loads(pedidos[0].content)["temperature"] == 0.2
 
 
-def teste_suavizar_com_numero_diferente_de_trechos_tenta_de_novo_uma_vez() -> None:
-    """O modelo suprimiu um trecho (devolveu 2 de 3): pede de novo, e a segunda resposta certa vale."""
-    provedor, pedidos = _provedor_em_sequencia(
-        [_resposta_de_trechos("a", "c"), _resposta_de_trechos("a", "b", "c")]
+def teste_suavizar_aplica_mais_de_uma_troca() -> None:
+    provedor, _ = _provedor_em_sequencia(
+        [_resposta_de_trocas(("nude", "bare shoulders, covered by her hair"), ("slender arms raised", "slender arms crossed"))]
     )
 
-    suave = provedor.suavizar_prompt("a, x, c", "openai/gpt-4o-mini")
+    original = "close-up, Auri, nude, long golden hair, slender arms raised, soft diffuse light, oil painting style, 2:3"
+    suave = provedor.suavizar_prompt(original, "openai/gpt-4o-mini")
 
-    assert suave.texto == "a, b, c"
+    assert suave.texto == (
+        "close-up, Auri, bare shoulders, covered by her hair, long golden hair, slender arms crossed, "
+        "soft diffuse light, oil painting style, 2:3"
+    )
+
+
+@pytest.mark.parametrize(
+    "troca",
+    [
+        ("trecho que não existe no prompt", "qualquer coisa"),  # o modelo inventou o trecho
+        ("nude with pale, smooth skin", ""),  # novo vazio = apagar o que o autor descreveu
+        ("nude with pale, smooth skin", "nude with pale, smooth skin"),  # não mudou nada
+        ("", "texto"),
+    ],
+)
+def teste_suavizar_recusa_troca_invalida_e_tenta_de_novo(troca: tuple[str, str]) -> None:
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(troca), _resposta_de_trocas(TROCA_CERTA)])
+
+    suave = provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
+
+    assert "her long hair falling over her body" in suave.texto
     assert len(pedidos) == 2
 
 
-def teste_suavizar_que_erra_duas_vezes_e_erro_e_nunca_um_prompt_com_trechos_faltando() -> None:
-    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a"), _resposta_de_trechos("a")])
+def teste_suavizar_que_so_erra_e_erro_e_nunca_devolve_o_texto_sem_trocas() -> None:
+    erro = _resposta_de_trocas(("trecho que não existe", "x"))
+    provedor, pedidos = _provedor_em_sequencia([erro, erro])
 
-    with pytest.raises(ErroDoProvedorIA, match="trechos"):
-        provedor.suavizar_prompt("a, b, c", "openai/gpt-4o-mini")
+    with pytest.raises(ErroDoProvedorIA, match="trocas válidas"):
+        provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
     assert len(pedidos) == 2  # a primeira e mais uma, sem laço
+
+
+def teste_suavizar_sem_nenhuma_troca_nao_serve() -> None:
+    """Se o provedor recusou, alguma coisa é explícita: devolver o texto igual só gastaria a segunda tentativa."""
+    provedor, _ = _provedor_em_sequencia([_resposta_de_trocas(), _resposta_de_trocas()])
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
+
+
+def teste_suavizar_nao_deixa_o_modelo_reescrever_o_prompt_inteiro() -> None:
+    """Uma troca que cobre o prompt todo (ou mais da metade) é reescrever, não suavizar: o autor perderia pontos."""
+    tudo = _resposta_de_trocas((PROMPT_RECUSADO, "a woman in a long dress"))
+    # 125 de 217 caracteres (58%): abaixo do limite de uma troca (200), mas acima da metade do texto.
+    metade = _resposta_de_trocas(("medium shot, Auri, nude with pale, smooth skin, long golden hair tied in a ponytail, slender arms raised, oil painting style", "x"))
+    provedor, _ = _provedor_em_sequencia([tudo, metade])
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
+
+
+def teste_suavizar_recusa_trocas_que_se_sobrepoem() -> None:
+    sobrepostas = _resposta_de_trocas(("nude with pale", "bare shoulders with pale"), ("pale, smooth skin", "pale skin"))
+    provedor, _ = _provedor_em_sequencia([sobrepostas, sobrepostas])
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
 
 @pytest.mark.parametrize(
     "conteudo",
     [
         "isto não é JSON",
-        json.dumps({"trechos": "a, b"}),  # não é lista
-        json.dumps({"trechos": ["a", ""]}),  # item vazio = trecho suprimido
-        json.dumps({"trechos": ["a", 5]}),  # item que não é texto
-        json.dumps({"outro": ["a", "b"]}),
+        json.dumps({"trocas": "nude -> covered"}),  # não é lista
+        json.dumps({"trocas": ["nude"]}),  # item que não é par
+        json.dumps({"trocas": [{"trecho": "nude", "novo": 5}]}),
+        json.dumps({"outro": []}),
     ],
 )
 def teste_suavizar_recusa_respostas_que_nao_servem(conteudo: str) -> None:
@@ -254,69 +299,87 @@ def teste_suavizar_recusa_respostas_que_nao_servem(conteudo: str) -> None:
     provedor, _ = _provedor_em_sequencia([resposta, resposta])
 
     with pytest.raises(ErroDoProvedorIA):
-        provedor.suavizar_prompt("a, b", "openai/gpt-4o-mini")
+        provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
 
 def teste_suavizar_aceita_json_embrulhado_em_markdown() -> None:
-    resposta = {"choices": [{"message": {"content": '```json\n{"trechos": ["a", "b novo"]}\n```'}}]}
+    corpo = json.dumps({"trocas": [{"trecho": "nude", "novo": "bare shoulders, covered by her hair"}]})
+    resposta = {"choices": [{"message": {"content": f"```json\n{corpo}\n```"}}]}
     provedor, _ = _provedor_em_sequencia([resposta])
 
-    assert provedor.suavizar_prompt("a, b", "openai/gpt-4o-mini").texto == "a, b novo"
+    assert provedor.suavizar_prompt("Auri, nude, oil painting", "openai/gpt-4o-mini").texto == "Auri, bare shoulders, covered by her hair, oil painting"
 
 
 def teste_suavizar_prompt_vazio_e_erro_sem_chamar_o_modelo() -> None:
     provedor, pedidos = _provedor_em_sequencia([])
 
     with pytest.raises(ErroDoProvedorIA):
-        provedor.suavizar_prompt(" , ,, ", "openai/gpt-4o-mini")
+        provedor.suavizar_prompt("   ", "openai/gpt-4o-mini")
 
     assert pedidos == []
 
 
-def teste_dividir_em_trechos_separa_por_virgula_e_descarta_vazios() -> None:
-    assert dividir_em_trechos("close-up,  Auri , ,2:3") == ["close-up", "Auri", "2:3"]
-    assert dividir_em_trechos("sem virgula") == ["sem virgula"]
-    assert dividir_em_trechos("") == []
+def teste_a_instrucao_de_suavizacao_traz_as_regras_do_allan() -> None:
+    """S7 revisada, S8 e S9: o modelo só aponta trocas, e a cobertura vem da composição."""
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(TROCA_CERTA)])
 
-
-def teste_a_instrucao_de_suavizacao_exige_fidelidade_e_traz_as_regras_do_allan() -> None:
-    """S7 revisada, S8 e S9."""
-    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a")])
-
-    provedor.suavizar_prompt("a", "openai/gpt-4o-mini")
+    provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
     instrucao = json.loads(pedidos[0].content)["messages"][0]["content"]
-    assert "EXATAMENTE o mesmo número de itens" in instrucao
-    assert "IDÊNTICO" in instrucao  # o que não é explícito não muda
+    assert "reescrever SÓ esses" in instrucao
+    assert "EXATAMENTE como está" in instrucao  # o resto o sistema mantém
+    assert "LETRA POR LETRA" in instrucao
     assert "o MÍNIMO" in instrucao
-    assert "cobertura parcial" in instrucao
     assert "sempre sem sangue" in instrucao
 
 
-def teste_a_instrucao_de_suavizacao_manda_sugerir_e_nao_vestir() -> None:
-    """02/10: a suavização estava vestindo a personagem. Cobrir é composição (cabelo, braço, sombra, enquadramento)."""
-    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a")])
+def teste_a_instrucao_de_suavizacao_manda_sugerir_e_nao_vestir_nem_so_apagar() -> None:
+    """02/10: vestia a personagem; e, no teste manual, o modelo só apagava a palavra "nude" sem cobrir nada."""
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(TROCA_CERTA)])
 
-    provedor.suavizar_prompt("a", "openai/gpt-4o-mini")
+    provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
     instrucao = json.loads(pedidos[0].content)["messages"][0]["content"]
     assert "SUGERIR, e não vestir" in instrucao
     assert "NÃO acrescente roupa" in instrucao
-    assert "cabelo" in instrucao and "enquadramento" in instrucao  # as formas de cobrir
-    assert "Exemplo CERTO" in instrucao and "Exemplo ERRADO" in instrucao
-    assert "wearing a loose linen dress" in instrucao  # o erro, mostrado como erro
-    # "tecido" saiu da lista de coberturas: o modelo o entendia como roupa.
-    assert "cabelo, tecido" not in instrucao
+    texto_corrido = " ".join(instrucao.split())
+    assert "DUAS coisas" in texto_corrido and "APARECE" in texto_corrido and "COBRE o resto" in texto_corrido
+    assert "Apagar só a palavra" in texto_corrido and "NÃO basta" in texto_corrido
+    assert "Exemplo CERTO" in instrucao and "Exemplo ERRADO 1" in instrucao and "Exemplo ERRADO 2" in instrucao
+    assert "her long hair falling over her body" in instrucao
+    assert "cabelo, tecido" not in instrucao  # "tecido" saiu da lista: o modelo o entendia como roupa
 
 
-def teste_a_regra_de_menores_so_vale_quando_o_trecho_diz_que_e_menor() -> None:
-    """02/10: "Menores sempre vestidos" estava sendo lida como regra geral. Só vale com menor claro (S9)."""
-    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a")])
+def teste_a_regra_de_menores_so_vale_quando_o_prompt_diz_que_e_menor() -> None:
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(TROCA_CERTA)])
 
-    provedor.suavizar_prompt("a", "openai/gpt-4o-mini")
+    provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
     instrucao = json.loads(pedidos[0].content)["messages"][0]["content"]
-    assert "SÓ quando o trecho disser ou deixar claro" in instrucao
+    assert "SÓ quando o prompt disser ou deixar claro" in instrucao
     assert "sempre vestida e nunca em cena sensual" in instrucao
     assert "Young woman" in instrucao  # adulto: a regra não se aplica
     assert "nunca vista alguém só por precaução" in instrucao
+
+
+def teste_a_instrucao_de_suavizacao_proibe_contradizer_o_prompt_e_prefere_sombra() -> None:
+    """02/10: os modelos cobriam com o cabelo solto num prompt de cabelo preso, e cruzavam braços já levantados."""
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(TROCA_CERTA)])
+
+    provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
+
+    texto = " ".join(json.loads(pedidos[0].content)["messages"][0]["content"].split())
+    assert "NÃO pode contradizer o resto do prompt" in texto
+    assert "se o cabelo está preso, não o faça cair sobre o corpo" in texto
+    assert "cubra com SOMBRA ou ENQUADRAMENTO" in texto
+    assert "her torso softly lost in shadow" in texto
+
+
+def teste_a_instrucao_de_suavizacao_pede_o_trecho_completo_com_os_adjetivos() -> None:
+    """O trecho a trocar vem inteiro ("nude with pale, smooth skin"), sem partir a expressão no meio."""
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(TROCA_CERTA)])
+
+    provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
+
+    texto = " ".join(json.loads(pedidos[0].content)["messages"][0]["content"].split())
+    assert "COMPLETO" in texto and "sem partir a expressão no meio" in texto
