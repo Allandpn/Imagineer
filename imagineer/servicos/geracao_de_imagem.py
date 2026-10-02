@@ -11,7 +11,6 @@ O original **nunca é sobrescrito**: o suavizado e o editado são prompts novos,
 recusa não se perder se o resto falhar.
 """
 
-import mimetypes
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -28,7 +27,7 @@ from imagineer.ia.provedor import (
 from imagineer.modelos import Configuracao, Imagem, Prompt
 from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, salvar_imagem
-from imagineer.servicos.imagens_reduzidas import TamanhoDeImagem, arquivo_no_tamanho, ler_dimensoes
+from imagineer.servicos.imagens_reduzidas import ler_dimensoes, preparar_referencia
 from imagineer.servicos.sinais_de_menor import sinal_de_menor
 
 EXTENSOES_POR_TIPO = {
@@ -139,7 +138,7 @@ def gerar_imagem_do_prompt(
 def _preparar_referencias(
     sessao: Session, configuracao: Configuracao, modelo: str, ids: list[int]
 ) -> _Referencias | None:
-    """Valida o pedido de referências (W1 a W3) e lê as imagens no tamanho ``leitura`` (W4). ``None`` se não há referências."""
+    """Valida o pedido de referências (W1 a W3) e lê as imagens **reduzidas e compactadas** (W4). ``None`` se não há referências."""
     ids = list(dict.fromkeys(ids))  # sem repetir, na ordem em que vieram
     if not ids:
         return None
@@ -162,9 +161,9 @@ def _preparar_referencias(
         original = caminho_absoluto(imagem.caminho_arquivo)
         if not original.is_file():
             raise ReferenciasNaoPermitidas(f"O arquivo da imagem {imagem_id} não está mais no disco.")
-        caminho, tipo = arquivo_no_tamanho(imagem.id, original, TamanhoDeImagem.LEITURA)
-        tipo = tipo or mimetypes.guess_type(caminho.name)[0] or "image/png"
-        imagens.append(ImagemDeReferencia(conteudo=caminho.read_bytes(), tipo_de_midia=tipo))
+        # W4: a referência só precisa deixar o modelo reconhecer o personagem: vai pequena e compactada, não a `leitura`.
+        conteudo, tipo = preparar_referencia(original)
+        imagens.append(ImagemDeReferencia(conteudo=conteudo, tipo_de_midia=tipo))
         nomes.append(_nome_do_dono(imagem))
     return _Referencias(ids, ReferenciasParaGerar(imagens, parametro), _frase_de_contexto(nomes))
 

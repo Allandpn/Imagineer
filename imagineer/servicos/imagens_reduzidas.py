@@ -37,6 +37,12 @@ LADO_MAIOR_EM_PIXELS = {TamanhoDeImagem.MINIATURA: 256, TamanhoDeImagem.LEITURA:
 
 QUALIDADE_DO_JPEG = 85
 
+LADO_DA_REFERENCIA = 512
+"""O lado maior, em pixels, de uma imagem enviada **como referência** à geração (W4): serve só para o modelo reconhecer
+o personagem, então vai pequena (um retrato 2:3 fica com 341 x 512)."""
+
+QUALIDADE_DA_REFERENCIA = 70
+
 
 class Orientacao(str, enum.Enum):
     RETRATO = "RETRATO"
@@ -113,6 +119,32 @@ def arquivo_no_tamanho(imagem_id: int, original: Path, tamanho: TamanhoDeImagem)
     except (UnidentifiedImageError, OSError, ValueError, PilImage.DecompressionBombError):
         return original, None
     return alvo, "image/jpeg"
+
+
+def preparar_referencia(original: Path) -> tuple[bytes, str]:
+    """A imagem **reduzida e compactada** para ir como referência (W4): ``(bytes, tipo de mídia)``.
+
+    No máximo ``LADO_DA_REFERENCIA`` px no lado maior (nunca amplia) e JPEG de qualidade ``QUALIDADE_DA_REFERENCIA``, com a
+    transparência virando fundo branco. Feita **na hora, em memória**: não é uma versão do catálogo, não vai para o disco.
+    Um arquivo que o Pillow não lê vai **como está** (o fornecedor decide), sem derrubar o pedido.
+    """
+    try:
+        with PilImage.open(original) as imagem:
+            imagem.thumbnail((LADO_DA_REFERENCIA, LADO_DA_REFERENCIA), PilImage.Resampling.LANCZOS)
+            if imagem.mode in ("RGBA", "LA", "P"):
+                imagem = imagem.convert("RGBA")
+                fundo = PilImage.new("RGB", imagem.size, (255, 255, 255))
+                fundo.paste(imagem, mask=imagem.getchannel("A"))
+                imagem = fundo
+            elif imagem.mode != "RGB":
+                imagem = imagem.convert("RGB")
+            saida = io.BytesIO()
+            imagem.save(saida, "JPEG", quality=QUALIDADE_DA_REFERENCIA, optimize=True)
+            return saida.getvalue(), "image/jpeg"
+    except (UnidentifiedImageError, OSError, ValueError, PilImage.DecompressionBombError):
+        import mimetypes
+
+        return original.read_bytes(), mimetypes.guess_type(original.name)[0] or "image/png"
 
 
 def remover_derivadas(imagem_id: int) -> None:
