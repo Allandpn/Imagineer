@@ -2458,6 +2458,23 @@ Depois de a cena virar frame (primeira fatia), o modal dela passa a oferecer o q
 
 **Como ficou (em linguagem simples).** Numa cena que já virou frame, o modal ganha uma seção "Prompts". Ela lista o que já foi gerado, do mais novo para o mais antigo, cada um com um botão **Copiar** (o texto também pode ser selecionado). O botão **Gerar prompt** abre um aviso de que gasta IA e um campo opcional "Ajuste"; ao confirmar, o servidor monta o prompt, que aparece no topo da lista. Se algo der errado (por exemplo, o livro sem perfil padrão), a mensagem do servidor aparece ali mesmo. **Divergências do plano:** nenhuma. **Limites conhecidos:** a mensagem de "sem perfil padrão" não tem conserto dentro do app enquanto a tela de Perfis for provisória (G7); e sair do capítulo durante a geração não cancela nada no servidor, o prompt fica gravado e aparece ao reabrir o modal (G8).
 
+#### Incremento 10b, terceira fatia — "Novo retrato" (especificado e implementado em 01/10/2026; 595 testes; falta validar no tablet)
+
+Fecha o 10b: além da **cena** (fatias 1 e 2), o elemento confirmado também pode ter o seu **retrato**, um frame `tipo=PERSONAGEM` que usa só a aparência daquele elemento (item 4.4), e a partir dele a pessoa gera o prompt como numa cena. Servidor: `POST /capitulos/{id}/frames` com `tipo=PERSONAGEM` e **um** estado em `estados_ids` (item 6.4), sem mudança.
+
+**Regras (N1 a N8):**
+
+- **N1 — Onde.** No **modal do elemento** já **confirmado** (casado, revisado e com estado que vale neste capítulo; não descartado), uma seção **"Retrato"**. Elemento ainda pendente não tem retrato.
+- **N2 — Sem retrato ainda: "Novo retrato".** O botão cria o frame com **o estado que vale neste capítulo** (`estado_vigente`, o deste capítulo ou o vigente de um anterior). **Não gasta IA.** Vale para **qualquer tipo** de elemento (personagem, ambiente, objeto...); "retrato" é o nome do frame solo, `PERSONAGEM`.
+- **N3 — Com retrato: os prompts.** Se o elemento já tem retrato neste capítulo, a seção mostra **a mesma seção de prompts da cena** (G1 a G13): listar, **Gerar prompt**, **Copiar**, **Compartilhar**, **Gerar imagem** (reservado) e o aviso translúcido. **Não oferece um segundo retrato.**
+- **N4 — Como o app sabe se há retrato.** O **artefato** daquele elemento já traz o `frame_id` do retrato mais novo dele neste capítulo (item 6.8). Logo depois de criar, o app usa o id devolvido e **relê os artefatos** (o ícone no texto passa a `CONFIRMADO`).
+- **N5 — Erros e ritmo.** A mensagem do servidor aparece no modal, sem fechá-lo. **Uma criação por elemento de cada vez; sem repetição automática.**
+- **N6 — O aviso do prompt** diz o nome do retrato: "Prompt gerado: «Retrato de Jon»." (G13).
+- **N7 — Nenhuma ação desta fatia gasta IA**, exceto o **Gerar prompt** já existente (G3, com confirmação).
+- **N8 — O que não entra:** retrato com **posição** escolhida ("Ilustrar aqui"), **mais de um** retrato por elemento por capítulo, escolher **outro estado** que não o vigente, e a tela de Frame (7.6), que continua provisória.
+
+**Como ficou (em linguagem simples).** No modal de um elemento já confirmado aparece a seção "Retrato". Se ainda não há retrato, um botão **Novo retrato** cria o frame solo daquele elemento (não gasta IA) e a seção passa a mostrar, no lugar do botão, a mesma área de prompts da cena (gerar, copiar, compartilhar). O ícone do elemento no texto se atualiza sozinho. **Com isto o 10b está completo:** da sugestão da IA até o prompt copiado, tanto para cenas quanto para retratos; o que falta para fechar o ciclo é **importar a imagem de volta** (incremento 12). **Divergências do plano:** nenhuma.
+
 #### Incremento 11 do app, primeira fatia — os ícones dos elementos no texto (implementado em 30/09/2026)
 
 **Pedido do Allan:** ao analisar o capítulo, as sugestões aparecem no painel de IA **e também como ícones no texto**. Fatia combinada com ele, dada a pouca cota do dia: **só os elementos, de ponta a ponta**; as cenas entram depois.
