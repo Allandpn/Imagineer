@@ -178,3 +178,19 @@ def teste_ev2_outros_sao_so_os_que_tem_estado_neste_capitulo(cliente: TestClient
 
 def teste_ev6_frame_inexistente_da_404(cliente: TestClient) -> None:
     assert cliente.get("/frames/99999/elementos-para-vincular").status_code == 404
+
+
+def teste_ev6_quem_ja_esta_no_frame_sempre_aparece_mesmo_com_estado_de_outro_capitulo(cliente: TestClient, usar_provedor_falso) -> None:
+    """O app grava o conjunto inteiro dos participantes: quem está na cena não pode sumir da lista."""
+    from testes.teste_rotas_sugestoes import _livro_com_capitulos
+
+    usar_provedor_falso(ProvedorFalso(prompt="um prompt"))
+    livro = _livro_com_capitulos(cliente)
+    primeiro, segundo = livro["capitulos"][0], livro["capitulos"][1]
+    de_antes = _elemento(cliente, livro["id"], primeiro["id"], "Escudo", "OBJETO")  # só tem estado no capítulo 1
+    cena = _frame(cliente, segundo["id"], [de_antes["estado_id"]], tipo="CENA")  # mas participa de uma cena do capítulo 2
+
+    corpo = _consultar(cliente, cena["id"])
+
+    [escudo] = [x for x in corpo["identificados"] + corpo["outros"] if x["nome"] == "Escudo"]
+    assert escudo["no_frame"] is True and escudo["estado_id"] == de_antes["estado_id"]

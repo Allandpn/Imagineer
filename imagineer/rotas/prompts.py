@@ -223,6 +223,13 @@ def elementos_para_vincular(frame_id: int, sessao: Session = Depends(obter_sessa
             continue
         outros[elemento.id] = montar(elemento, estado)
 
+    # Quem já está no frame entra sempre numa das listas (EV6), mesmo sem sugestão nem estado neste capítulo: o app grava o conjunto
+    # inteiro (`PUT .../estados`), e um participante que sumisse da lista seria apagado da cena sem querer.
+    for estado in [*frame.estados_elemento, *frame.estados_vinculados]:
+        elemento = estado.elemento
+        if elemento.id not in identificados and elemento.id not in outros and pode_aparecer(elemento):
+            outros[elemento.id] = montar(elemento, estado)
+
     def ordenar(lista):
         return sorted(lista, key=lambda e: (e.tipo, e.nome))
 
