@@ -25,11 +25,12 @@ from imagineer.ia.provedor import (
 FORNECEDORES_EXTERNOS = ("fal", "replicate")
 """Os fornecedores que têm gerador próprio. Qualquer outro id é do OpenRouter."""
 
-TEMPO_LIMITE_DA_GERACAO = 150.0
+TEMPO_LIMITE_DA_GERACAO = 600.0
 """Segundos, **contados desde o pedido**, esperando uma geração terminar.
 
-Menor que os 180 s que o app espera por uma resposta: se o fornecedor demorar, o servidor responde com o erro **de verdade**
-(com o nome do fornecedor) antes de o app desistir sozinho com um "demorou demais" que não diz nada."""
+Longo de propósito (10 minutos): um modelo pode estar numa **fila** ou iniciando a frio, e o fornecedor **cobra a
+imagem mesmo que a espera acabe aqui**; desistir cedo seria pagar e ficar sem a imagem (achado no teste do
+``flux-schnell``, 02/10/2026). O app espera um pouco mais (660 s), para o erro, se vier, chegar com o nome do fornecedor."""
 
 INTERVALO_DA_CONSULTA = 1.5
 """Segundos entre uma consulta de status e a seguinte."""
@@ -124,9 +125,13 @@ class GeradorDeImagemExterno(ABC):
         tipo = tipo_informado or resposta.headers.get("content-type", "").split(";")[0].strip() or _tipo_pela_extensao(url)
         return ImagemGerada(conteudo=resposta.content, tipo_de_midia=tipo)
 
-    def _esperar(self, inicio: float) -> None:
+    def _esperar(self, inicio: float, situacao: str | None = None) -> None:
+        """Espera o intervalo da consulta; passado o limite, levanta o erro dizendo **a última situação** que o fornecedor deu."""
         if self._relogio() - inicio > TEMPO_LIMITE_DA_GERACAO:
-            raise ErroDoProvedorIA(f"O {self.nome} não terminou a imagem em {int(TEMPO_LIMITE_DA_GERACAO)} segundos.")
+            ultima = f" A última situação foi: {situacao}." if situacao else ""
+            raise ErroDoProvedorIA(
+                f"O {self.nome} não terminou a imagem em {int(TEMPO_LIMITE_DA_GERACAO)} segundos.{ultima}"
+            )
         self._dormir(INTERVALO_DA_CONSULTA)
 
 
@@ -210,7 +215,10 @@ class GeradorReplicate(GeradorDeImagemExterno):
             url_da_consulta = (predicao.get("urls") or {}).get("get")
             if not isinstance(url_da_consulta, str):
                 raise ErroDoProvedorIA("O Replicate respondeu num formato inesperado.")
-            self._esperar(inicio)
+            try:
+                self._esperar(inicio, _DESCRICAO_DA_SITUACAO.get(str(predicao.get("status")), str(predicao.get("status"))))
+            except ErroDoProvedorIA as erro:
+                raise ErroDoProvedorIA(f"{erro} {self._cancelar(predicao)}") from erro
             predicao = self._pedir("GET", url_da_consulta)
 
         situacao = predicao.get("status")
@@ -228,6 +236,25 @@ class GeradorReplicate(GeradorDeImagemExterno):
             raise ErroDoProvedorIA("O Replicate respondeu sem a imagem.")
         return self._baixar(url, None)
 
+    def _cancelar(self, predicao: dict) -> str:
+        """Tenta cancelar a predição que ficou sem resposta, para o Replicate não gerar (e cobrar) uma imagem que ninguém vai receber.
+
+        Devolve a frase que diz o que aconteceu. Falha ao cancelar não esconde o erro original."""
+        url = (predicao.get("urls") or {}).get("cancel")
+        if not isinstance(url, str):
+            return "Não foi possível pedir o cancelamento; confira o painel do Replicate."
+        try:
+            self._pedir("POST", url)
+        except ErroDoProvedorIA:
+            return "Não consegui cancelar o pedido; confira o painel do Replicate."
+        return "O pedido foi cancelado no Replicate (na fila, não é cobrado; se já estava gerando, confira o painel)."
+
+
+_DESCRICAO_DA_SITUACAO = {
+    "starting": "na fila ou iniciando o modelo (starting)",
+    "processing": "gerando a imagem (processing)",
+}
+"""O que cada situação do Replicate quer dizer, para o usuário saber se o modelo estava na fila ou já trabalhando."""
 
 _MARCAS_DE_CONTEUDO_DO_REPLICATE = ("nsfw", "safety", "sensitive", "content policy", "flagged")
 """Trechos (em minúsculas) que, numa predição `failed`, indicam recusa de conteúdo (F4). O Replicate não documenta o

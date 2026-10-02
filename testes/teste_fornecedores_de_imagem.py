@@ -264,6 +264,7 @@ def teste_f5_fal_aceita_resultado_com_uma_imagem_so() -> None:
 
 PREDICAO = "https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions"
 CONSULTA = "https://api.replicate.com/v1/predictions/p1"
+CANCELAR = "https://api.replicate.com/v1/predictions/p1/cancel"
 SAIDA = "https://replicate.delivery/xezq/abc/out-0.webp"
 
 
@@ -272,7 +273,7 @@ def _replicate(rede: Rede, **extra) -> GeradorReplicate:
 
 
 def _predicao(situacao: str, **campos) -> dict:
-    return {"id": "p1", "status": situacao, "urls": {"get": CONSULTA}, **campos}
+    return {"id": "p1", "status": situacao, "urls": {"get": CONSULTA, "cancel": CANCELAR}, **campos}
 
 
 def teste_f6_replicate_espera_na_propria_chamada_e_baixa_a_imagem() -> None:
@@ -345,28 +346,64 @@ def teste_f6_replicate_consulta_ate_terminar_quando_a_espera_nao_bastou() -> Non
 
 
 def teste_f10_replicate_que_nao_termina_a_tempo_e_erro_do_provedor() -> None:
-    rede = Rede({("POST", PREDICAO): _json(_predicao("starting")), ("GET", CONSULTA): _json(_predicao("processing"))})
+    rede = Rede(
+        {
+            ("POST", PREDICAO): _json(_predicao("starting")),
+            ("GET", CONSULTA): _json(_predicao("processing")),
+            ("POST", CANCELAR): _json({}),
+        }
+    )
 
     with pytest.raises(ErroDoProvedorIA, match="não terminou"):
         _replicate(rede, relogio=RelogioQueAvanca(passo=100.0)).gerar("x", "black-forest-labs/flux-schnell")
 
 
-def teste_f10_o_limite_do_servidor_e_menor_que_o_tempo_de_espera_do_app() -> None:
-    """O app espera 180 s; o servidor tem de desistir antes, para o erro chegar com o nome do fornecedor."""
+def teste_f10_o_limite_e_longo_para_aguentar_fila_mas_menor_que_a_espera_do_app() -> None:
+    """Desistir cedo é pagar sem receber (o fornecedor cobra a imagem mesmo assim); o app espera 660 s."""
     from imagineer.ia.fornecedores_de_imagem import TEMPO_LIMITE_DA_GERACAO
 
-    assert TEMPO_LIMITE_DA_GERACAO < 180
+    assert 300 <= TEMPO_LIMITE_DA_GERACAO < 660
 
 
 def teste_f10_o_tempo_conta_desde_o_pedido_nao_so_depois_da_espera_do_replicate() -> None:
     """A espera do `Prefer: wait` entra na conta: um pedido que já passou do limite não espera mais uma volta inteira."""
-    rede = Rede({("POST", PREDICAO): _json(_predicao("starting")), ("GET", CONSULTA): _json(_predicao("processing"))})
-    relogio = RelogioQueAvanca(passo=200.0)  # o primeiro `relogio()` (no pedido) e o segundo (na espera) já passam do limite
+    rede = Rede(
+        {
+            ("POST", PREDICAO): _json(_predicao("starting")),
+            ("GET", CONSULTA): _json(_predicao("processing")),
+            ("POST", CANCELAR): _json({}),
+        }
+    )
+    relogio = RelogioQueAvanca(passo=700.0)  # o segundo `relogio()` (na espera) já passa do limite
 
     with pytest.raises(ErroDoProvedorIA, match="não terminou"):
         _replicate(rede, relogio=relogio).gerar("x", "black-forest-labs/flux-schnell")
 
     assert sum(1 for p in rede.pedidos if str(p.url) == CONSULTA) == 0  # nem chegou a consultar de novo
+
+
+def teste_f10_ao_desistir_diz_a_ultima_situacao_e_cancela_o_pedido() -> None:
+    """O usuário precisa saber se o modelo estava na fila e o pedido não pode ficar gerando (e cobrando) sozinho."""
+    rede = Rede({("POST", PREDICAO): _json(_predicao("starting")), ("POST", CANCELAR): _json({})})
+
+    with pytest.raises(ErroDoProvedorIA) as erro:
+        _replicate(rede, relogio=RelogioQueAvanca(passo=700.0)).gerar("x", "black-forest-labs/flux-schnell")
+
+    mensagem = str(erro.value)
+    assert "600 segundos" in mensagem
+    assert "na fila ou iniciando o modelo" in mensagem
+    assert "cancelado no Replicate" in mensagem
+    assert [(p.method, str(p.url)) for p in rede.pedidos] == [("POST", PREDICAO), ("POST", CANCELAR)]
+
+
+def teste_f10_se_o_cancelamento_falha_o_erro_original_continua_e_avisa() -> None:
+    rede = Rede({("POST", PREDICAO): _json(_predicao("processing")), ("POST", CANCELAR): _json({"detail": "x"}, codigo=500)})
+
+    with pytest.raises(ErroDoProvedorIA) as erro:
+        _replicate(rede, relogio=RelogioQueAvanca(passo=700.0)).gerar("x", "black-forest-labs/flux-schnell")
+
+    assert "gerando a imagem" in str(erro.value)
+    assert "Não consegui cancelar" in str(erro.value)
 
 
 @pytest.mark.parametrize(
