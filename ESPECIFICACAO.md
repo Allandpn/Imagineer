@@ -2505,21 +2505,21 @@ Vale **quando o app gerar a imagem** (o botão reservado, item 7.5b); hoje o flu
 
 - **S1 — Primeira tentativa** com o **prompt original**, sem alteração.
 - **S2 — Se o provedor recusar** o conteúdo, o prompt vai **automaticamente** para a **suavização** (uma chamada de IA de texto) e o app faz a **segunda tentativa** com o prompt suavizado, sem pedir confirmação. **A recusa não cobra** (dado do Allan).
-- **S3 — Se recusar de novo**, o app **devolve ao usuário** com o prompt suavizado num campo **editável**; ele pode ajustar e tentar mais uma vez, se quiser. A tentativa depois da edição é **direta**: não dispara outra suavização automática.
+- **S3 — Se recusar de novo**, o app **devolve ao usuário** com o prompt suavizado num campo **editável**; ele pode ajustar à mão e tentar mais uma vez, se quiser. A tentativa depois da edição é uma **chamada direta** ao provedor: não dispara outra suavização.
 
 **Regras (S4 a S12):**
 
 - **S4 — Só a recusa de conteúdo dispara a suavização.** O erro 400 do provedor com a mensagem de política (hoje: "content management policy" na Meta; "flagged for sexual or adult content" na Black Forest Labs). **Outros erros** (503, tempo esgotado, chave inválida, saldo) aparecem como erro comum, sem suavizar. As mensagens variam por provedor, então a **detecção fica isolada numa função** fácil de ajustar, e uma mensagem desconhecida cai no erro comum.
 - **S5 — Os prompts ficam salvos com a situação.** Cada prompt guarda: a **situação** (`NAO_TENTADO`, `RECUSADO`, `COM_SUCESSO`), o **motivo da recusa** (a mensagem do provedor) e, no suavizado, o **vínculo com o prompt original** (`prompt_original_id`). O original **nunca é sobrescrito**; o suavizado é um prompt novo. Exige migração no banco.
-- **S6 — Instrução separada.** A suavização tem **a sua própria instrução** (`_INSTRUCAO_DE_SUAVIZACAO`), usada **só neste caminho**; a instrução do prompt normal **não muda**. O modelo de texto é o de prompt (item 4.3).
+- **S6 — Instrução separada.** A suavização tem **a sua própria instrução** (`_INSTRUCAO_DE_SUAVIZACAO`), usada **só neste caminho**; a instrução do prompt normal **não muda**. O modelo de texto é o de prompt (item 4.3). **Suavizar é decisão do sistema, não do usuário:** não há botão para pedir a suavização; o usuário só **edita o prompt à mão** (S3).
 - **S7 — O que a suavização faz.** Mantém a **cena, os personagens, o enquadramento e a estética**; troca o explícito pelo **sugerido** (cobertura parcial por cabelo, pano, sombra ou enquadramento; ombros e braços à mostra) e **nunca** usa palavras como `nude` ou `naked`. O prompt de cobertura parcial aprovado em 01/10/2026 é o modelo.
 - **S8 — Violência:** sempre **sem sangue** e **nunca explícita**.
-- **S9 — Menores:** sempre **vestidos** e **nunca em cena sensual**. Na dúvida sobre a idade, tratar como menor. Se a cena exigir o contrário, a suavização **não reescreve e não faz a segunda tentativa**: devolve ao usuário com o aviso.
+- **S9 — Menores:** sempre **vestidos** e **nunca em cena sensual**. Só isso: a checagem de quem é menor, e o que fazer quando a cena pede o contrário, **ficam com a moderação do provedor**, que o Allan considera mais eficiente do que qualquer regra nossa (decisão de 02/10/2026).
 - **S10 — Regra fixa:** S8 e S9 **não são configuráveis**.
 - **S11 — Transparência.** O app diz que o provedor recusou e que tentou uma versão mais suave; o **prompt original continua visível** e os dois podem ser copiados.
 - **S12 — Uma suavização automática por pedido, sem laço.**
 
-**O que não entra:** verificação local do conteúdo antes de enviar e regra de menores na instrução do prompt original (decisão do Allan: a moderação dos provedores é melhor do que a nossa); botão manual "Suavizar prompt" para o fluxo copiar-e-colar (pode vir depois); a escolha do modelo de imagem pelo usuário; a própria geração de imagem no app, que é o próximo incremento e depende deste desenho.
+**O que não entra:** verificação local do conteúdo antes de enviar e regra de menores na instrução do prompt original (decisão do Allan: a moderação dos provedores é melhor do que a nossa); botão "Suavizar prompt" (descartado: a suavização é do sistema, S6); a escolha do modelo de imagem pelo usuário; a própria geração de imagem no app, que é o próximo incremento e depende deste desenho.
 
 #### Incremento 11 do app, primeira fatia — os ícones dos elementos no texto (implementado em 30/09/2026)
 
