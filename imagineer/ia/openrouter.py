@@ -309,6 +309,13 @@ material, textura, luz e enquadramento.
 e postura visíveis.
 - Mantenha fielmente a aparência de cada elemento como foi descrita; não invente \
 elementos que não estão na lista.
+- **Fidelidade ao autor, inclusive no que é delicado.** Descreva o corpo, a roupa (ou \
+a falta dela) e a ação exatamente como a descrição informada diz. Se a pessoa está \
+nua, escreva que está nua ("nude"); se a descrição não cita roupa, não invente \
+nenhuma; e nunca omita, atenue ou troque por conta própria nudez, violência ou \
+qualquer outro conteúdo sensível, nem para "proteger" a imagem. Outra etapa do sistema \
+cuida disso depois, só se o provedor de imagem recusar o prompt; aqui o seu trabalho é \
+ser fiel. Também não acrescente nada que a descrição não diga.
 - Incorpore o estilo, a iluminação e a paleta do perfil indicado.
 - **Gênero de cada pessoa presente, sempre que a identidade ou a aparência \
 informada permitir concluir com segurança**: deixe isso inequívoco no prompt \

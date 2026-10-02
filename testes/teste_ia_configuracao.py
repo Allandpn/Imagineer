@@ -473,6 +473,28 @@ def teste_montar_prompt_inclui_comentario_do_usuario_com_prioridade() -> None:
     assert "A barba dele é rala, não cheia." in enviado
 
 
+def teste_a_instrucao_do_prompt_manda_ser_fiel_ao_autor_inclusive_no_que_e_delicado() -> None:
+    """02/10: a IA do prompt omitia "nude" por conta própria (1 de 8 gerações o descrevia, com o estado dizendo
+    "Auri está nua"). A suavização é outra etapa, só se o provedor recusar: aqui vale a fidelidade."""
+    capturado: dict = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado.update(json.loads(pedido.content))
+        return httpx.Response(200, json=_resposta_de_conversa("close-up, Auri, nude"))
+
+    cliente = httpx.Client(base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder))
+    ProvedorOpenRouter(chave_api="chave", cliente=cliente).montar_prompt(
+        "", ["Auri: Auri está nua."], "estilo: pintura a óleo", "modelo/x"
+    )
+
+    instrucao = " ".join(capturado["messages"][0]["content"].split())
+    assert "Fidelidade ao autor, inclusive no que é delicado" in instrucao
+    assert 'Se a pessoa está nua, escreva que está nua ("nude")' in instrucao
+    assert "nunca omita, atenue ou troque por conta própria nudez, violência" in instrucao
+    assert "só se o provedor de imagem recusar o prompt" in instrucao  # a suavização é outra etapa
+    assert "não invente nenhuma" in instrucao  # fidelidade vale nos dois sentidos: nada a mais
+
+
 def teste_montar_prompt_sem_comentario_nao_menciona_prioridade() -> None:
     """Sem comentário, não sobra rastro de um campo vazio na mensagem."""
     capturado = {}
