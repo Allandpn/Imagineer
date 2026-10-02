@@ -445,3 +445,15 @@ def teste_suavizar_que_contradiz_duas_vezes_e_erro() -> None:
 
 
 TROCA_SOMBRA = ("nude with pale, smooth skin", "bare shoulders and arms, her torso softly lost in shadow, pale, smooth skin")
+
+
+def teste_a_instrucao_de_suavizacao_manda_a_frase_continuar_correta_depois_da_troca() -> None:
+    """02/10: "her torso softly lost in shadow gathered into a long ponytail": a troca engolia a palavra de ligação."""
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trocas(TROCA_CERTA)])
+
+    provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4.1-mini")
+
+    texto = " ".join(json.loads(pedidos[0].content)["messages"][0]["content"].split())
+    assert "a frase tem de continuar correta" in texto
+    assert "palavras de ligação" in texto
+    assert "a young woman with bare shoulders and arms, her torso softly lost in shadow, and long golden hair" in texto

@@ -387,6 +387,12 @@ inteira nem o prompt todo.
 - Só entram trechos que precisam mudar. O que não é explícito NÃO entra na lista: pele, \
 cabelo, expressão, postura, objetos, luz, cenário, estilo e o bloco final de estética \
 ficam como estão.
+- O "novo" ocupa o lugar exato do "trecho" e o resto do prompt continua colado logo \
+depois, então a frase tem de continuar correta (releia como ela fica). Se o trecho vem \
+ligado a palavras de ligação ("a young woman nude with long golden hair"), inclua o \
+pedaço inteiro no "trecho" e escreva o "novo" já com a ligação ("a young woman with bare \
+shoulders and arms, her torso softly lost in shadow, and long golden hair"), para não \
+sobrar uma frase quebrada.
 - Se mais de um trecho for explícito, uma troca para cada um. Nunca devolva "novo" vazio.
 - Mude o MÍNIMO: troque só a palavra ou a expressão explícita e mantenha, no "novo", o \
 que era do trecho e não era problema (como "pale, smooth skin"). Não troque por \
