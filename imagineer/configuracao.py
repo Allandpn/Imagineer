@@ -49,8 +49,9 @@ class Configuracoes(BaseSettings):
     """Chave do fal.ai (F2). ``FAL_KEY`` é o nome que o próprio fal.ai usa; ``CHAVE_API_FAL`` é o nome do projeto;
     ``IMAGINEER_KEY_FAL_AI`` é a variável de conta do Allan (mesmo padrão do OpenRouter)."""
 
-    chave_api_replicate: str = Field(default="", validation_alias=AliasChoices("REPLICATE_API_TOKEN", "CHAVE_API_REPLICATE"))
-    """Chave do Replicate (F2). ``REPLICATE_API_TOKEN`` é o nome que o próprio Replicate usa."""
+    chave_api_replicate: str = Field(default="", validation_alias=AliasChoices("REPLICATE_API_TOKEN", "CHAVE_API_REPLICATE", "IMAGINEER_KEY_REPLICATE"))
+    """Chave do Replicate (F2). ``REPLICATE_API_TOKEN`` é o nome que o próprio Replicate usa;
+    ``IMAGINEER_KEY_REPLICATE`` é a variável de conta do Allan (mesmo padrão do OpenRouter e do fal.ai)."""
 
     diretorio_imagens: str = "/dados/imagens"
     """Pasta onde as imagens do catálogo são gravadas (nunca no banco — só a referência)."""

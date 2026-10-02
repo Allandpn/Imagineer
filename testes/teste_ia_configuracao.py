@@ -1349,6 +1349,23 @@ def teste_chave_do_fal_aceita_a_variavel_de_conta(cliente: TestClient, monkeypat
         obter.cache_clear()
 
 
+def teste_chave_do_replicate_aceita_a_variavel_de_conta(cliente: TestClient, monkeypatch) -> None:
+    """IMAGINEER_KEY_REPLICATE (variável de conta do Allan) vale como chave do Replicate."""
+    from imagineer import configuracao as modulo_de_configuracao
+
+    obter = modulo_de_configuracao.obter_configuracoes
+    obter.cache_clear()
+    monkeypatch.delenv("REPLICATE_API_TOKEN", raising=False)
+    monkeypatch.delenv("CHAVE_API_REPLICATE", raising=False)
+    monkeypatch.setenv("IMAGINEER_KEY_REPLICATE", "chave-do-replicate")
+    try:
+        resposta = cliente.get("/configuracao")
+        assert resposta.json()["fornecedores_de_imagem"]["replicate"] is True
+        assert "chave-do-replicate" not in resposta.text
+    finally:
+        obter.cache_clear()
+
+
 # --------------------------------------------------------------------------- #
 # Chave por header (item 4.3)
 # --------------------------------------------------------------------------- #
