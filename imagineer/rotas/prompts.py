@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.prompt import (
     ElementoComImagens,
+    ElementoParaVincular,
+    ElementosParaVincular,
     ImagemCandidata,
     ImagemResumo,
     PromptAjuste,
@@ -32,6 +34,7 @@ from imagineer.ia.provedor import (
 from imagineer.modelos import (
     Capitulo,
     Configuracao,
+    Elemento,
     EstadoElemento,
     Frame,
     HistoricoIdentidadeElemento,
@@ -40,7 +43,10 @@ from imagineer.modelos import (
     PerfilRenderizacao,
     PrioridadeIA,
     Prompt,
+    SugestaoDeCena,
+    SugestaoDeElemento,
     TipoDeFrame,
+    TipoElemento,
 )
 from imagineer.rotas._comum import (
     buscar_frame as _buscar_frame,
@@ -57,6 +63,7 @@ from imagineer.servicos.catalogo_imagens import (
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
+from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente
 from imagineer.servicos.imagens_reduzidas import (
     TamanhoDeImagem,
@@ -107,32 +114,119 @@ def referencias_candidatas(frame_id: int, sessao: Session = Depends(obter_sessao
     elementos: list[ElementoComImagens] = []
     for estado in sorted(frame.estados_elemento, key=lambda e: (e.elemento.tipo.name, e.elemento.nome)):
         elemento = estado.elemento
-        ancora = estado.imagem_ancora or elemento.imagem_ancora_padrao
-
-        # Os frames de retrato do elemento: PERSONAGEM com ele como único estado.
-        imagens: dict[int, Imagem] = {}
-        for estado_do_elemento in elemento.estados:
-            for outro in estado_do_elemento.frames:
-                if outro.tipo == TipoDeFrame.PERSONAGEM and len(outro.estados_elemento) == 1:
-                    for prompt in outro.prompts:
-                        for imagem in prompt.imagens:
-                            imagens[imagem.id] = imagem
-        recentes = sorted(imagens.values(), key=lambda i: i.id, reverse=True)[:12]
-        if ancora is not None and all(i.id != ancora.id for i in recentes):
-            recentes.append(ancora)
-
         elementos.append(
             ElementoComImagens(
                 elemento_id=elemento.id,
                 nome=elemento.nome,
                 tipo=elemento.tipo.name,
-                imagens=[
-                    ImagemCandidata(**ImagemResumo.model_validate(i).model_dump(exclude={"orientacao"}), ancora=ancora is not None and i.id == ancora.id)
-                    for i in recentes
-                ],
+                imagens=_imagens_candidatas(elemento, estado.imagem_ancora or elemento.imagem_ancora_padrao),
             )
         )
     return ReferenciasCandidatas(elementos=elementos)
+
+
+def _imagens_candidatas(elemento: Elemento, ancora: Imagem | None) -> list[ImagemCandidata]:
+    """As imagens de um elemento que podem ir como referência (W2, EV3).
+
+    As dos **frames de retrato** dele (``PERSONAGEM``, só ele), em qualquer capítulo, mais recentes primeiro (até 12), e a
+    **âncora** marcada e **sempre incluída**.
+    """
+    imagens: dict[int, Imagem] = {}
+    for estado_do_elemento in elemento.estados:
+        for outro in estado_do_elemento.frames:
+            if outro.tipo == TipoDeFrame.PERSONAGEM and len(outro.estados_elemento) == 1:
+                for prompt in outro.prompts:
+                    for imagem in prompt.imagens:
+                        imagens[imagem.id] = imagem
+    recentes = sorted(imagens.values(), key=lambda i: i.id, reverse=True)[:12]
+    if ancora is not None and all(i.id != ancora.id for i in recentes):
+        recentes.append(ancora)
+    return [
+        ImagemCandidata(
+            **ImagemResumo.model_validate(i).model_dump(exclude={"orientacao"}),
+            ancora=ancora is not None and i.id == ancora.id,
+        )
+        for i in recentes
+    ]
+
+
+@rotas_de_frame.get(
+    "/{frame_id}/elementos-para-vincular",
+    response_model=ElementosParaVincular,
+    summary="Os elementos que podem entrar no frame (vinculados ou participantes), com as imagens deles",
+)
+def elementos_para_vincular(frame_id: int, sessao: Session = Depends(obter_sessao)) -> ElementosParaVincular:
+    """O que o seletor de elementos e imagens mostra (EV1 a EV6). Nunca chama a IA.
+
+    **Identificados:** os elementos das sugestões do capítulo (ligadas a um elemento, não descartadas), com o estado vigente
+    até o capítulo. **Outros:** os elementos do livro com estado **neste** capítulo que a IA não sugeriu, com esse estado.
+    Num **retrato**, o sujeito e os **personagens** ficam de fora (personagem é individual, V2) e, se o sujeito é um personagem,
+    as duas listas vêm vazias. Numa **cena**, entram todos os tipos.
+    """
+    frame = _buscar_frame(sessao, frame_id)
+    capitulo = frame.capitulo
+    livro_id = capitulo.livro_id
+    retrato = frame.tipo == TipoDeFrame.PERSONAGEM
+
+    sujeito = frame.estados_elemento[0].elemento if retrato and frame.estados_elemento else None
+    if retrato and (sujeito is None or sujeito.tipo == TipoElemento.PERSONAGEM):
+        return ElementosParaVincular(identificados=[], outros=[])
+
+    no_frame = {e.elemento_id for e in frame.estados_elemento} | {e.elemento_id for e in frame.estados_vinculados}
+    # Os participantes que vieram da sugestão da cena nunca saem por este seletor (EV5).
+    sugestao_da_cena = sessao.scalar(select(SugestaoDeCena).where(SugestaoDeCena.frame_id == frame.id))
+    originais = {s.elemento_id for s in sugestao_da_cena.participantes if s.elemento_id} if sugestao_da_cena else set()
+
+    def pode_aparecer(elemento: Elemento) -> bool:
+        if retrato:
+            return elemento.tipo != TipoElemento.PERSONAGEM and elemento.id != sujeito.id
+        return True
+
+    def montar(elemento: Elemento, estado: EstadoElemento) -> ElementoParaVincular:
+        ancora = estado.imagem_ancora or elemento.imagem_ancora_padrao
+        dentro = elemento.id in no_frame
+        return ElementoParaVincular(
+            elemento_id=elemento.id,
+            estado_id=estado.id,
+            nome=elemento.nome,
+            tipo=elemento.tipo.name,
+            no_frame=dentro,
+            removivel=dentro and elemento.id not in originais,
+            imagens=_imagens_candidatas(elemento, ancora),
+        )
+
+    vigentes = estado_vigente_por_elemento(sessao, livro_id, capitulo.ordem)
+    sugestoes = sessao.scalars(
+        select(SugestaoDeElemento).where(
+            SugestaoDeElemento.capitulo_id == capitulo.id,
+            SugestaoDeElemento.elemento_id.is_not(None),
+            SugestaoDeElemento.descartada.is_(False),
+        )
+    )
+    identificados: dict[int, ElementoParaVincular] = {}
+    for sugestao in sugestoes:
+        elemento, estado = sugestao.elemento, vigentes.get(sugestao.elemento_id)
+        if elemento is None or estado is None or elemento.id in identificados or not pode_aparecer(elemento):
+            continue
+        identificados[elemento.id] = montar(elemento, estado)
+
+    outros: dict[int, ElementoParaVincular] = {}
+    estados_do_capitulo = sessao.scalars(
+        select(EstadoElemento)
+        .join(Elemento, Elemento.id == EstadoElemento.elemento_id)
+        .where(EstadoElemento.capitulo_id == capitulo.id, Elemento.livro_id == livro_id)
+        .order_by(EstadoElemento.id)
+    )
+    for estado in estados_do_capitulo:
+        elemento = estado.elemento
+        if elemento.id in identificados or elemento.id in outros or not pode_aparecer(elemento):
+            continue
+        outros[elemento.id] = montar(elemento, estado)
+
+    def ordenar(lista):
+        return sorted(lista, key=lambda e: (e.tipo, e.nome))
+
+    return ElementosParaVincular(identificados=ordenar(identificados.values()), outros=ordenar(outros.values()))
 
 
 @rotas_de_frame.post(

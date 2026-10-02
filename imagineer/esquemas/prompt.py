@@ -235,3 +235,23 @@ class ReferenciasCandidatas(BaseModel):
     """O que o modal de referências mostra para um frame (W2, W9)."""
 
     elementos: list[ElementoComImagens]
+
+
+class ElementoParaVincular(ElementoComImagens):
+    """Um elemento que o usuário pode vincular ao frame, com as imagens dele (EV6)."""
+
+    estado_id: int = Field(description="O estado a ligar ao frame: nos identificados, o vigente até o capítulo; nos outros, o do capítulo.")
+    no_frame: bool = Field(description="Já participa da cena ou já está vinculado ao retrato.")
+    removivel: bool = Field(
+        description=(
+            "Está no frame e **pode sair** por este seletor: é um vinculado do retrato ou um participante acrescentado à mão. "
+            "Falso para o participante que veio da sugestão da cena e para quem não está no frame."
+        )
+    )
+
+
+class ElementosParaVincular(BaseModel):
+    """O que o seletor de elementos e imagens mostra (EV2, EV6): as duas seções."""
+
+    identificados: list[ElementoParaVincular] = Field(description="Os elementos que a IA identificou neste capítulo (sugestões ligadas a um elemento).")
+    outros: list[ElementoParaVincular] = Field(description="Os elementos com estado neste capítulo que a IA não sugeriu.")

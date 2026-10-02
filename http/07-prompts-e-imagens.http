@@ -201,3 +201,9 @@ Content-Type: application/json
   "estados_ids": [7],
   "estados_vinculados_ids": [12, 15]
 }
+
+### Os elementos que podem entrar no frame, com as imagens deles (item 7.5b, EV1 a EV6)
+# "identificados": os das sugestoes do capitulo (com o estado vigente ate ele); "outros": os que tem estado NESTE capitulo e a IA nao sugeriu.
+# Cada um traz "estado_id" (o estado a ligar), "no_frame", "removivel" e as imagens do retrato dele. No retrato, personagem e o sujeito ficam de fora.
+# Para gravar: retrato -> PUT /frames/{id}/vinculos; cena -> PUT /frames/{id}/estados (participantes originais + escolhidos).
+GET {{baseUrl}}/frames/{{frameId}}/elementos-para-vincular
