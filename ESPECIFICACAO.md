@@ -2435,6 +2435,25 @@ Um botão no painel de IA do capítulo que decide de uma vez o que já tem par. 
 
 *Em linguagem simples:* o botão resolve, de uma vez, o que já tem um par óbvio, e deixa para você só o que realmente precisa de uma decisão sua.
 
+#### Incremento 10b, segunda fatia — gerar o prompt e copiar (especificado e implementado em 01/10/2026; 575 testes; falta validar no tablet)
+
+Depois de a cena virar frame (primeira fatia), o modal dela passa a oferecer o que vem a seguir no fluxo do sistema (item 2.1, passos 8 e 9): **montar o prompt com a IA** e **copiar** para colar na ferramenta de imagem. Importar a imagem de volta é o incremento 12. Servidor: `GET` e `POST /frames/{id}/prompts` (item 6.6), sem mudança.
+
+**Regras (G1 a G10):**
+
+- **G1 — Só para cena confirmada.** O bloco "Prompts" aparece no modal de uma cena **que já virou frame** (`frame_id` preenchido). Cena pendente ou descartada não tem prompt.
+- **G2 — Ler não custa.** Ao abrir o modal de uma cena confirmada, o app lista os prompts já gerados (`GET /frames/{id}/prompts`, **sem IA**), do mais novo para o mais antigo. Cada um mostra o **texto** e o botão **Copiar**.
+- **G3 — Gerar custa, então pede confirmação.** O botão **"Gerar prompt"** (ou **"Gerar outro prompt"**, se já há algum) abre um diálogo que diz que **gasta IA** (a leitura do capítulo e a montagem do prompt) e traz um campo **opcional** "Ajuste" (até 2000 caracteres): uma correção pontual do usuário, com prioridade sobre a leitura automática (item 4.4). É assim que se pede um refinamento: **gerar de novo com um comentário**. Mesmo padrão do Reanalisar (P7).
+- **G4 — Gerar.** `POST /frames/{id}/prompts` com o comentário, se houver (o perfil é o **padrão do livro**, e o modelo, o da configuração). Pode levar mais de um minuto, então usa o tempo de espera longo da análise (P10). **Sem repetição automática**; **uma geração por frame de cada vez**.
+- **G5 — Resultado.** O prompt novo aparece no topo da lista, com **Copiar**. Se o servidor devolver **referências visuais** (imagens-âncora dos elementos), o app avisa "Anexe também as N imagens de referência" (o fluxo é manual: a API não anexa nada).
+- **G6 — Copiar.** Copia o texto do prompt para a área de transferência do aparelho e confirma na hora ("Copiado."). Não passa pelo servidor.
+- **G7 — Erros mostram a mensagem do servidor** no modal, sem fechá-lo: sem perfil padrão no livro (422), sem modelo de prompt escolhido (422), chave de IA ausente (422), serviço de IA fora do ar (502). O que o app **ainda não consegue resolver sozinho**: criar o perfil de renderização (a tela de Perfis, item 7.9, ainda é provisória), então a mensagem de "sem perfil padrão" é um beco sem saída no app por enquanto (**limite conhecido**).
+- **G8 — Sair no meio.** Se a pessoa sair do capítulo durante a geração, o servidor termina e **grava** o prompt; o app não o espera (diferente da análise, D1). Ao reabrir o modal, o `GET` o encontra. *Limite conhecido; se incomodar, a geração passa a viver no escopo do app, como a análise.*
+- **G9 — Nenhuma outra ação gasta IA.** Só o "Gerar" desta fatia.
+- **G10 — O que não entra:** "Novo retrato" (fatia 3), importar a imagem (incremento 12), avaliar o resultado, escolher outro perfil ou modelo, editar o texto do prompt.
+
+**Como ficou (em linguagem simples).** Numa cena que já virou frame, o modal ganha uma seção "Prompts". Ela lista o que já foi gerado, do mais novo para o mais antigo, cada um com um botão **Copiar** (o texto também pode ser selecionado). O botão **Gerar prompt** abre um aviso de que gasta IA e um campo opcional "Ajuste"; ao confirmar, o servidor monta o prompt, que aparece no topo da lista. Se algo der errado (por exemplo, o livro sem perfil padrão), a mensagem do servidor aparece ali mesmo. **Divergências do plano:** nenhuma. **Limites conhecidos:** a mensagem de "sem perfil padrão" não tem conserto dentro do app enquanto a tela de Perfis for provisória (G7); e sair do capítulo durante a geração não cancela nada no servidor, o prompt fica gravado e aparece ao reabrir o modal (G8).
+
 #### Incremento 11 do app, primeira fatia — os ícones dos elementos no texto (implementado em 30/09/2026)
 
 **Pedido do Allan:** ao analisar o capítulo, as sugestões aparecem no painel de IA **e também como ícones no texto**. Fatia combinada com ele, dada a pouca cota do dia: **só os elementos, de ponta a ponta**; as cenas entram depois.
