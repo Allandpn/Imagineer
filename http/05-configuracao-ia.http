@@ -76,3 +76,17 @@ Content-Type: application/json
 # {
 #   "chave_api_openrouter": "sk-or-v1-..."
 # }
+
+### Os modelos de imagem que o usuario pode escolher no app (item 7.5b, Z2)
+# Lista mantida a mao por enquanto. Sem espacos nas pontas, sem itens vazios nem repetidos; no maximo 20.
+# O "modelo_imagem" e o padrao e sempre aparece na escolha, mesmo fora desta lista.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "modelos_de_imagem": [
+    "meta/muse-image",
+    "bytedance-seed/seedream-5-0-flash",
+    "google/gemini-2.5-flash-image"
+  ]
+}

@@ -2,7 +2,7 @@
 
 import enum
 
-from sqlalchemy import CheckConstraint, Enum, String
+from sqlalchemy import JSON, CheckConstraint, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
@@ -12,6 +12,10 @@ ID_UNICO = 1
 
 MODELO_DE_IMAGEM_PADRAO = "meta/muse-image"
 """O modelo que gera a imagem enquanto o usuário não escolher outro (decisão do Allan, 01/10/2026)."""
+
+MODELOS_DE_IMAGEM_PADRAO = [MODELO_DE_IMAGEM_PADRAO, "bytedance-seed/seedream-5-0-flash", "google/gemini-2.5-flash-image"]
+"""Os modelos que o usuário pode escolher, até ele mudar a lista (Z2): o padrão e os dois que aceitaram, em 02/10/2026,
+um prompt que o padrão recusou."""
 
 
 class PrioridadeIA(enum.Enum):
@@ -119,6 +123,15 @@ class Configuracao(Base):
     chamar. Nasce ``meta/muse-image``. É um modelo de **imagem** do OpenRouter,
     chamado por ``POST /api/v1/images``, e não um modelo de texto.
     """
+
+    modelos_de_imagem: Mapped[list[str]] = mapped_column(
+        JSON,
+        default=lambda: list(MODELOS_DE_IMAGEM_PADRAO),
+        server_default='["meta/muse-image", "bytedance-seed/seedream-5-0-flash", "google/gemini-2.5-flash-image"]',
+    )
+    """Os modelos de imagem que o usuário pode escolher no app (Z2), mantidos à mão por ``PUT /configuracao``.
+
+    O ``modelo_imagem`` é o padrão e aparece na escolha mesmo que não esteja nesta lista."""
 
     modelo_suavizacao: Mapped[str | None] = mapped_column(String(200))
     """Modelo de **texto** que reescreve um prompt recusado pelo provedor (S6).

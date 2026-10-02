@@ -260,7 +260,7 @@ def gerar_imagem(
     """
     prompt = _buscar_prompt(sessao, prompt_id)
     resultado = gerar_imagem_do_prompt(
-        sessao, provedor, prompt, obter_ou_criar(sessao), corpo.texto if corpo else None
+        sessao, provedor, prompt, obter_ou_criar(sessao), corpo.texto if corpo else None, corpo.modelo if corpo else None
     )
     return ResultadoDaGeracao(
         resultado="GERADA" if resultado.gerada else "RECUSADA",
@@ -655,6 +655,7 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
         situacao_da_geracao=prompt.situacao_da_geracao,
         motivo_da_recusa=prompt.motivo_da_recusa,
         prompt_original_id=prompt.prompt_original_id,
+        modelo_imagem=prompt.modelo_imagem,
     )
 
 

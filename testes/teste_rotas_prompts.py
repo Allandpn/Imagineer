@@ -1067,3 +1067,120 @@ def teste_imagem_gerada_tem_origem_gerada_e_a_importada_no_mesmo_prompt_continua
 
     assert gerada["origem"] == "GERADA"
     assert sorted(imagem["origem"] for imagem in imagens) == ["GERADA", "IMPORTADA"]
+
+
+# --------------------------------------------------------------------------- #
+# Qual modelo de imagem foi usado, e tentar com outro (item 7.5b, Z1 a Z11)
+# --------------------------------------------------------------------------- #
+
+
+def teste_z1_prompt_nunca_tentado_nao_tem_modelo_de_imagem(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    assert prompt["modelo_imagem"] is None
+
+
+def teste_z1_o_modelo_padrao_fica_no_prompt_e_na_imagem(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem").json()
+
+    assert corpo["prompt"]["modelo_imagem"] == "meta/muse-image"
+    assert corpo["imagem"]["modelo"] == "meta/muse-image"
+    # E fica no banco: a listagem e o detalhe devolvem o mesmo.
+    assert cliente.get(f"/prompts/{prompt['id']}").json()["modelo_imagem"] == "meta/muse-image"
+    assert cliente.get(f"/prompts/{prompt['id']}").json()["imagens"][0]["modelo"] == "meta/muse-image"
+
+
+def teste_z3_o_modelo_do_pedido_vale_so_para_aquele_pedido(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    corpo = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "bytedance-seed/seedream-5-0-flash"}
+    ).json()
+
+    assert provedor.chamadas_de_imagem == [{"prompt": "close-up, Auri, nude, 2:3", "modelo": "bytedance-seed/seedream-5-0-flash"}]
+    assert corpo["prompt"]["modelo_imagem"] == "bytedance-seed/seedream-5-0-flash"
+    assert corpo["imagem"]["modelo"] == "bytedance-seed/seedream-5-0-flash"
+    # Não mudou o padrão do servidor.
+    assert cliente.get("/configuracao").json()["modelo_imagem"] == "meta/muse-image"
+    cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")
+    assert provedor.chamadas_de_imagem[-1]["modelo"] == "meta/muse-image"
+
+
+def teste_z3_modelo_em_branco_vale_o_padrao(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "   "})
+
+    assert provedor.chamadas_de_imagem[0]["modelo"] == "meta/muse-image"
+
+
+def teste_z1_a_tentativa_recusada_tambem_guarda_o_modelo(cliente: TestClient, usar_provedor_falso) -> None:
+    """É o que permite dizer "Recusado por X" (Z7)."""
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso, recusas_de_imagem=2)
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "outro/modelo"}).json()
+
+    assert corpo["resultado"] == "RECUSADA"
+    original = _por_id(cliente, prompt["frame_id"])[prompt["id"]]
+    assert original["situacao_da_geracao"] == "RECUSADO"
+    assert original["modelo_imagem"] == "outro/modelo"
+    assert corpo["prompt"]["modelo_imagem"] == "outro/modelo"  # o suavizado foi enviado ao mesmo modelo
+
+
+def teste_z3_original_suavizado_e_segunda_tentativa_usam_o_mesmo_modelo(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso, recusas_de_imagem=1)
+
+    corpo = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "google/gemini-2.5-flash-image"}
+    ).json()
+
+    assert corpo["resultado"] == "GERADA" and corpo["suavizado"] is True
+    assert [c["modelo"] for c in provedor.chamadas_de_imagem] == ["google/gemini-2.5-flash-image"] * 2
+    assert corpo["imagem"]["modelo"] == "google/gemini-2.5-flash-image"
+
+
+def teste_z10_o_original_recusado_pode_ser_reenviado_a_outro_modelo(cliente: TestClient, usar_provedor_falso) -> None:
+    """O Gerar imagem do cartão do original, com outro modelo: o original vai direto ao novo modelo, sem suavizar."""
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso, recusas_de_imagem=2)
+    cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")  # o modelo padrão recusa o original e o suavizado
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "bytedance-seed/seedream-5-0-flash"}).json()
+
+    assert corpo["resultado"] == "GERADA"
+    assert corpo["suavizado"] is False  # o novo modelo aceitou o ORIGINAL: nada foi suavizado
+    assert corpo["prompt"]["id"] == prompt["id"]
+    assert provedor.chamadas_de_imagem[-1] == {"prompt": "close-up, Auri, nude, 2:3", "modelo": "bytedance-seed/seedream-5-0-flash"}
+    assert corpo["prompt"]["situacao_da_geracao"] == "COM_SUCESSO"
+    assert corpo["prompt"]["modelo_imagem"] == "bytedance-seed/seedream-5-0-flash"
+
+
+def teste_z3_texto_editado_com_modelo_novo_vai_direto_a_esse_modelo(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    corpo = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"texto": "versão editada", "modelo": "recraft/recraft-v4.1"}
+    ).json()
+
+    assert provedor.chamadas_de_imagem == [{"prompt": "versão editada", "modelo": "recraft/recraft-v4.1"}]
+    assert corpo["prompt"]["modelo_imagem"] == "recraft/recraft-v4.1"
+    assert corpo["prompt"]["prompt_original_id"] == prompt["id"]
+
+
+def teste_z4_modelo_com_mais_de_200_caracteres_da_422(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    resposta = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "x" * 201})
+
+    assert resposta.status_code == 422
+
+
+def teste_z1_erro_do_provedor_nao_grava_o_modelo_no_prompt(cliente: TestClient, usar_provedor_falso) -> None:
+    """Um 502 não foi uma tentativa concluída: o prompt continua como estava."""
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+    provedor._erro = ErroDoProvedorIA("O OpenRouter respondeu 503: temporariamente indisponível")
+
+    assert cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "outro/modelo"}).status_code == 502
+
+    assert cliente.get(f"/prompts/{prompt['id']}").json()["modelo_imagem"] is None

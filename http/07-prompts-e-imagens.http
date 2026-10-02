@@ -140,3 +140,14 @@ Content-Type: application/json
 {
   "texto": "close-up, Auri, bare shoulders, wrapped in a loose grey linen cloth, 2:3"
 }
+
+### Gera a imagem com OUTRO modelo, so neste pedido (item 7.5b, Z3)
+# Sem "modelo" vale o modelo_imagem da configuracao. A escolha NAO muda o padrao do servidor. O modelo usado fica
+# no prompt (modelo_imagem, mesmo se recusado) e na imagem (modelo). Mandar de novo o prompt ORIGINAL recusado a outro
+# modelo e a forma de ver se ele o aceita sem precisar suavizar.
+POST {{baseUrl}}/prompts/{{promptId}}/gerar-imagem
+Content-Type: application/json
+
+{
+  "modelo": "bytedance-seed/seedream-5-0-flash"
+}

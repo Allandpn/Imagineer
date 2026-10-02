@@ -50,9 +50,14 @@ def gerar_imagem_do_prompt(
     prompt: Prompt,
     configuracao: Configuracao,
     texto_editado: str | None = None,
+    modelo: str | None = None,
 ) -> ResultadoDaGeracao:
-    """Roda o fluxo S1 a S3 e devolve o desfecho. Erros que não são recusa de conteúdo propagam, sem suavizar (S4)."""
-    modelo_de_imagem = configuracao.modelo_imagem
+    """Roda o fluxo S1 a S3 e devolve o desfecho. Erros que não são recusa de conteúdo propagam, sem suavizar (S4).
+
+    ``modelo`` é o modelo de imagem **só deste pedido** (Z3); em branco, vale o da configuração. Todas as tentativas
+    do pedido (o original, o suavizado, o editado) usam o mesmo modelo.
+    """
+    modelo_de_imagem = (modelo or "").strip() or configuracao.modelo_imagem
     texto = (texto_editado or "").strip()
 
     if texto and texto != prompt.texto.strip():
@@ -95,16 +100,18 @@ def _prompt_derivado(sessao: Session, origem: Prompt, texto: str, modelo_ia: str
 
 
 def _tentar(sessao: Session, provedor: ProvedorIA, prompt: Prompt, modelo: str) -> Imagem | None:
-    """Uma tentativa de gerar a imagem. Grava a situação do prompt; devolve a imagem, ou ``None`` se recusou."""
+    """Uma tentativa de gerar a imagem. Grava a situação e o modelo do prompt; devolve a imagem, ou ``None`` se recusou."""
     try:
         gerada = provedor.gerar_imagem(prompt.texto, modelo)
     except ConteudoRecusado as recusa:
+        prompt.modelo_imagem = modelo  # Z1: a tentativa recusada também guarda o modelo
         prompt.situacao_da_geracao = SituacaoDaGeracao.RECUSADO
         prompt.motivo_da_recusa = recusa.motivo
         sessao.commit()
         return None
 
-    imagem = _gravar_imagem(sessao, prompt, gerada)
+    imagem = _gravar_imagem(sessao, prompt, gerada, modelo)
+    prompt.modelo_imagem = modelo
     prompt.situacao_da_geracao = SituacaoDaGeracao.COM_SUCESSO
     prompt.motivo_da_recusa = None
     sessao.commit()
@@ -112,7 +119,7 @@ def _tentar(sessao: Session, provedor: ProvedorIA, prompt: Prompt, modelo: str) 
     return imagem
 
 
-def _gravar_imagem(sessao: Session, prompt: Prompt, gerada: ImagemGerada) -> Imagem:
+def _gravar_imagem(sessao: Session, prompt: Prompt, gerada: ImagemGerada, modelo: str) -> Imagem:
     """Grava a imagem gerada pelo mesmo caminho da importação (disco, linha no catálogo, dimensões)."""
     extensao = EXTENSOES_POR_TIPO.get(gerada.tipo_de_midia.lower(), ".png")
     caminho = salvar_imagem(prompt.id, f"gerada{extensao}", gerada.conteudo)
@@ -124,6 +131,7 @@ def _gravar_imagem(sessao: Session, prompt: Prompt, gerada: ImagemGerada) -> Ima
         largura=dimensoes[0] if dimensoes else None,
         altura=dimensoes[1] if dimensoes else None,
         origem=OrigemDaImagem.GERADA,
+        modelo=modelo,
     )
     sessao.add(imagem)
     return imagem

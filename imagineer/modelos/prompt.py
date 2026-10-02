@@ -84,6 +84,11 @@ class Prompt(Base):
     exigiria reabrir as imagens e lembrar o que achou de cada uma.
     """
 
+    modelo_imagem: Mapped[str | None] = mapped_column(String(200))
+    """O modelo de imagem da **última tentativa** de gerar a imagem deste prompt, inclusive a recusada (Z1).
+
+    Nulo se o prompt nunca foi tentado. O prompt suavizado e o editado guardam o modelo com que foram enviados."""
+
     situacao_da_geracao: Mapped[SituacaoDaGeracao] = mapped_column(
         Enum(
             SituacaoDaGeracao,
@@ -169,6 +174,9 @@ class Imagem(Base):
     """Dimensões em pixels (item 6.9): lidas na importação; nas imagens antigas, calculadas na primeira
     leitura. Nulas = o arquivo não pôde ser lido como imagem (ou ainda não foi calculado). Com elas o app
     decide o layout no texto — retrato em duas colunas, paisagem na largura da tela (item 7.5b, I1)."""
+
+    modelo: Mapped[str | None] = mapped_column(String(200))
+    """O modelo de imagem que **gerou** esta imagem (Z1). Nulo se foi importada ou é anterior a esta coluna."""
 
     origem: Mapped[OrigemDaImagem] = mapped_column(
         Enum(

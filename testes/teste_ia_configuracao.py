@@ -1508,3 +1508,53 @@ def teste_modelo_que_produz_audio_fica_fora_da_lista() -> None:
     )
 
     assert [m.id for m in provedor.listar_modelos()] == ["multimodal/que-serve"]
+
+
+# --------------------------------------------------------------------------- #
+# Lista de modelos de imagem (item 7.5b, Z2)
+# --------------------------------------------------------------------------- #
+
+
+def teste_modelos_de_imagem_nasce_com_a_lista_padrao(cliente: TestClient) -> None:
+    corpo = cliente.get("/configuracao").json()
+
+    assert corpo["modelos_de_imagem"] == [
+        "meta/muse-image",
+        "bytedance-seed/seedream-5-0-flash",
+        "google/gemini-2.5-flash-image",
+    ]
+    assert corpo["modelo_imagem"] in corpo["modelos_de_imagem"]  # o padrão está na lista
+
+
+def teste_gravar_modelos_de_imagem_normaliza_a_lista(cliente: TestClient) -> None:
+    """Sem espaços nas pontas, sem itens vazios nem repetidos, na ordem em que vieram."""
+    resposta = cliente.put(
+        "/configuracao",
+        json={"modelos_de_imagem": [" recraft/recraft-v4.1 ", "", "   ", "qwen/qwen-image-3", "recraft/recraft-v4.1"]},
+    )
+
+    assert resposta.status_code == 200
+    esperado = ["recraft/recraft-v4.1", "qwen/qwen-image-3"]
+    assert resposta.json()["modelos_de_imagem"] == esperado
+    assert cliente.get("/configuracao").json()["modelos_de_imagem"] == esperado
+
+
+def teste_modelos_de_imagem_pode_ficar_vazia_e_o_padrao_continua(cliente: TestClient) -> None:
+    corpo = cliente.put("/configuracao", json={"modelos_de_imagem": []}).json()
+
+    assert corpo["modelos_de_imagem"] == []
+    assert corpo["modelo_imagem"] == "meta/muse-image"  # o padrão não depende da lista
+
+
+def teste_modelos_de_imagem_recusa_lista_grande_demais_e_item_longo_demais(cliente: TestClient) -> None:
+    assert cliente.put("/configuracao", json={"modelos_de_imagem": [f"m/{i}" for i in range(21)]}).status_code == 422
+    assert cliente.put("/configuracao", json={"modelos_de_imagem": ["x" * 201]}).status_code == 422
+    assert cliente.put("/configuracao", json={"modelos_de_imagem": [f"m/{i}" for i in range(20)]}).status_code == 200
+
+
+def teste_gravar_outro_campo_nao_mexe_na_lista_de_modelos_de_imagem(cliente: TestClient) -> None:
+    cliente.put("/configuracao", json={"modelos_de_imagem": ["so/este"]})
+
+    resposta = cliente.put("/configuracao", json={"modelo_prompt": "um/modelo"})
+
+    assert resposta.json()["modelos_de_imagem"] == ["so/este"]

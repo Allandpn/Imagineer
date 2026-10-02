@@ -23,6 +23,10 @@ class ImagemResumo(BaseModel):
     tamanho_em_bytes: int | None = None
     largura: int | None = Field(default=None, description="Largura em pixels; nula se o arquivo não pôde ser lido como imagem.")
     altura: int | None = Field(default=None, description="Altura em pixels; nula como a largura.")
+    modelo: str | None = Field(
+        default=None,
+        description="O modelo de imagem que gerou esta imagem; nulo se foi importada (item 7.5b, Z1).",
+    )
     origem: OrigemDaImagem = Field(
         default=OrigemDaImagem.IMPORTADA,
         description="`IMPORTADA` (o usuário a trouxe de fora) ou `GERADA` (o servidor a gerou): item 7.5b, T3.",
@@ -90,6 +94,10 @@ class PromptResumo(BaseModel):
         default=None,
         description="No prompt suavizado, o prompt de onde ele saiu; nulo nos demais.",
     )
+    modelo_imagem: str | None = Field(
+        default=None,
+        description="O modelo de imagem da última tentativa de gerar a imagem deste prompt; nulo se nunca foi tentado (Z1).",
+    )
 
 
 class PromptDetalhe(PromptResumo):
@@ -148,6 +156,14 @@ class PedidoDeGeracao(BaseModel):
             "O prompt **editado à mão** pelo usuário (S3): vira um prompt novo e é enviado direto, sem "
             "suavização. Ausente (ou igual ao texto do prompt), vale o fluxo normal: original e, se o "
             "provedor recusar, a suavização."
+        ),
+    )
+    modelo: str | None = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "O modelo de imagem **só deste pedido** (Z3). Ausente ou em branco, vale o `modelo_imagem` da "
+            "configuração. Não muda o padrão do servidor."
         ),
     )
 
