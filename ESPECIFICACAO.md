@@ -2603,6 +2603,8 @@ Vieram do teste real no tablet (01 e 02/10). Seis pontos, na ordem em que serão
 
 **Problema:** a suavização estava **suprimindo pontos** da descrição do autor (a instrução pedia para manter tudo, mas nada obrigava o modelo a isso). **Decisão:** a suavização passa a ser **trecho a trecho**. O servidor divide o prompt recusado em **trechos** (o prompt é uma lista separada por vírgulas, item 4.4), manda a lista **numerada** e exige de volta **uma lista com o mesmo número de itens**, cada um com a nova redação **do mesmo trecho**: igual ao original se não tem nada explícito, ou trocado só no que é explícito. O servidor junta os itens na mesma ordem. Se o modelo devolver um número diferente de itens, o servidor pede **uma vez** de novo; se errar de novo, é erro do provedor (502), **sem inventar um prompt com trechos faltando**. A instrução também pede: **mudar o mínimo** (só a palavra ou expressão explícita; nada de trocar por sinônimos o que não era problema; pele, cabelo, expressão, luz e estilo ficam como estão) e **temperatura baixa** (0,2). As regras S8 (violência) e S9 (menores) continuam.
 
+**Implementado (02/10/2026): S7 revisada.** `suavizar_prompt` divide o prompt em trechos (`dividir_em_trechos`), manda a lista numerada, exige o JSON `{"trechos": [...]}` com **o mesmo número de itens** e junta na ordem com ", ". Número diferente, item vazio, item que não é texto ou resposta sem JSON = nova tentativa (no máximo uma); errando de novo, `ErroDoProvedorIA` e nenhum prompt é criado com trechos faltando. A temperatura da chamada é 0,2 (`_conversar` ganhou o parâmetro). A instrução pede trecho sem nada explícito **idêntico, palavra por palavra**, e mudança **mínima** no explícito. 13 testes novos, 3 antigos reescritos (592 → 594 no total com os de T3). **Ainda não validado com o modelo real**: o Allan repete o prompt da Auri e confere se nenhum ponto da descrição some.
+
 ##### R — Editar o prompt antes de gerar
 
 - **R1.** Cada prompt da lista tem **Editar**: abre o **mesmo campo** do diálogo da recusa (K4), com o texto do prompt.
@@ -2615,6 +2617,8 @@ Vieram do teste real no tablet (01 e 02/10). Seis pontos, na ordem em que serão
 - **T2.** As imagens **importadas** ficam numa seção própria, **"Imagens importadas"**, no **fim** da área do frame. As **geradas** aparecem em destaque, como a imagem do frame (Q).
 - **T3. Servidor:** `Imagem.origem` (`IMPORTADA` ou `GERADA`; item 3.4c), preenchida por quem grava (importar = `IMPORTADA`, gerar = `GERADA`) e devolvida em `ImagemResumo`. As imagens que **já existiam** ficam `IMPORTADA` (o banco não distingue as geradas nos testes de 01/10; são poucas). Migração com `server_default`.
 - **T4.** Os prompts continuam **sem** botão de importar; cada um mantém o **Gerar imagem** (K1) e o **Editar** (R1).
+
+**Implementado (02/10/2026): T3, o servidor.** `Imagem.origem` (`IMPORTADA` por padrão, `GERADA` quando o servidor gera), migração `c9d1e3f5a7b9` (testada em Postgres: sobe, desce, sobe; `alembic check` limpo), devolvida em `ImagemResumo`. 2 testes novos. **Para o app:** campo **novo** na resposta das imagens; o app atual ignora campos desconhecidos. As telas (T1, T2) vêm na fatia do app.
 
 ##### U — Excluir, compartilhar e salvar a imagem
 

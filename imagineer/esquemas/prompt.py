@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from imagineer.modelos.prompt import SituacaoDaGeracao
+from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao
 from imagineer.servicos.imagens_reduzidas import Orientacao, orientacao_de
 
 
@@ -23,6 +23,10 @@ class ImagemResumo(BaseModel):
     tamanho_em_bytes: int | None = None
     largura: int | None = Field(default=None, description="Largura em pixels; nula se o arquivo não pôde ser lido como imagem.")
     altura: int | None = Field(default=None, description="Altura em pixels; nula como a largura.")
+    origem: OrigemDaImagem = Field(
+        default=OrigemDaImagem.IMPORTADA,
+        description="`IMPORTADA` (o usuário a trouxe de fora) ou `GERADA` (o servidor a gerou): item 7.5b, T3.",
+    )
     data_importacao: datetime
 
     @computed_field(description="RETRATO se a altura é maior que a largura; PAISAGEM no resto; nulo sem dimensões (item 7.5b, I1).")

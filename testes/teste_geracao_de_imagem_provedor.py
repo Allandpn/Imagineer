@@ -10,7 +10,7 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from imagineer.ia.openrouter import ENDERECO_BASE, ProvedorOpenRouter
+from imagineer.ia.openrouter import ENDERECO_BASE, ProvedorOpenRouter, dividir_em_trechos
 from imagineer.ia.provedor import (
     ChaveDeApiAusente,
     ConteudoRecusado,
@@ -162,40 +162,133 @@ def teste_resposta_fora_do_formato_vira_erro_do_provedor(resposta: dict) -> None
 
 
 # --------------------------------------------------------------------------- #
-# suavizar_prompt
+# suavizar_prompt (trecho a trecho, S7 revisada)
 # --------------------------------------------------------------------------- #
 
+PROMPT_RECUSADO = "close-up, Auri, nude with pale smooth skin, long golden hair, joyful smile, cinematic style, 2:3"
 
-def teste_suavizar_prompt_manda_o_texto_recusado_e_devolve_o_novo() -> None:
+
+def _resposta_de_trechos(*trechos: str) -> dict:
+    return {"choices": [{"message": {"content": json.dumps({"trechos": list(trechos)})}}]}
+
+
+def _provedor_em_sequencia(respostas: list[dict], usos: list | None = None):
+    """Um provedor que devolve uma resposta diferente a cada chamada, na ordem; guarda os pedidos feitos."""
+    pedidos: list[httpx.Request] = []
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        pedidos.append(pedido)
+        return httpx.Response(200, json=respostas[len(pedidos) - 1])
+
+    cliente = httpx.Client(base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder))
+    return ProvedorOpenRouter(chave_api="chave-de-teste", cliente=cliente, ao_usar=usos.append if usos is not None else None), pedidos
+
+
+def teste_suavizar_manda_os_trechos_numerados_e_junta_a_resposta_na_ordem() -> None:
     usos: list[UsoDaChamada] = []
-    resposta = {"choices": [{"message": {"content": "  close-up, Auri, bare shoulders, covered by her hair  "}}]}
-    provedor, pedidos = _provedor(resposta, usos=usos)
+    provedor, pedidos = _provedor_em_sequencia(
+        [
+            _resposta_de_trechos(
+                "close-up", "Auri", "bare shoulders, pale smooth skin, covered by her hair", "long golden hair",
+                "joyful smile", "cinematic style", "2:3",
+            )
+        ],
+        usos,
+    )
 
-    suave = provedor.suavizar_prompt("close-up, Auri, nude", "openai/gpt-4o-mini")
+    suave = provedor.suavizar_prompt(PROMPT_RECUSADO, "openai/gpt-4o-mini")
 
-    assert suave.texto == "close-up, Auri, bare shoulders, covered by her hair"
+    assert suave.texto == (
+        "close-up, Auri, bare shoulders, pale smooth skin, covered by her hair, long golden hair, "
+        "joyful smile, cinematic style, 2:3"
+    )
     assert suave.modelo == "openai/gpt-4o-mini"
     corpo = json.loads(pedidos[0].content)
-    assert pedidos[0].url.path == "/api/v1/chat/completions"
-    assert "close-up, Auri, nude" in corpo["messages"][1]["content"]
+    pedido = corpo["messages"][1]["content"]
+    assert "1. close-up" in pedido and "3. nude with pale smooth skin" in pedido and "7. 2:3" in pedido
+    assert "(7 no total)" in pedido
     assert usos[0].operacao == "suavizacao"
 
 
-def teste_a_instrucao_de_suavizacao_traz_as_regras_do_allan() -> None:
-    """S7 a S9: cobertura parcial, sem sangue, menores vestidos e nunca sensuais."""
-    provedor, pedidos = _provedor({"choices": [{"message": {"content": "texto"}}]})
+def teste_suavizar_usa_temperatura_baixa() -> None:
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a", "b")])
 
-    provedor.suavizar_prompt("x", "openai/gpt-4o-mini")
+    provedor.suavizar_prompt("a, b", "openai/gpt-4o-mini")
 
-    instrucao = json.loads(pedidos[0].content)["messages"][0]["content"]
-    assert "cobertura parcial" in instrucao
-    assert "sem sangue" in instrucao
-    assert "Menores de idade: sempre vestidos e nunca em cena sensual" in instrucao
-    assert "nude" in instrucao  # citado como palavra a evitar
+    assert json.loads(pedidos[0].content)["temperature"] == 0.2
 
 
-def teste_suavizar_prompt_com_resposta_vazia_e_erro() -> None:
-    provedor, _ = _provedor({"choices": [{"message": {"content": "   "}}]})
+def teste_suavizar_com_numero_diferente_de_trechos_tenta_de_novo_uma_vez() -> None:
+    """O modelo suprimiu um trecho (devolveu 2 de 3): pede de novo, e a segunda resposta certa vale."""
+    provedor, pedidos = _provedor_em_sequencia(
+        [_resposta_de_trechos("a", "c"), _resposta_de_trechos("a", "b", "c")]
+    )
+
+    suave = provedor.suavizar_prompt("a, x, c", "openai/gpt-4o-mini")
+
+    assert suave.texto == "a, b, c"
+    assert len(pedidos) == 2
+
+
+def teste_suavizar_que_erra_duas_vezes_e_erro_e_nunca_um_prompt_com_trechos_faltando() -> None:
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a"), _resposta_de_trechos("a")])
+
+    with pytest.raises(ErroDoProvedorIA, match="trechos"):
+        provedor.suavizar_prompt("a, b, c", "openai/gpt-4o-mini")
+
+    assert len(pedidos) == 2  # a primeira e mais uma, sem laço
+
+
+@pytest.mark.parametrize(
+    "conteudo",
+    [
+        "isto não é JSON",
+        json.dumps({"trechos": "a, b"}),  # não é lista
+        json.dumps({"trechos": ["a", ""]}),  # item vazio = trecho suprimido
+        json.dumps({"trechos": ["a", 5]}),  # item que não é texto
+        json.dumps({"outro": ["a", "b"]}),
+    ],
+)
+def teste_suavizar_recusa_respostas_que_nao_servem(conteudo: str) -> None:
+    resposta = {"choices": [{"message": {"content": conteudo}}]}
+    provedor, _ = _provedor_em_sequencia([resposta, resposta])
 
     with pytest.raises(ErroDoProvedorIA):
-        provedor.suavizar_prompt("x", "openai/gpt-4o-mini")
+        provedor.suavizar_prompt("a, b", "openai/gpt-4o-mini")
+
+
+def teste_suavizar_aceita_json_embrulhado_em_markdown() -> None:
+    resposta = {"choices": [{"message": {"content": '```json\n{"trechos": ["a", "b novo"]}\n```'}}]}
+    provedor, _ = _provedor_em_sequencia([resposta])
+
+    assert provedor.suavizar_prompt("a, b", "openai/gpt-4o-mini").texto == "a, b novo"
+
+
+def teste_suavizar_prompt_vazio_e_erro_sem_chamar_o_modelo() -> None:
+    provedor, pedidos = _provedor_em_sequencia([])
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.suavizar_prompt(" , ,, ", "openai/gpt-4o-mini")
+
+    assert pedidos == []
+
+
+def teste_dividir_em_trechos_separa_por_virgula_e_descarta_vazios() -> None:
+    assert dividir_em_trechos("close-up,  Auri , ,2:3") == ["close-up", "Auri", "2:3"]
+    assert dividir_em_trechos("sem virgula") == ["sem virgula"]
+    assert dividir_em_trechos("") == []
+
+
+def teste_a_instrucao_de_suavizacao_exige_fidelidade_e_traz_as_regras_do_allan() -> None:
+    """S7 revisada, S8 e S9."""
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a")])
+
+    provedor.suavizar_prompt("a", "openai/gpt-4o-mini")
+
+    instrucao = json.loads(pedidos[0].content)["messages"][0]["content"]
+    assert "EXATAMENTE o mesmo número de itens" in instrucao
+    assert "IDÊNTICO" in instrucao  # o que não é explícito não muda
+    assert "o MÍNIMO" in instrucao
+    assert "cobertura parcial" in instrucao
+    assert "sempre sem sangue" in instrucao
+    assert "Menores de idade: sempre vestidos e nunca em cena sensual" in instrucao

@@ -26,6 +26,16 @@ class SituacaoDaGeracao(enum.Enum):
     """O provedor gerou a imagem."""
 
 
+class OrigemDaImagem(enum.Enum):
+    """De onde veio a imagem do catálogo (T3, item 7.5b)."""
+
+    IMPORTADA = "IMPORTADA"
+    """O usuário a gerou fora do app e a importou (item 6.6)."""
+
+    GERADA = "GERADA"
+    """O servidor a gerou pelo modelo de imagem (``POST /prompts/{id}/gerar-imagem``)."""
+
+
 class Prompt(Base):
     """O registro de um prompt gerado, com o que foi usado para montá-lo.
 
@@ -159,6 +169,22 @@ class Imagem(Base):
     """Dimensões em pixels (item 6.9): lidas na importação; nas imagens antigas, calculadas na primeira
     leitura. Nulas = o arquivo não pôde ser lido como imagem (ou ainda não foi calculado). Com elas o app
     decide o layout no texto — retrato em duas colunas, paisagem na largura da tela (item 7.5b, I1)."""
+
+    origem: Mapped[OrigemDaImagem] = mapped_column(
+        Enum(
+            OrigemDaImagem,
+            native_enum=False,
+            length=20,
+            create_constraint=True,
+            name="origem_da_imagem",
+            values_callable=lambda tipo: [membro.value for membro in tipo],
+        ),
+        default=OrigemDaImagem.IMPORTADA,
+        server_default=OrigemDaImagem.IMPORTADA.value,
+    )
+    """Importada ou gerada pelo servidor (T3): o app mostra as geradas em destaque e as importadas numa seção própria.
+
+    Nas imagens que já existiam antes desta coluna vale ``IMPORTADA``."""
 
     data_importacao: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

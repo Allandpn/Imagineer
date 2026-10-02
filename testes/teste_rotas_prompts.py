@@ -1039,3 +1039,31 @@ def teste_gerar_imagem_sem_chave_da_422(cliente: TestClient, usar_provedor_falso
     provedor._erro = ChaveDeApiAusente("Não há chave de API do OpenRouter configurada.")
 
     assert cliente.post(f"/prompts/{prompt['id']}/gerar-imagem").status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# Origem da imagem (item 7.5b, T3)
+# --------------------------------------------------------------------------- #
+
+
+def teste_imagem_importada_tem_origem_importada(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    importada = cliente.post(
+        f"/prompts/{prompt['id']}/imagens", files={"arquivo": ("a.png", b"\x89PNG\r\n\x1a\nxx", "image/png")}
+    ).json()
+
+    assert importada["origem"] == "IMPORTADA"
+
+
+def teste_imagem_gerada_tem_origem_gerada_e_a_importada_no_mesmo_prompt_continua_importada(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+    gerada = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem").json()["imagem"]
+    cliente.post(f"/prompts/{prompt['id']}/imagens", files={"arquivo": ("a.png", b"\x89PNG\r\n\x1a\nxx", "image/png")})
+
+    imagens = cliente.get(f"/prompts/{prompt['id']}").json()["imagens"]
+
+    assert gerada["origem"] == "GERADA"
+    assert sorted(imagem["origem"] for imagem in imagens) == ["GERADA", "IMPORTADA"]

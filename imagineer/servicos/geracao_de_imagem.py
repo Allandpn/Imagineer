@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from imagineer.ia.provedor import ConteudoRecusado, ImagemGerada, ModeloNaoEscolhido, ProvedorIA
 from imagineer.modelos import Configuracao, Imagem, Prompt
-from imagineer.modelos.prompt import SituacaoDaGeracao
+from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao
 from imagineer.servicos.catalogo_imagens import salvar_imagem
 from imagineer.servicos.imagens_reduzidas import ler_dimensoes
 
@@ -123,6 +123,7 @@ def _gravar_imagem(sessao: Session, prompt: Prompt, gerada: ImagemGerada) -> Ima
         tamanho_em_bytes=len(gerada.conteudo),
         largura=dimensoes[0] if dimensoes else None,
         altura=dimensoes[1] if dimensoes else None,
+        origem=OrigemDaImagem.GERADA,
     )
     sessao.add(imagem)
     return imagem

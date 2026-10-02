@@ -337,26 +337,36 @@ sem numerar os blocos.
 
 _INSTRUCAO_DE_SUAVIZACAO = """\
 Você reescreve um prompt de geração de imagem que o provedor de imagem RECUSOU por \
-conteúdo (moderação). Produza UM prompt em inglês, num texto corrido só, pronto para \
-enviar de novo — sem título, sem explicação, sem aspas.
+conteúdo (moderação). O prompt chega dividido em TRECHOS numerados, na ordem em que \
+foi escrito. Reescreva **cada trecho**, um por um, e devolva a lista inteira.
 
-Mantenha tudo o que não é o problema: a cena, as pessoas e os objetos, a pose, o \
-enquadramento, a iluminação, o estilo e o formato (inclusive o bloco final de estética, \
-como "cinematic style, fine grain film photography, 2:3"). Troque apenas o que é \
-explícito pelo que é SUGERIDO, para que a ideia da cena continue reconhecível.
+Responda APENAS com um JSON neste formato, com EXATAMENTE o mesmo número de itens e \
+na mesma ordem dos trechos recebidos:
+{"trechos": ["novo trecho 1", "novo trecho 2", "..."]}
 
-Regras:
-- Nudez: não use palavras como nude, naked, topless ou bare body. Mantenha o que o \
-prompt sugere por cobertura parcial — cabelo, tecido, sombra, enquadramento ou objetos \
-cobrindo o corpo; ombros e braços podem aparecer.
+Regras de fidelidade (o mais importante: o prompt vem da descrição de um autor, e \
+nada do que ele descreveu pode se perder):
+- Cada item da lista é a nova redação do trecho de MESMO número. Nunca junte dois \
+trechos, nunca pule um, nunca acrescente um item novo, nunca devolva um item vazio.
+- Trecho sem nada explícito: devolva-o IDÊNTICO, palavra por palavra. Isso vale para \
+pele, cabelo, expressão, postura, objetos, luz, cenário e estilo (inclusive o bloco \
+final de estética, como "cinematic style" e "2:3").
+- Trecho com algo explícito: mude o MÍNIMO. Troque só a palavra ou a expressão \
+explícita e mantenha o resto do trecho como está; não troque por sinônimos o que não \
+era problema.
+
+O que é "explícito" e como suavizar:
+- Nudez: não use nude, naked, topless nem bare body. Mantenha o que o trecho sugere \
+por cobertura parcial: cabelo, tecido, sombra, enquadramento ou objetos cobrindo o \
+corpo; ombros e braços podem aparecer.
 - Violência: sempre sem sangue e sem nada explícito. Sugira pelo instante antes ou \
 depois, por sombras, pela expressão e pela postura.
 - Menores de idade: sempre vestidos e nunca em cena sensual.
-- Não acrescente elementos que o prompt não tinha e não torne a cena mais sensual nem \
-mais violenta do que era.
-
-Responda APENAS com o texto do novo prompt.
+- Não torne a cena mais sensual nem mais violenta do que era.
 """
+
+TEMPERATURA_DA_SUAVIZACAO = 0.2
+"""Baixa de propósito: suavizar é reescrever com o mínimo de mudança, não criar."""
 
 _DESCRICAO_DE_CATEGORIA = {
     CategoriaEstilo.FOTORREALISTA_CINEMATOGRAFICO: (
@@ -681,12 +691,34 @@ class ProvedorOpenRouter(ProvedorIA):
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
 
     def suavizar_prompt(self, texto: str, modelo: str) -> PromptMontado:
-        """Pede ao modelo de texto a versão mais suave de um prompt recusado (S6)."""
-        pedido = f"PROMPT RECUSADO PELO PROVEDOR DE IMAGEM:\n{texto}"
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_SUAVIZACAO, pedido, operacao="suavizacao").strip()
-        if not resposta:
-            raise ErroDoProvedorIA(f"O modelo {modelo} devolveu um prompt vazio na suavização.")
-        return PromptMontado(texto=resposta, modelo=modelo)
+        """Suaviza um prompt recusado **trecho a trecho**, sem perder nenhum (S7 revisada, item 6.6).
+
+        O prompt é uma lista separada por vírgulas (item 4.4). O modelo recebe os trechos numerados e tem de
+        devolver **o mesmo número de itens**, cada um a nova redação do trecho de mesmo número; o servidor junta
+        na ordem. Com isso o modelo não consegue suprimir em silêncio um ponto da descrição do autor. Número
+        diferente (ou item vazio) = uma nova tentativa; errando de novo, ``ErroDoProvedorIA``, e **nunca** um
+        prompt com trechos faltando.
+        """
+        trechos = dividir_em_trechos(texto)
+        if not trechos:
+            raise ErroDoProvedorIA("O prompt a suavizar está vazio.")
+        lista = "\n".join(f"{numero}. {trecho}" for numero, trecho in enumerate(trechos, start=1))
+        pedido = (
+            f"TRECHOS DO PROMPT RECUSADO PELO PROVEDOR DE IMAGEM ({len(trechos)} no total):\n{lista}\n\n"
+            f'Devolva o JSON com exatamente {len(trechos)} itens em "trechos".'
+        )
+
+        for _ in range(TENTATIVAS_DA_SUAVIZACAO):
+            resposta = self._conversar(
+                modelo, _INSTRUCAO_DE_SUAVIZACAO, pedido, operacao="suavizacao", temperatura=TEMPERATURA_DA_SUAVIZACAO
+            )
+            novos = _ler_trechos_suavizados(resposta, quantos=len(trechos))
+            if novos is not None:
+                return PromptMontado(texto=", ".join(novos), modelo=modelo)
+        raise ErroDoProvedorIA(
+            f"O modelo {modelo} não devolveu os {len(trechos)} trechos da suavização, "
+            "e um prompt com trechos faltando mudaria o que o autor descreveu."
+        )
 
     def gerar_imagem(self, prompt: str, modelo: str) -> ImagemGerada:
         """Gera a imagem por ``POST /images`` (não o ``/chat/completions``, que recusa modelos de imagem).
@@ -794,6 +826,7 @@ class ProvedorOpenRouter(ProvedorIA):
         *,
         operacao: str,
         usar_busca_web: bool = False,
+        temperatura: float | None = None,
     ) -> str:
         """Faz uma chamada de conversa e devolve o texto da resposta.
 
@@ -828,6 +861,8 @@ class ProvedorOpenRouter(ProvedorIA):
         }
         if usar_busca_web:
             corpo["plugins"] = [{"id": "web"}]
+        if temperatura is not None:
+            corpo["temperature"] = temperatura
 
         dados = self._pedir("POST", "/chat/completions", json=corpo, autenticado=True)
 
@@ -1156,6 +1191,28 @@ def _interpretar_contexto(resposta: str) -> str:
             "O modelo devolveu um JSON sem o campo 'contexto'."
         )
     return contexto
+
+
+TENTATIVAS_DA_SUAVIZACAO = 2
+"""Quantas vezes se pede a suavização se o modelo errar o número de trechos: a primeira e mais uma."""
+
+
+def dividir_em_trechos(texto: str) -> list[str]:
+    """Divide um prompt em trechos pelas vírgulas, descartando os vazios (item 4.4: o prompt é uma lista)."""
+    return [trecho.strip() for trecho in texto.split(",") if trecho.strip()]
+
+
+def _ler_trechos_suavizados(resposta: str, quantos: int) -> list[str] | None:
+    """Os trechos que o modelo devolveu, ou ``None`` se não servem: sem JSON, sem lista, número diferente ou item vazio."""
+    dado = _extrair_json(resposta)
+    if dado is None:
+        return None
+    itens = dado.get("trechos")
+    if not isinstance(itens, list) or len(itens) != quantos:
+        return None
+    if not all(isinstance(item, str) and item.strip() for item in itens):
+        return None
+    return [item.strip() for item in itens]
 
 
 def _extrair_json(resposta: str) -> dict | None:
