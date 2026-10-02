@@ -821,3 +821,221 @@ def teste_apagar_o_original_nao_apaga_o_suavizado(
     restante = cliente.get(f"/prompts/{suavizado.id}")
     assert restante.status_code == 200
     assert restante.json()["prompt_original_id"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Gerar a imagem pelo servidor (item 6.6, S1 a S12)
+# --------------------------------------------------------------------------- #
+
+
+def _prompt_pronto(cliente: TestClient, usar_provedor_falso, **opcoes) -> tuple[ProvedorFalso, dict]:
+    """Um frame com um prompt já montado, e o provedor falso que vai gerar (e talvez recusar) a imagem."""
+    provedor = ProvedorFalso(prompt="close-up, Auri, nude, 2:3", **opcoes)
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
+    prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
+    return provedor, prompt
+
+
+def _por_id(cliente: TestClient, frame_id: int) -> dict[int, dict]:
+    return {p["id"]: p for p in cliente.get(f"/frames/{frame_id}/prompts").json()}
+
+
+def teste_s1_gera_a_imagem_do_prompt_original(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    resposta = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")
+
+    assert resposta.status_code == 200, resposta.text
+    corpo = resposta.json()
+    assert corpo["resultado"] == "GERADA"
+    assert corpo["suavizado"] is False
+    assert corpo["prompt"]["id"] == prompt["id"]
+    assert corpo["prompt"]["situacao_da_geracao"] == "COM_SUCESSO"
+    assert corpo["imagem"]["largura"] == 20 and corpo["imagem"]["altura"] == 30
+    assert corpo["imagem"]["orientacao"] == "RETRATO"
+    # Foi o prompt original, com o modelo de imagem padrão, e sem suavizar.
+    assert provedor.chamadas_de_imagem == [{"prompt": "close-up, Auri, nude, 2:3", "modelo": "meta/muse-image"}]
+    assert provedor.chamadas_de_suavizacao == []
+
+
+def teste_a_imagem_gerada_entra_no_catalogo_como_a_importada(
+    cliente: TestClient, usar_provedor_falso, _diretorio_de_imagens
+) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem").json()
+
+    detalhe = cliente.get(f"/prompts/{prompt['id']}").json()
+    assert [imagem["id"] for imagem in detalhe["imagens"]] == [corpo["imagem"]["id"]]
+    baixada = cliente.get(f"/imagens/{corpo['imagem']['id']}/arquivo")
+    assert baixada.status_code == 200
+    assert baixada.content.startswith(b"\x89PNG")
+    assert list(_diretorio_de_imagens.rglob("*.png"))  # o arquivo está em disco
+
+
+def teste_o_modelo_de_imagem_da_configuracao_e_o_que_vale(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+    cliente.put("/configuracao", json={"modelo_imagem": "black-forest-labs/flux.2-klein-4b"})
+
+    cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")
+
+    assert provedor.chamadas_de_imagem[0]["modelo"] == "black-forest-labs/flux.2-klein-4b"
+
+
+def teste_s2_recusa_suaviza_e_a_segunda_tentativa_gera(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _prompt_pronto(
+        cliente, usar_provedor_falso, recusas_de_imagem=1, prompt_suavizado="close-up, Auri, covered by her hair, 2:3"
+    )
+    cliente.put("/configuracao", json={"modelo_suavizacao": "barato/modelo"})
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem").json()
+
+    assert corpo["resultado"] == "GERADA"
+    assert corpo["suavizado"] is True
+    suavizado = corpo["prompt"]
+    assert suavizado["id"] != prompt["id"]
+    assert suavizado["texto"] == "close-up, Auri, covered by her hair, 2:3"
+    assert suavizado["prompt_original_id"] == prompt["id"]
+    assert suavizado["situacao_da_geracao"] == "COM_SUCESSO"
+    assert suavizado["modelo_ia"] == "barato/modelo"
+    assert corpo["imagem"] is not None
+    # O original nunca é sobrescrito: continua com o texto e a recusa registrada (S5).
+    original = _por_id(cliente, prompt["frame_id"])[prompt["id"]]
+    assert original["texto"] == "close-up, Auri, nude, 2:3"
+    assert original["situacao_da_geracao"] == "RECUSADO"
+    assert "content management policy" in original["motivo_da_recusa"]
+    assert original["total_de_imagens"] == 0
+    # A suavização usou o modelo próprio e o texto recusado; a 2ª tentativa foi com o texto suave.
+    assert provedor.chamadas_de_suavizacao == [{"texto": "close-up, Auri, nude, 2:3", "modelo": "barato/modelo"}]
+    assert [c["prompt"] for c in provedor.chamadas_de_imagem] == [
+        "close-up, Auri, nude, 2:3",
+        "close-up, Auri, covered by her hair, 2:3",
+    ]
+
+
+def teste_sem_modelo_de_suavizacao_usa_o_modelo_de_prompt(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso, recusas_de_imagem=1)
+
+    cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")
+
+    assert provedor.chamadas_de_suavizacao[0]["modelo"] == MODELO_FALSO  # o modelo_prompt
+
+
+def teste_s3_recusa_de_novo_devolve_ao_usuario_com_o_prompt_para_editar(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso, recusas_de_imagem=2)
+
+    resposta = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")
+
+    assert resposta.status_code == 200  # recusa não é erro de servidor
+    corpo = resposta.json()
+    assert corpo["resultado"] == "RECUSADA"
+    assert corpo["imagem"] is None
+    assert corpo["suavizado"] is True
+    assert corpo["prompt"]["situacao_da_geracao"] == "RECUSADO"
+    assert corpo["prompt"]["motivo_da_recusa"]
+    assert corpo["prompt"]["prompt_original_id"] == prompt["id"]
+    # S12: uma suavização por pedido, sem laço (2 envios, 1 suavização).
+    assert len(provedor.chamadas_de_imagem) == 2
+    assert len(provedor.chamadas_de_suavizacao) == 1
+    prompts = _por_id(cliente, prompt["frame_id"])
+    assert {p["situacao_da_geracao"] for p in prompts.values()} == {"RECUSADO"}
+
+
+def teste_s3_texto_editado_vira_prompt_novo_e_vai_direto_sem_suavizar(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    corpo = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"texto": "close-up, Auri, wrapped in linen, 2:3"}
+    ).json()
+
+    assert corpo["resultado"] == "GERADA"
+    assert corpo["suavizado"] is False  # a edição é do usuário, não do sistema
+    editado = corpo["prompt"]
+    assert editado["id"] != prompt["id"]
+    assert editado["texto"] == "close-up, Auri, wrapped in linen, 2:3"
+    assert editado["prompt_original_id"] == prompt["id"]
+    assert editado["modelo_ia"] is None
+    assert provedor.chamadas_de_imagem == [{"prompt": "close-up, Auri, wrapped in linen, 2:3", "modelo": "meta/muse-image"}]
+    assert cliente.get(f"/prompts/{prompt['id']}").json()["texto"] == "close-up, Auri, nude, 2:3"
+
+
+def teste_s3_texto_editado_que_o_provedor_recusa_nao_dispara_suavizacao(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso, recusas_de_imagem=1)
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"texto": "versão editada"}).json()
+
+    assert corpo["resultado"] == "RECUSADA"
+    assert corpo["suavizado"] is False
+    assert corpo["prompt"]["texto"] == "versão editada"
+    assert corpo["prompt"]["situacao_da_geracao"] == "RECUSADO"
+    assert provedor.chamadas_de_suavizacao == []  # chamada direta (S3)
+
+
+def teste_texto_igual_ao_do_prompt_segue_o_fluxo_normal(cliente: TestClient, usar_provedor_falso) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"texto": "  close-up, Auri, nude, 2:3 "}).json()
+
+    assert corpo["prompt"]["id"] == prompt["id"]  # não criou prompt novo
+    assert corpo["resultado"] == "GERADA"
+
+
+def teste_s4_erro_que_nao_e_recusa_da_502_sem_suavizar_e_sem_mudar_o_prompt(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+    provedor._erro = ErroDoProvedorIA("O OpenRouter respondeu 503: temporariamente indisponível")
+
+    resposta = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")
+
+    assert resposta.status_code == 502
+    assert provedor.chamadas_de_suavizacao == []
+    assert cliente.get(f"/prompts/{prompt['id']}").json()["situacao_da_geracao"] == "NAO_TENTADO"
+
+
+def teste_recusa_sem_nenhum_modelo_de_texto_da_422_mas_nao_perde_a_recusa(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso, recusas_de_imagem=1)
+    cliente.put("/configuracao", json={"modelo_prompt": ""})  # sem modelo_suavizacao nem modelo_prompt
+
+    resposta = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")
+
+    assert resposta.status_code == 422
+    assert "suavizá-lo" in resposta.json()["detail"]
+    assert provedor.chamadas_de_suavizacao == []
+    detalhe = cliente.get(f"/prompts/{prompt['id']}").json()
+    assert detalhe["situacao_da_geracao"] == "RECUSADO"  # a recusa foi gravada antes do erro
+
+
+def teste_gerar_de_novo_um_prompt_ja_recusado_que_agora_passa_limpa_o_motivo(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    _, prompt = _prompt_pronto(cliente, usar_provedor_falso, recusas_de_imagem=2)
+    cliente.post(f"/prompts/{prompt['id']}/gerar-imagem")  # recusa duas vezes
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem").json()  # o provedor agora aceita
+
+    assert corpo["resultado"] == "GERADA"
+    assert corpo["prompt"]["id"] == prompt["id"]
+    assert corpo["prompt"]["situacao_da_geracao"] == "COM_SUCESSO"
+    assert corpo["prompt"]["motivo_da_recusa"] is None
+
+
+def teste_gerar_imagem_de_prompt_inexistente_da_404(cliente: TestClient, usar_provedor_falso) -> None:
+    usar_provedor_falso(ProvedorFalso())
+
+    assert cliente.post("/prompts/9999/gerar-imagem").status_code == 404
+
+
+def teste_gerar_imagem_sem_chave_da_422(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+    provedor._erro = ChaveDeApiAusente("Não há chave de API do OpenRouter configurada.")
+
+    assert cliente.post(f"/prompts/{prompt['id']}/gerar-imagem").status_code == 422

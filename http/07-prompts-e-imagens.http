@@ -125,3 +125,18 @@ GET {{baseUrl}}/imagens/1/arquivo
 
 ### Remove o prompt — leva as imagens dele junto, banco e disco
 # DELETE {{baseUrl}}/prompts/{{promptId}}
+
+### Gera a imagem pelo servidor (incremento 12, item 6.6)
+# GASTA IA: cerca de US$ 0,01 por imagem gerada (a recusa não cobra). Usa o "modelo_imagem" da
+# configuração (padrão meta/muse-image; troque em 05-configuracao-ia.http). Fluxo: envia o prompt;
+# se o provedor RECUSAR o conteúdo, suaviza (modelo_suavizacao, ou modelo_prompt) e tenta uma segunda
+# vez; se recusar de novo, responde "RECUSADA" com o prompt para editar. Responde 200 nos dois casos.
+POST {{baseUrl}}/prompts/{{promptId}}/gerar-imagem
+
+### O mesmo, depois de editar o prompt à mão (S3): vira um prompt novo e vai DIRETO, sem suavizar
+POST {{baseUrl}}/prompts/{{promptId}}/gerar-imagem
+Content-Type: application/json
+
+{
+  "texto": "close-up, Auri, bare shoulders, wrapped in a loose grey linen cloth, 2:3"
+}

@@ -17,8 +17,10 @@ from imagineer.esquemas.prompt import (
     ImagemResumo,
     PromptAjuste,
     PromptDetalhe,
+    PedidoDeGeracao,
     PromptNovo,
     PromptResumo,
+    ResultadoDaGeracao,
 )
 from imagineer.ia.provedor import (
     ModeloNaoEscolhido,
@@ -51,6 +53,7 @@ from imagineer.servicos.catalogo_imagens import (
     salvar_imagem,
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.geracao_de_imagem import gerar_imagem_do_prompt
 from imagineer.servicos.identidade_de_elemento import identidade_vigente
 from imagineer.servicos.imagens_reduzidas import (
     TamanhoDeImagem,
@@ -237,6 +240,34 @@ async def importar_imagem(
     sessao.commit()
     sessao.refresh(imagem)
     return ImagemResumo.model_validate(imagem)
+
+
+@rotas.post(
+    "/{prompt_id}/gerar-imagem",
+    response_model=ResultadoDaGeracao,
+    summary="Gera a imagem pelo servidor, com suavização se o provedor recusar",
+)
+def gerar_imagem(
+    prompt_id: int,
+    corpo: PedidoDeGeracao | None = None,
+    sessao: Session = Depends(obter_sessao),
+    provedor: ProvedorIA = Depends(obter_provedor),
+) -> ResultadoDaGeracao:
+    """Envia o prompt ao modelo de imagem (S1); se o provedor recusar o conteúdo, suaviza e tenta de novo (S2).
+
+    Uma segunda recusa **devolve ao usuário** (S3), com o prompt enviado por último para ele editar.
+    Recusa responde 200 (``RECUSADA``); só os outros erros do provedor viram 422/502, sem suavizar.
+    """
+    prompt = _buscar_prompt(sessao, prompt_id)
+    resultado = gerar_imagem_do_prompt(
+        sessao, provedor, prompt, obter_ou_criar(sessao), corpo.texto if corpo else None
+    )
+    return ResultadoDaGeracao(
+        resultado="GERADA" if resultado.gerada else "RECUSADA",
+        suavizado=resultado.suavizado,
+        prompt=_resumo(resultado.prompt, len(resultado.prompt.imagens)),
+        imagem=ImagemResumo.model_validate(resultado.imagem) if resultado.imagem else None,
+    )
 
 
 # --------------------------------------------------------------------------- #

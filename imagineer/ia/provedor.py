@@ -40,6 +40,29 @@ class TextoLongoDemais(ErroDoProvedorIA):
     """
 
 
+class ConteudoRecusado(ErroDoProvedorIA):
+    """O provedor de imagem recusou o **conteúdo** do prompt (moderação, S4).
+
+    Diferente de qualquer outro erro do provedor (rede, 503, chave): quem recebe sabe que
+    vale **suavizar o prompt** e tentar de novo. Guarda a mensagem do provedor em ``motivo``.
+    """
+
+    def __init__(self, motivo: str):
+        super().__init__(motivo)
+        self.motivo = motivo
+
+
+@dataclass
+class ImagemGerada:
+    """Uma imagem que o provedor gerou: os bytes e o tipo, para gravar como qualquer imagem do catálogo."""
+
+    conteudo: bytes
+    tipo_de_midia: str
+    """Como ``image/webp`` ou ``image/png``; a extensão do arquivo sai daqui."""
+
+    modelo: str = ""
+
+
 @dataclass
 class ModeloDisponivel:
     """Um modelo oferecido pelo provedor, como a tela de configuração o mostra."""
@@ -404,6 +427,28 @@ class ProvedorIA(ABC):
                 menor que ``descricao_do_frame``.
             comentario_do_usuario: uma correção pontual do usuário, com
                 prioridade sobre tudo o mais (item 4.4).
+        """
+
+    @abstractmethod
+    def suavizar_prompt(self, texto: str, modelo: str) -> PromptMontado:
+        """Reescreve um prompt que o provedor de imagem recusou (S6, item 6.6).
+
+        Mantém a cena e troca o explícito pelo sugerido: nudez vira cobertura parcial,
+        violência fica sem sangue, menores sempre vestidos. Chamada **só** depois de uma
+        recusa de conteúdo.
+
+        Args:
+            texto: o prompt recusado.
+            modelo: o modelo de texto que reescreve (``modelo_suavizacao`` ou ``modelo_prompt``).
+        """
+
+    @abstractmethod
+    def gerar_imagem(self, prompt: str, modelo: str) -> ImagemGerada:
+        """Gera a imagem a partir do prompt (item 6.6, "Gerar a imagem").
+
+        Raises:
+            ConteudoRecusado: o provedor recusou o conteúdo (moderação). A recusa não cobra.
+            ErroDoProvedorIA: qualquer outro problema (rede, 503, resposta fora do formato).
         """
 
     @abstractmethod

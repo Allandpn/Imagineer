@@ -1,6 +1,7 @@
 """Contratos das rotas de prompts e catálogo de imagens (Etapa 6.6)."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -131,3 +132,33 @@ class PromptAjuste(BaseModel):
     """O que o app manda para anotar como a imagem ficou."""
 
     avaliacao: str = Field(min_length=1)
+
+
+class PedidoDeGeracao(BaseModel):
+    """O corpo, opcional, de ``POST /prompts/{id}/gerar-imagem``."""
+
+    texto: str | None = Field(
+        default=None,
+        max_length=8000,
+        description=(
+            "O prompt **editado à mão** pelo usuário (S3): vira um prompt novo e é enviado direto, sem "
+            "suavização. Ausente (ou igual ao texto do prompt), vale o fluxo normal: original e, se o "
+            "provedor recusar, a suavização."
+        ),
+    )
+
+
+class ResultadoDaGeracao(BaseModel):
+    """O que a geração devolveu (item 6.6, "Gerar a imagem"). Responde 200 nos dois desfechos."""
+
+    resultado: Literal["GERADA", "RECUSADA"]
+    suavizado: bool = Field(
+        description="O prompt enviado por último é uma versão suavizada pelo sistema (não a edição do usuário)."
+    )
+    prompt: PromptResumo = Field(
+        description=(
+            "O prompt enviado **por último** (o original, o suavizado ou o editado), com a situação e o "
+            "motivo da recusa: é o que o app mostra e deixa editar."
+        )
+    )
+    imagem: ImagemResumo | None = Field(default=None, description="A imagem gerada; nula se `RECUSADA`.")

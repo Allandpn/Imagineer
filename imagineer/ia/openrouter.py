@@ -5,6 +5,8 @@ API compatível com a da OpenAI. Foi escolhido para não precisar de um adaptado
 por fornecedor na v1 (Etapa 5).
 """
 
+import base64
+import binascii
 import json
 import logging
 import re
@@ -16,12 +18,14 @@ import httpx
 from imagineer.ia.provedor import (
     CenaSugerida,
     ChaveDeApiAusente,
+    ConteudoRecusado,
     ElementoSugerido,
     ErroDoProvedorIA,
     EstadoSugerido,
     ExtracaoDeElementos,
     FrameFundamentado,
     IdentidadeSugerida,
+    ImagemGerada,
     ModeloDisponivel,
     ModeloNaoEscolhido,
     ParticipanteSugerido,
@@ -331,6 +335,29 @@ Responda APENAS com o texto do prompt, sem aspas, sem explicação, sem título,
 sem numerar os blocos.
 """
 
+_INSTRUCAO_DE_SUAVIZACAO = """\
+Você reescreve um prompt de geração de imagem que o provedor de imagem RECUSOU por \
+conteúdo (moderação). Produza UM prompt em inglês, num texto corrido só, pronto para \
+enviar de novo — sem título, sem explicação, sem aspas.
+
+Mantenha tudo o que não é o problema: a cena, as pessoas e os objetos, a pose, o \
+enquadramento, a iluminação, o estilo e o formato (inclusive o bloco final de estética, \
+como "cinematic style, fine grain film photography, 2:3"). Troque apenas o que é \
+explícito pelo que é SUGERIDO, para que a ideia da cena continue reconhecível.
+
+Regras:
+- Nudez: não use palavras como nude, naked, topless ou bare body. Mantenha o que o \
+prompt sugere por cobertura parcial — cabelo, tecido, sombra, enquadramento ou objetos \
+cobrindo o corpo; ombros e braços podem aparecer.
+- Violência: sempre sem sangue e sem nada explícito. Sugira pelo instante antes ou \
+depois, por sombras, pela expressão e pela postura.
+- Menores de idade: sempre vestidos e nunca em cena sensual.
+- Não acrescente elementos que o prompt não tinha e não torne a cena mais sensual nem \
+mais violenta do que era.
+
+Responda APENAS com o texto do novo prompt.
+"""
+
 _DESCRICAO_DE_CATEGORIA = {
     CategoriaEstilo.FOTORREALISTA_CINEMATOGRAFICO: (
         "still de cinema: lente e enquadramento fotográficos, profundidade de "
@@ -422,6 +449,49 @@ _INSTRUCAO_DE_PERFIL = _INSTRUCAO_DE_PERFIL.format(
         for categoria, descricao in _DESCRICAO_DE_CATEGORIA.items()
     )
 )
+
+
+class ErroHttpDoProvedor(ErroDoProvedorIA):
+    """O OpenRouter respondeu com um código de erro HTTP.
+
+    Filha de ``ErroDoProvedorIA`` (para o resto do sistema nada muda), mas guarda o ``codigo`` e o
+    corpo da resposta: é com eles que ``gerar_imagem`` distingue uma **recusa de conteúdo** de
+    qualquer outra falha (S4).
+    """
+
+    def __init__(self, codigo: int, corpo: str, mensagem: str):
+        super().__init__(mensagem)
+        self.codigo = codigo
+        self.corpo = corpo
+
+
+_MARCAS_DE_RECUSA_DE_CONTEUDO = (
+    "content management policy",  # Meta (meta/muse-image)
+    "sexual or adult content",  # Black Forest Labs (flux.2-klein-4b)
+    "content policy",
+    "moderation",
+)
+"""Trechos (em minúsculas) que, num erro 400, indicam recusa de conteúdo (S4).
+
+**É o único lugar** que sabe como cada provedor escreve a recusa: se um deles mudar o texto, é aqui
+que se ajusta. Mensagem desconhecida cai no erro comum (sem suavizar)."""
+
+
+def _motivo_de_recusa(erro: ErroHttpDoProvedor) -> str | None:
+    """A mensagem do provedor se o erro é uma recusa de conteúdo (S4); ``None`` se é outro erro."""
+    if erro.codigo != 400:
+        return None
+    mensagem = erro.corpo
+    try:
+        dado = json.loads(erro.corpo)
+        texto = dado["error"]["message"]
+        if isinstance(texto, str) and texto.strip():
+            mensagem = texto
+    except (ValueError, KeyError, TypeError):
+        pass
+    if any(marca in mensagem.lower() for marca in _MARCAS_DE_RECUSA_DE_CONTEUDO):
+        return mensagem.strip()
+    return None
 
 
 class ProvedorOpenRouter(ProvedorIA):
@@ -610,6 +680,52 @@ class ProvedorOpenRouter(ProvedorIA):
         resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido, operacao="prompt")
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
 
+    def suavizar_prompt(self, texto: str, modelo: str) -> PromptMontado:
+        """Pede ao modelo de texto a versão mais suave de um prompt recusado (S6)."""
+        pedido = f"PROMPT RECUSADO PELO PROVEDOR DE IMAGEM:\n{texto}"
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_SUAVIZACAO, pedido, operacao="suavizacao").strip()
+        if not resposta:
+            raise ErroDoProvedorIA(f"O modelo {modelo} devolveu um prompt vazio na suavização.")
+        return PromptMontado(texto=resposta, modelo=modelo)
+
+    def gerar_imagem(self, prompt: str, modelo: str) -> ImagemGerada:
+        """Gera a imagem por ``POST /images`` (não o ``/chat/completions``, que recusa modelos de imagem).
+
+        Só ``model`` e ``prompt`` no pedido: foi o que se testou com o ``meta/muse-image``. A resposta
+        traz a imagem em base64 (``data[0].b64_json``) e o ``media_type``. A recusa de conteúdo (S4)
+        vira ``ConteudoRecusado``; **não grava consumo**, porque a recusa não cobra.
+        """
+        if not modelo:
+            raise ModeloNaoEscolhido(
+                "Nenhum modelo de imagem foi escolhido. Configure 'modelo_imagem' em /configuracao."
+            )
+        if not self._chave_api:
+            raise ChaveDeApiAusente(
+                "Não há chave de API do OpenRouter configurada. Envie a sua no "
+                "header X-Chave-API-OpenRouter ou defina a variável de ambiente "
+                "CHAVE_API_OPENROUTER no servidor."
+            )
+
+        try:
+            dados = self._pedir("POST", "/images", json={"model": modelo, "prompt": prompt}, autenticado=True)
+        except ErroHttpDoProvedor as erro:
+            motivo = _motivo_de_recusa(erro)
+            if motivo is not None:
+                raise ConteudoRecusado(motivo) from erro
+            raise
+
+        try:
+            item = dados["data"][0]
+            conteudo = base64.b64decode(item["b64_json"], validate=True)
+            tipo = item.get("media_type") or "image/png"
+        except (KeyError, IndexError, TypeError, ValueError, binascii.Error, AttributeError) as erro:
+            raise ErroDoProvedorIA(f"O modelo {modelo} respondeu num formato inesperado.") from erro
+        if not conteudo:
+            raise ErroDoProvedorIA(f"O modelo {modelo} devolveu uma imagem vazia.")
+
+        self._avisar_uso("imagem", modelo, dados)
+        return ImagemGerada(conteudo=conteudo, tipo_de_midia=tipo, modelo=modelo)
+
     def sugerir_perfil_renderizacao(
         self,
         titulo: str,
@@ -774,9 +890,10 @@ class ProvedorOpenRouter(ProvedorIA):
                 "O OpenRouter recusou a chave de API. Verifique se ela está certa."
             )
         if resposta.status_code >= 400:
-            raise ErroDoProvedorIA(
-                f"O OpenRouter respondeu {resposta.status_code}: "
-                f"{_resumir(resposta.text)}"
+            raise ErroHttpDoProvedor(
+                resposta.status_code,
+                resposta.text,
+                f"O OpenRouter respondeu {resposta.status_code}: {_resumir(resposta.text)}",
             )
 
         try:

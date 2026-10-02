@@ -12,13 +12,19 @@ antemão. O que ele imita fielmente é o **contrato** — os mesmos tipos, os me
 erros.
 """
 
+import io
+
+from PIL import Image
+
 from imagineer.ia.provedor import (
     CenaSugerida,
+    ConteudoRecusado,
     ElementoSugerido,
     EstadoSugerido,
     ExtracaoDeElementos,
     FrameFundamentado,
     IdentidadeSugerida,
+    ImagemGerada,
     ModeloDisponivel,
     PerfilRenderizacaoSugerido,
     PromptMontado,
@@ -27,6 +33,15 @@ from imagineer.ia.provedor import (
 from imagineer.modelos import CategoriaEstilo, TipoElemento
 
 MODELO_FALSO = "falso/modelo-de-teste"
+
+MOTIVO_DE_RECUSA_FALSO = "The response was filtered due to the prompt triggering our content management policy."
+
+
+def imagem_falsa(largura: int = 20, altura: int = 30) -> bytes:
+    """Um PNG de verdade (o Pillow lê as dimensões), pequeno, para os testes de geração."""
+    saida = io.BytesIO()
+    Image.new("RGB", (largura, altura), (120, 80, 40)).save(saida, format="PNG")
+    return saida.getvalue()
 
 MODELOS_FALSOS = [
     ModeloDisponivel(
@@ -60,7 +75,12 @@ class ProvedorFalso(ProvedorIA):
         prompt: str = "watercolor painting of a snowy courtyard at dusk",
         perfil_sugerido: PerfilRenderizacaoSugerido | None = None,
         erro: Exception | None = None,
+        recusas_de_imagem: int = 0,
+        prompt_suavizado: str = "a softer version of the prompt",
     ):
+        self._recusas_de_imagem = recusas_de_imagem
+        """Quantas das **primeiras** gerações de imagem o provedor recusa (``ConteudoRecusado``)."""
+        self._prompt_suavizado = prompt_suavizado
         self._elementos = elementos if elementos is not None else []
         self._cenas_sugeridas = cenas_sugeridas if cenas_sugeridas is not None else []
         self._modelos = list(MODELOS_FALSOS) if modelos is None else modelos
@@ -80,6 +100,8 @@ class ProvedorFalso(ProvedorIA):
         self.chamadas_de_fundamentacao: list[dict] = []
         self.chamadas_de_prompt: list[dict] = []
         self.chamadas_de_sugestao_de_perfil: list[dict] = []
+        self.chamadas_de_suavizacao: list[dict] = []
+        self.chamadas_de_imagem: list[dict] = []
 
     def listar_modelos(self) -> list[ModeloDisponivel]:
         if self._erro is not None:
@@ -202,6 +224,20 @@ class ProvedorFalso(ProvedorIA):
         if self._erro is not None:
             raise self._erro
         return PromptMontado(texto=self._prompt, modelo=modelo)
+
+    def suavizar_prompt(self, texto: str, modelo: str) -> PromptMontado:
+        self.chamadas_de_suavizacao.append({"texto": texto, "modelo": modelo})
+        if self._erro is not None:
+            raise self._erro
+        return PromptMontado(texto=self._prompt_suavizado, modelo=modelo)
+
+    def gerar_imagem(self, prompt: str, modelo: str) -> ImagemGerada:
+        self.chamadas_de_imagem.append({"prompt": prompt, "modelo": modelo})
+        if self._erro is not None:
+            raise self._erro
+        if len(self.chamadas_de_imagem) <= self._recusas_de_imagem:
+            raise ConteudoRecusado(MOTIVO_DE_RECUSA_FALSO)
+        return ImagemGerada(conteudo=imagem_falsa(), tipo_de_midia="image/png", modelo=modelo)
 
     def sugerir_perfil_renderizacao(
         self,

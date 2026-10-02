@@ -870,6 +870,9 @@ Camada de abstração `ProvedorIA` com quatro métodos:
 - `fundamentar_frame(texto_capitulo, titulo, descricao, horario, clima, humor, participantes, modelo) -> contexto` — confere "quem, onde, o quê" de um frame do tipo `CENA` contra o capítulo, sem sobrescrever o que o usuário escreveu (fase 3 — ver item 4.4).
 - `montar_prompt(descricao_do_frame, elementos, perfil_renderizacao, modelo, contexto_do_livro, comentario_do_usuario) -> texto do prompt` — passo 8, combinando as fontes acima por ordem de prioridade (item 4.4).
 
+- `suavizar_prompt(texto, modelo) -> texto do prompt` — **implementado (02/10/2026, S6)**: reescreve um prompt que o provedor de imagem recusou, trocando o explícito pelo sugerido (item 6.6, "Gerar a imagem").
+- `gerar_imagem(prompt, modelo) -> imagem` — **implementado (02/10/2026)**: gera a imagem pelo `POST /api/v1/images` do OpenRouter e devolve os bytes. Levanta `ConteudoRecusado` (filha de `ErroDoProvedorIA`) quando o provedor recusa o conteúdo (S4).
+
 Implementação concreta inicial: `ProvedorOpenRouter`, parametrizada por `id_modelo`. Os quatro métodos devolvem objetos tipados, não texto cru, para que a rota não tenha que adivinhar o formato da resposta. Provedores nativos adicionais (Groq, Gemini) podem ser adicionados depois seguindo a mesma interface, se necessário.
 
 > **Divergência registrada (item 1.5):** a primeira versão desta seção nomeava a interface como `AIProvider`, a implementação como `OpenRouterProvider` e o parâmetro como `render_profile`. Os nomes foram traduzidos para `ProvedorIA`, `ProvedorOpenRouter` e `perfil_renderizacao` por coerência com a regra de idioma: existe tradução natural, então o português prevalece. Definido antes de a pasta `ia/` ser preenchida, para não renomear código depois.
@@ -1463,6 +1466,7 @@ Testado com IA real (`claude-haiku-4.5`) nas três categorias: sem restrição a
 | `PATCH /prompts/{id}` | Anota a avaliação do resultado | **implementado** |
 | `DELETE /prompts/{id}` | Remove o prompt e suas imagens | **implementado** |
 | `POST /prompts/{id}/imagens` | Importa o arquivo de imagem gerado (passos 10 e 11) | **implementado** |
+| `POST /prompts/{id}/gerar-imagem` | **Gera a imagem pelo servidor**, com suavização se o provedor recusar (S1 a S12) | **implementado** |
 | `GET /imagens/{id}/arquivo` | Devolve o arquivo da imagem | **implementado** |
 | `DELETE /imagens/{id}` | Remove a imagem do catálogo, e o arquivo do disco | **implementado** |
 
@@ -1489,6 +1493,41 @@ Testado com IA real (`claude-haiku-4.5`) nas três categorias: sem restrição a
 **Remover apaga o arquivo do disco, não só a linha do banco** — tanto em `DELETE /imagens/{id}` quanto em `DELETE /prompts/{id}` (que remove as imagens do prompt em cascata). Um arquivo ausente no disco não impede a remoção da linha: o objetivo é o catálogo ficar consistente, e um arquivo que já sumiu não deveria travar a limpeza do registro órfão.
 
 **Limitação conhecida:** apagar um livro, capítulo, frame ou elemento remove as linhas de `prompts` e `imagens` em cascata no banco (item 3.4), mas **não** apaga os arquivos de imagem do disco — só as rotas específicas desta seção fazem essa limpeza. Adicionar isso exigiria um gatilho no banco ou uma varredura periódica, e nenhuma das duas coisas está no escopo do MVP; por ora o arquivo órfão é um custo aceitável, revisitável se o volume de imagens crescer.
+
+#### Gerar a imagem (especificado em 02/10/2026; incremento 12, S1 a S12 do item 7.5b)
+
+`POST /prompts/{id}/gerar-imagem`: o servidor envia o prompt ao modelo de imagem (`Configuracao.modelo_imagem`, item 3.4d), grava a imagem **pelo mesmo caminho da importação** (disco, `Imagem`, dimensões, versões reduzidas) e atualiza a situação do prompt (item 3.4c). **Gasta IA** (cerca de US$ 0,01 por imagem gerada); a recusa não cobra.
+
+**Corpo (opcional):** `{"texto": "..."}`: o prompt **editado à mão** pelo usuário (S3). Sem corpo, vale o texto do prompt.
+
+**O fluxo:**
+
+1. **Sem `texto` (ou igual ao do prompt):** S1, envia o prompt tal como está. Se **gerou**, o prompt fica `COM_SUCESSO` e a imagem entra nele.
+2. **Se o provedor recusou o conteúdo** (S4), o prompt fica `RECUSADO` com o `motivo_da_recusa` (gravado **antes** de seguir, para a recusa não se perder se o resto falhar). O servidor **suaviza** (`suavizar_prompt`, com `modelo_suavizacao`, ou o `modelo_prompt` se aquele estiver vazio; sem nenhum dos dois, 422) e cria um **prompt novo** com o texto suavizado e `prompt_original_id` apontando para o original. Faz a **segunda tentativa** com ele (S2). Gerou: o suavizado fica `COM_SUCESSO` e recebe a imagem. Recusou de novo: o suavizado fica `RECUSADO`, e o servidor **devolve ao usuário** (S3).
+3. **Com `texto` diferente do prompt (edição manual, S3):** o texto editado vira um **prompt novo** (com `prompt_original_id` apontando para o prompt de onde o usuário partiu) e é enviado **direto**, sem suavização. O original nunca é sobrescrito.
+
+**Resposta (200, nos dois desfechos):**
+
+| Campo | O que é |
+|---|---|
+| `resultado` | `GERADA` ou `RECUSADA` |
+| `suavizado` | `true` se o prompt enviado por último é uma versão suavizada pelo sistema |
+| `prompt` | o prompt que foi enviado **por último** (o original, o suavizado ou o editado), com a situação e o `motivo_da_recusa`: é o que o app mostra e deixa editar |
+| `imagem` | a imagem gerada (`ImagemResumo`), ou nulo se `RECUSADA` |
+
+Recusa não é erro de servidor: responde **200** com `RECUSADA`, e o app lê o `prompt` devolvido para abrir a edição.
+
+**Erros:** `404` prompt inexistente; `422` sem chave ou sem modelo (`ChaveDeApiAusente`, `ModeloNaoEscolhido`); `502` qualquer outro erro do provedor (rede, 503 "temporariamente indisponível", resposta fora do formato), **sem suavizar**.
+
+**Custo (item 4.3):** cada imagem gerada grava uma linha em `usos_ia` com `operacao="imagem"` (o provedor informa o custo em dólares); a suavização grava `operacao="suavizacao"`. A recusa não cobra e não grava linha.
+
+**Como o provedor reconhece a recusa (S4):** erro **400** do OpenRouter cuja mensagem fala de política de conteúdo (hoje: *content management policy*, na Meta; *flagged for sexual or adult content*, na Black Forest Labs). A detecção fica numa função só, fácil de ajustar quando um provedor mudar o texto; mensagem desconhecida cai no erro comum.
+
+**Resposta do OpenRouter lida:** `data[0].b64_json` (base64) com `media_type` (`image/webp` no `meta/muse-image`); a extensão do arquivo sai do `media_type`. Resposta só com URL, em vez de base64, não é tratada por enquanto (erro do provedor).
+
+**Implementado (02/10/2026), em linguagem simples.** A rota `POST /prompts/{id}/gerar-imagem` roda o fluxo inteiro **no servidor**, para o app só chamar e mostrar o resultado. A lógica mora num serviço novo (`servicos/geracao_de_imagem.py`) e não na rota, que é fina; assim a regra "original, suavizar, segunda tentativa, devolver" fica num lugar só e testável sem HTTP. O provedor (`ProvedorOpenRouter`) ganhou `gerar_imagem` (chama `/images`, lê o base64) e `suavizar_prompt` (chama o modelo de texto com a instrução própria, `_INSTRUCAO_DE_SUAVIZACAO`, que traz as regras S7 a S9). Para distinguir uma **recusa de conteúdo** de qualquer outra falha, o erro HTTP do OpenRouter agora guarda o código e o corpo (`ErroHttpDoProvedor`, que continua sendo um `ErroDoProvedorIA`), e uma função isolada (`_motivo_de_recusa`) reconhece o 400 com texto de política; quem muda a redação de uma recusa só mexe ali. O prompt suavizado e o editado são **prompts novos** ligados ao de origem; a situação de cada tentativa (`RECUSADO`/`COM_SUCESSO`) é gravada **na hora**, então uma recusa não se perde mesmo se a etapa seguinte falhar (por exemplo, sem modelo de suavização, o que responde 422 depois de já ter marcado o original `RECUSADO`). A imagem gerada entra no catálogo pelo mesmo caminho da importada (arquivo em disco, linha em `imagens`, largura e altura), então miniaturas, tela cheia e o ícone `ILUSTRADO` funcionam sem mudança. `ProvedorFalso` ganhou `recusas_de_imagem` (quantas das primeiras gerações recusar), `prompt_suavizado` e os registros das chamadas, e gera um PNG de verdade; **nenhum teste chama o OpenRouter nem gasta dinheiro**. 31 testes novos (17 do provedor com transporte HTTP falso, 14 da rota; 582 no total). **Ainda não foi chamado o `meta/muse-image` por esta rota**: o formato da resposta e a recusa foram vistos nos testes manuais de 01/10 e reproduzidos nos testes, mas a primeira chamada real pela rota fica para quando o Allan pedir. **Para o app:** rota **nova**; o app atual não a usa. O tempo de resposta de uma geração real não foi medido; o app vai precisar do tempo de espera longo (como em `gerar prompt`).
+
+**O que não entra:** parâmetros de tamanho/proporção no pedido (o formato vai no próprio texto do prompt, item 4.5; não testei esses parâmetros no `meta/muse-image`), mais de uma imagem por pedido, *streaming*, a tela do app (próxima fatia) e a escolha do modelo pelo usuário dentro do app (Etapa 8).
 
 #### O que foi implementado
 
