@@ -34,6 +34,18 @@ Content-Type: application/json
   "modelo_perfil": "anthropic/claude-haiku-4.5"
 }
 
+### Escolhe o modelo que gera a imagem e o que suaviza o prompt recusado (incremento 12)
+# "modelo_imagem" é um modelo de IMAGEM do OpenRouter (padrão: meta/muse-image); não pode
+# ficar vazio (422). "modelo_suavizacao" é um modelo de TEXTO; vazio = usa o modelo_prompt.
+# Os ids entram à mão por enquanto; a busca dentro do app é uma pendência (Etapa 8).
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "modelo_imagem": "meta/muse-image",
+  "modelo_suavizacao": "openai/gpt-4o-mini"
+}
+
 ### Prioridade de custo vs. qualidade na releitura do livro (item 4.4, fases 2 e 3)
 # Vale tanto para a leitura profunda do elemento quanto para a fundamentação
 # do frame do tipo CENA. ECONOMIA (padrão): relê só na primeira vez por

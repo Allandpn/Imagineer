@@ -1,6 +1,6 @@
 """Rotas de configuração da integração com IA (Etapas 4.3 e 6.7)."""
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -58,6 +58,18 @@ class ConfiguracaoAtual(BaseModel):
             "compensa usar um modelo mais caro."
         )
     )
+    modelo_imagem: str = Field(
+        description=(
+            "Modelo que gera a imagem a partir do prompt (modelo de imagem do OpenRouter). "
+            "Nunca vazio: nasce `meta/muse-image`."
+        )
+    )
+    modelo_suavizacao: str | None = Field(
+        description=(
+            "Modelo de texto que reescreve um prompt recusado pelo provedor de imagem. "
+            "Vazio = usa o `modelo_prompt`."
+        )
+    )
     prioridade_ia: PrioridadeIA = Field(
         description=(
             "ECONOMIA (padrão) reaproveita leituras já feitas; QUALIDADE relê "
@@ -79,6 +91,8 @@ class ConfiguracaoNova(BaseModel):
     modelo_extracao: str | None = Field(default=None, max_length=200)
     modelo_prompt: str | None = Field(default=None, max_length=200)
     modelo_perfil: str | None = Field(default=None, max_length=200)
+    modelo_imagem: str | None = Field(default=None, max_length=200)
+    modelo_suavizacao: str | None = Field(default=None, max_length=200)
     prioridade_ia: PrioridadeIA | None = None
 
 
@@ -115,6 +129,8 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         modelo_extracao=configuracao.modelo_extracao,
         modelo_prompt=configuracao.modelo_prompt,
         modelo_perfil=configuracao.modelo_perfil,
+        modelo_imagem=configuracao.modelo_imagem,
+        modelo_suavizacao=configuracao.modelo_suavizacao,
         prioridade_ia=configuracao.prioridade_ia,
     )
 
@@ -132,8 +148,18 @@ def gravar_configuracao(
             # vazia, então segue direto, sem a normalização abaixo.
             setattr(configuracao, campo, valor)
             continue
+        limpo = (valor or "").strip() or None
+        if campo == "modelo_imagem":
+            # Único modelo que não pode ficar vazio: sem ele a geração não tem o que chamar.
+            if limpo is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="O modelo de imagem não pode ficar vazio.",
+                )
+            setattr(configuracao, campo, limpo)
+            continue
         # String vazia e nulo significam a mesma coisa aqui: "não tenho isto".
-        setattr(configuracao, campo, (valor or "").strip() or None)
+        setattr(configuracao, campo, limpo)
 
     sessao.commit()
     return ver_configuracao(sessao)

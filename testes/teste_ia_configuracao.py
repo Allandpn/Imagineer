@@ -1032,6 +1032,53 @@ def teste_configuracao_comeca_vazia(cliente: TestClient) -> None:
     assert corpo["prioridade_ia"] == "ECONOMIA"
 
 
+def teste_modelo_de_imagem_nasce_com_o_padrao_e_o_de_suavizacao_vazio(cliente: TestClient) -> None:
+    """Incremento 12: a imagem já tem modelo (`meta/muse-image`) sem ninguém configurar nada."""
+    corpo = cliente.get("/configuracao").json()
+
+    assert corpo["modelo_imagem"] == "meta/muse-image"
+    assert corpo["modelo_suavizacao"] is None
+
+
+def teste_gravar_modelo_de_imagem_e_de_suavizacao(cliente: TestClient) -> None:
+    resposta = cliente.put(
+        "/configuracao",
+        json={"modelo_imagem": "black-forest-labs/flux.2-klein-4b", "modelo_suavizacao": "barato/modelo"},
+    )
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["modelo_imagem"] == "black-forest-labs/flux.2-klein-4b"
+    assert corpo["modelo_suavizacao"] == "barato/modelo"
+    assert cliente.get("/configuracao").json()["modelo_imagem"] == "black-forest-labs/flux.2-klein-4b"
+
+
+def teste_modelo_de_imagem_nao_pode_ficar_vazio(cliente: TestClient) -> None:
+    """Sem modelo de imagem a geração não tem o que chamar: recusa (422) e mantém o valor."""
+    for vazio in ("", "   ", None):
+        resposta = cliente.put("/configuracao", json={"modelo_imagem": vazio})
+
+        assert resposta.status_code == 422, vazio
+    assert cliente.get("/configuracao").json()["modelo_imagem"] == "meta/muse-image"
+
+
+def teste_modelo_de_suavizacao_pode_voltar_a_vazio(cliente: TestClient) -> None:
+    """Vazio = "usa o modelo_prompt" (S6); apagar é desfazer a escolha."""
+    cliente.put("/configuracao", json={"modelo_suavizacao": "barato/modelo"})
+
+    resposta = cliente.put("/configuracao", json={"modelo_suavizacao": ""})
+
+    assert resposta.json()["modelo_suavizacao"] is None
+
+
+def teste_gravar_um_modelo_de_texto_nao_mexe_no_de_imagem(cliente: TestClient) -> None:
+    cliente.put("/configuracao", json={"modelo_imagem": "outro/modelo-de-imagem"})
+
+    resposta = cliente.put("/configuracao", json={"modelo_prompt": "um/modelo"})
+
+    assert resposta.json()["modelo_imagem"] == "outro/modelo-de-imagem"
+
+
 def teste_gravar_prioridade_ia(cliente: TestClient) -> None:
     """Item 4.3 — controla a releitura da leitura profunda (item 4.4)."""
     resposta = cliente.put("/configuracao", json={"prioridade_ia": "QUALIDADE"})

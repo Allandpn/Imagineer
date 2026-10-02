@@ -10,6 +10,9 @@ from imagineer.banco.base import Base
 ID_UNICO = 1
 """O único id que a tabela de configuração aceita."""
 
+MODELO_DE_IMAGEM_PADRAO = "meta/muse-image"
+"""O modelo que gera a imagem enquanto o usuário não escolher outro (decisão do Allan, 01/10/2026)."""
+
 
 class PrioridadeIA(enum.Enum):
     """Custo vs. qualidade nas decisões que usam IA (item 4.3).
@@ -105,6 +108,25 @@ class Configuracao(Base):
     as duas coisas, mesmo elas tendo frequências de uso completamente diferentes.
     """
 
+    modelo_imagem: Mapped[str] = mapped_column(
+        String(200),
+        default=MODELO_DE_IMAGEM_PADRAO,
+        server_default=MODELO_DE_IMAGEM_PADRAO,
+    )
+    """Modelo que **gera a imagem** a partir do prompt (incremento 12).
+
+    Diferente dos outros três, não aceita nulo: sem ele a geração não tem o que
+    chamar. Nasce ``meta/muse-image``. É um modelo de **imagem** do OpenRouter,
+    chamado por ``POST /api/v1/images``, e não um modelo de texto.
+    """
+
+    modelo_suavizacao: Mapped[str | None] = mapped_column(String(200))
+    """Modelo de **texto** que reescreve um prompt recusado pelo provedor (S6).
+
+    Opcional: vazio significa "usa ``modelo_prompt``". Campo próprio porque é uma
+    chamada curta e barata, que pode usar um modelo menor que o de montar o prompt.
+    """
+
     prioridade_ia: Mapped[PrioridadeIA] = mapped_column(
         Enum(
             PrioridadeIA,
@@ -123,5 +145,6 @@ class Configuracao(Base):
     def __repr__(self) -> str:
         return (
             f"<Configuracao extracao={self.modelo_extracao!r} "
-            f"prompt={self.modelo_prompt!r} perfil={self.modelo_perfil!r}>"
+            f"prompt={self.modelo_prompt!r} perfil={self.modelo_perfil!r} "
+            f"imagem={self.modelo_imagem!r} suavizacao={self.modelo_suavizacao!r}>"
         )
