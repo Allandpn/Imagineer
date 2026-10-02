@@ -2671,6 +2671,42 @@ Na **tela cheia** da imagem (J4), três ações:
 
 **Achado do Allan (02/10/2026, noite): o *Novo prompt* já vinha suavizado.** Verdade, e a causa está **um passo antes da suavização**: a IA que **monta o prompt** (`montar_prompt`, passo 8) **omitia a nudez por conta própria**. Medido com os dados do frame da Auri (o estado diz *"Auri está nua"*) e o `gpt-4o-mini`: `nude` entrou em **1 de 8** gerações; nas outras 7 a IA escreveu só `pale smooth skin`, e a ideia do autor se perdia **em silêncio**, sem passar pela suavização (nem pelo provedor). No banco: dos quatro prompts do frame, dois tinham `nude` e dois não. **Decisão (alinhada ao fluxo S1 a S3):** o **prompt original é fiel ao autor**; **suavizar é outra etapa**, só se o provedor recusar. A instrução do prompt (item 4.4) ganhou a regra **"Fidelidade ao autor, inclusive no que é delicado"**: descrever corpo, roupa (ou falta dela) e ação como a descrição diz; se a pessoa está nua, escrever `nude`; não inventar roupa; **nunca omitir, atenuar ou trocar por conta própria** nudez, violência ou conteúdo sensível. Medido de novo: `nude` em **7 de 8**. **Ainda varia** (é uma IA): para garantir, o *Editar* do prompt permite corrigir à mão, e o ajuste opcional do *Novo prompt* aceita uma orientação. Nenhuma regra sobre menores foi acrescentada aqui (continua com o provedor). 1 teste novo (605 no backend).
 
+**Comparação de modelos de texto com o capítulo da Auri (02/10/2026, noite).** Pedido do Allan: comparar o `gemini-2.5-flash` e outros de custo parecido, por **custo** e por **fidelidade ao capítulo**. **Método:** o frame 2 (retrato da Auri, capítulo 6, 10 mil caracteres) com a **mesma entrada** do fluxo real; 9 modelos; um **juiz** (`claude-haiku-4.5`, temperatura 0) conferiu cada resultado contra o texto do capítulo (fatos: nua, cabelo dourado longo, rabo de cavalo até a cintura, tira de linho cinzenta, pele pálida; mais invenções e contradições). **Limites:** 4 a 5 gerações por modelo e **um só capítulo**; o juiz é uma IA (e o Haiku também é candidato). Serve como indício, não como prova.
+
+**Etapa B, montar o prompt** (`montar_prompt`, 5 gerações por modelo, com a regra de fidelidade ao autor já aplicada):
+
+| Modelo | US$ por prompt | Tempo | Nudez + 6 fatos | Invenções / contradições (média) | Observação |
+|---|---|---|---|---|---|
+| `mistralai/mistral-small-3.2-24b-instruct` | 0,00016 | 6,6 s | 5/5 | 2,4 / 0,6 | |
+| `google/gemini-2.5-flash-lite` | 0,00020 | 2,0 s | 5/5 | 2,2 / 0,6 | |
+| `openai/gpt-4o-mini` (atual) | 0,00021 | 2,7 s | 5/5 | 1,8 / 0,4 | |
+| `openai/gpt-4.1-mini` | 0,00056 | 5,8 s | 5/5 | 2,8 / 0,4 | |
+| `google/gemini-2.5-flash` | 0,00080 | 2,2 s | 5/5 | 1,6 / 0,6 | |
+| `anthropic/claude-haiku-4.5` | 0,00280 | 3,5 s | 5/5 | 2,2 / 1,0 | |
+| `qwen/qwen3.5-flash-02-23` | 0,00132 | 31,6 s | 5/5 | 0,4 / 0,0 | **lento**; não começa pelo plano de câmera (0/5) |
+| `deepseek/deepseek-v4-flash` | 0,00240 | 33,1 s | 5/5 | 1,4 / 0,8 | **lento**; formato irregular |
+| `openai/gpt-oss-120b` | 0,00028 | 27,0 s | 5/5 | 2,6 / 0,8 | **lento** |
+
+**Leitura:** com a regra de fidelidade, **todos** descrevem a nudez (5 de 5); a diferença entre eles é pequena e o custo é de centésimos de centavo. Os modelos "com raciocínio" (Qwen, DeepSeek, gpt-oss) levam 27 a 33 s e o formato do prompt sai irregular: **não servem** para o botão de um toque.
+
+**Etapa A, a leitura profunda do estado** (`sugerir_estado`, 4 gerações por modelo; é **aqui** que a precisão com o capítulo se decide, porque o prompt copia o estado):
+
+| Modelo | US$ por leitura | Tempo | Diz que está nua | Invenções / contradições | Um só momento |
+|---|---|---|---|---|---|
+| `google/gemini-2.5-flash-lite` | 0,00019 | 1,8 s | 4/4 | 0,0 / 0,0 | 1/4 |
+| `google/gemini-2.5-flash` | 0,00121 | 2,4 s | 4/4 | 1,0 / 0,8 | 1/4 |
+| `anthropic/claude-haiku-4.5` | 0,00602 | 5,1 s | 4/4 | 1,5 / 0,5 | 2/4 |
+| `openai/gpt-4.1-mini` | 0,00124 | 4,0 s | 4/4 | 2,0 / 1,2 | 0/4 |
+| `openai/gpt-4o-mini` (atual) | 0,00054 | 3,6 s | **3/4** | 1,8 / 1,5 | 1/4 |
+| `mistralai/mistral-small-3.2-24b-instruct` | 0,00032 | 5,1 s | 2/4 | 2,5 / 2,0 | 0/4 |
+| `deepseek/deepseek-v4-flash` | 0,00076 | 20,4 s | 2/4 | 0,0 / 1,8 | 0/4 |
+| `qwen/qwen3.5-flash-02-23` | | | **0/4: não devolveu JSON** | | |
+| `openai/gpt-oss-120b` | | | só 1 de 4 devolveu JSON | | |
+
+**Leitura:** (1) o **estado** é onde o atual `gpt-4o-mini` perde: **omitiu a nudez em 1 de 4** e foi o que mais inventou (olhos que brilham, braço que brilha) e contradisse. (2) O **`gemini-2.5-flash-lite`** foi o melhor nesta amostra: nudez em 4/4, **0 invenções, 0 contradições**, 1,8 s, **US$ 0,00019**. (3) O `gemini-2.5-flash` custa ~6 vezes mais e inventou/contradisse um pouco mais, sem ganho aparente. (4) **Qwen, gpt-oss e DeepSeek** falham no formato JSON ou na nudez: descartados.
+
+**O achado maior, que não é de modelo: todos misturam os dois momentos do capítulo** (a Auri se espreguiçando de vestido, e depois nua prendendo o cabelo), e só 0 a 2 de cada 4 respeitaram a regra de "um instante congelado". O estado é uma **linha do tempo do capítulo**, e o retrato não diz qual momento quer. Resultado: prompts com *"nua, braços levantados, nas pontas dos pés"*, que o capítulo nunca mostra juntos. **Proposta (não implementada, decisão do Allan):** para o retrato (sem descrição de cena), o *montar_prompt* deve **escolher UM momento, o último do capítulo em que o elemento aparece**, e ignorar os outros; e/ou o *Novo prompt* aceitar "qual momento" no ajuste. **Recomendação de configuração** (também do Allan; nada foi alterado): `modelo_extracao` = `google/gemini-2.5-flash-lite` e `modelo_prompt` = `google/gemini-2.5-flash-lite` (ou manter o `gpt-4o-mini` no prompt, sem perda mensurável); `modelo_suavizacao` = `google/gemini-2.5-flash` (teste anterior). O custo do texto de uma imagem fica em **cerca de US$ 0,0005**, contra **US$ 0,01** da imagem.
+
 #### Incremento 11 do app, primeira fatia — os ícones dos elementos no texto (implementado em 30/09/2026)
 
 **Pedido do Allan:** ao analisar o capítulo, as sugestões aparecem no painel de IA **e também como ícones no texto**. Fatia combinada com ele, dada a pouca cota do dia: **só os elementos, de ponta a ponta**; as cenas entram depois.
