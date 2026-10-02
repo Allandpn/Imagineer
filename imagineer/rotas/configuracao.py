@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
+from imagineer.configuracao import obter_configuracoes
 from imagineer.ia.provedor import ProvedorIA
 from imagineer.modelos import PrioridadeIA
 from imagineer.servicos.configuracao_ia import (
@@ -64,6 +65,12 @@ class ConfiguracaoAtual(BaseModel):
         description=(
             "Modelo que gera a imagem a partir do prompt (modelo de imagem do OpenRouter). "
             "Nunca vazio: nasce `meta/muse-image`."
+        )
+    )
+    fornecedores_de_imagem: dict[str, bool] = Field(
+        description=(
+            "Para cada fornecedor de imagem (`openrouter`, `fal`, `replicate`), se o **servidor** tem a chave dele "
+            "(F2). Só diz se há chave; nunca a chave."
         )
     )
     modelos_de_imagem: list[str] = Field(
@@ -139,6 +146,11 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         modelo_prompt=configuracao.modelo_prompt,
         modelo_perfil=configuracao.modelo_perfil,
         modelo_imagem=configuracao.modelo_imagem,
+        fornecedores_de_imagem={
+            "openrouter": chave.valor is not None,
+            "fal": bool(obter_configuracoes().chave_api_fal.strip()),
+            "replicate": bool(obter_configuracoes().chave_api_replicate.strip()),
+        },
         modelos_de_imagem=list(configuracao.modelos_de_imagem or []),
         modelo_suavizacao=configuracao.modelo_suavizacao,
         prioridade_ia=configuracao.prioridade_ia,

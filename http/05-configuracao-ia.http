@@ -90,3 +90,22 @@ Content-Type: application/json
     "google/gemini-2.5-flash-image"
   ]
 }
+
+### Modelos de imagem de OUTROS fornecedores: fal.ai e Replicate (item 7.5b, F1 a F11)
+# O id leva o fornecedor como prefixo: "fal:..." ou "replicate:...". Sem prefixo e o OpenRouter.
+# Precisa de FAL_KEY / REPLICATE_API_TOKEN no .env do servidor (GET /configuracao diz, em "fornecedores_de_imagem",
+# quais tem chave, sem mostrar a chave). A moderacao de cada fornecedor fica ligada. Ajuste os ids a sua conta.
+# Lembre: este PUT SUBSTITUI a lista inteira; inclua tambem os que ja estavam.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "modelos_de_imagem": [
+    "meta/muse-image",
+    "bytedance-seed/seedream-5-0-flash",
+    "google/gemini-2.5-flash-image",
+    "black-forest-labs/flux.2-klein-4b",
+    "fal:fal-ai/flux/dev",
+    "replicate:black-forest-labs/flux-schnell"
+  ]
+}

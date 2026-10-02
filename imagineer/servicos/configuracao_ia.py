@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from imagineer.configuracao import obter_configuracoes
+from imagineer.ia.fornecedores_de_imagem import montar_geradores
 from imagineer.ia.openrouter import ProvedorOpenRouter
 from imagineer.ia.provedor import ProvedorIA
 from imagineer.modelos.configuracao import ID_UNICO, Configuracao
@@ -72,4 +73,9 @@ def construir_provedor(cabecalho: str | None = None) -> ProvedorIA:
     por um falso, e o que faz uma troca de chave valer no pedido seguinte sem
     reiniciar o serviço.
     """
-    return ProvedorOpenRouter(chave_api=resolver_chave(cabecalho).valor, ao_usar=gravar_uso)
+    configuracoes = obter_configuracoes()
+    return ProvedorOpenRouter(
+        chave_api=resolver_chave(cabecalho).valor,
+        ao_usar=gravar_uso,
+        geradores_de_imagem=montar_geradores(configuracoes.chave_api_fal, configuracoes.chave_api_replicate),
+    )

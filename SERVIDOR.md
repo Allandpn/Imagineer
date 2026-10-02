@@ -153,7 +153,7 @@ docker compose restart api
 
 | Situação | Comando |
 |---|---|
-| Mudou só o `.env` (chave da IA, senha, portas) | `docker compose up -d` (recria o container com os valores novos; `restart` **não** relê o `.env`) |
+| Mudou só o `.env` (chave da IA, `FAL_KEY`, `REPLICATE_API_TOKEN`, senha, portas) | `docker compose up -d` (recria o container com os valores novos; `restart` **não** relê o `.env`) |
 | Parar tudo, **mantendo** os dados | `docker compose down` |
 | Parar e **apagar o banco e as imagens** | `docker compose down -v` — **nunca** no Pi sem backup |
 | Ver o que está rodando | `docker compose ps` |

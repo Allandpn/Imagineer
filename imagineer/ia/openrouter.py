@@ -15,6 +15,12 @@ from decimal import Decimal, InvalidOperation
 
 import httpx
 
+from imagineer.ia.fornecedores_de_imagem import (
+    NOMES_DOS_FORNECEDORES,
+    VARIAVEIS_DA_CHAVE,
+    GeradorDeImagemExterno,
+    separar_fornecedor,
+)
 from imagineer.ia.provedor import (
     CenaSugerida,
     ChaveDeApiAusente,
@@ -586,7 +592,10 @@ class ProvedorOpenRouter(ProvedorIA):
         chave_api: str | None = None,
         cliente: httpx.Client | None = None,
         ao_usar: Callable[[UsoDaChamada], None] | None = None,
+        geradores_de_imagem: dict[str, GeradorDeImagemExterno] | None = None,
     ):
+        self._geradores_de_imagem = geradores_de_imagem or {}
+        """Os geradores de imagem dos outros fornecedores (fal.ai, Replicate), só dos que têm chave (F2)."""
         self._chave_api = chave_api
         self._cliente = cliente or httpx.Client(base_url=ENDERECO_BASE, timeout=TEMPO_LIMITE)
         self._ao_usar = ao_usar
@@ -800,6 +809,10 @@ class ProvedorOpenRouter(ProvedorIA):
             raise ModeloNaoEscolhido(
                 "Nenhum modelo de imagem foi escolhido. Configure 'modelo_imagem' em /configuracao."
             )
+        fornecedor, id_do_modelo = separar_fornecedor(modelo)
+        if fornecedor != "openrouter":
+            return self._gerar_em_outro_fornecedor(fornecedor, id_do_modelo, prompt, modelo)
+        modelo = id_do_modelo  # `openrouter:x` e `x` são o mesmo modelo
         if not self._chave_api:
             raise ChaveDeApiAusente(
                 "Não há chave de API do OpenRouter configurada. Envie a sua no "
@@ -826,6 +839,26 @@ class ProvedorOpenRouter(ProvedorIA):
 
         self._avisar_uso("imagem", modelo, dados)
         return ImagemGerada(conteudo=conteudo, tipo_de_midia=tipo, modelo=modelo)
+
+    def _gerar_em_outro_fornecedor(self, fornecedor: str, id_do_modelo: str, prompt: str, modelo_completo: str) -> ImagemGerada:
+        """Gera a imagem no fal.ai ou no Replicate (F1 a F10). O fornecedor sem chave dá 422, dizendo qual variável falta."""
+        if not id_do_modelo:
+            raise ModeloNaoEscolhido(f"O modelo \"{modelo_completo}\" não diz qual modelo do {NOMES_DOS_FORNECEDORES[fornecedor]} usar.")
+        gerador = self._geradores_de_imagem.get(fornecedor)
+        if gerador is None:
+            raise ChaveDeApiAusente(
+                f"Não há chave do {NOMES_DOS_FORNECEDORES[fornecedor]} configurada. "
+                f"Defina {VARIAVEIS_DA_CHAVE[fornecedor]} no .env do servidor."
+            )
+        imagem = gerador.gerar(prompt, id_do_modelo)
+        imagem.modelo = modelo_completo
+        # F7: nenhum dos dois devolve o custo em dólares; o consumo é anotado com custo nulo, nunca um zero inventado.
+        if self._ao_usar is not None:
+            try:
+                self._ao_usar(UsoDaChamada(operacao="imagem", modelo=modelo_completo))
+            except Exception:  # noqa: BLE001 - métrica nunca derruba a chamada
+                logging.getLogger(__name__).exception("Não foi possível anotar o consumo da chamada à IA.")
+        return imagem
 
     def sugerir_perfil_renderizacao(
         self,
