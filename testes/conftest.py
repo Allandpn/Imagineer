@@ -31,6 +31,9 @@ os.environ.setdefault("URL_BANCO", "postgresql+psycopg://teste:teste@localhost:5
 # explicitamente via `monkeypatch`.
 os.environ["CHAVE_API_OPENROUTER"] = ""
 os.environ["IMAGINEER_KEY_OPEN_ROUTER"] = ""
+# Mesmo isolamento para os outros fornecedores de imagem (a conta do Allan tem essas variáveis).
+for _variavel in ("FAL_KEY", "CHAVE_API_FAL", "IMAGINEER_KEY_FAL_AI", "REPLICATE_API_TOKEN", "CHAVE_API_REPLICATE"):
+    os.environ[_variavel] = ""
 
 import pytest
 from fastapi.testclient import TestClient

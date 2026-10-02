@@ -45,8 +45,9 @@ class Configuracoes(BaseSettings):
     aceito para não obrigar a renomear algo que já existe no ambiente dele.
     Divergência registrada na Etapa 5 (Decisões Técnicas)."""
 
-    chave_api_fal: str = Field(default="", validation_alias=AliasChoices("FAL_KEY", "CHAVE_API_FAL"))
-    """Chave do fal.ai (F2). ``FAL_KEY`` é o nome que o próprio fal.ai usa; ``CHAVE_API_FAL`` é o nome do projeto."""
+    chave_api_fal: str = Field(default="", validation_alias=AliasChoices("FAL_KEY", "CHAVE_API_FAL", "IMAGINEER_KEY_FAL_AI"))
+    """Chave do fal.ai (F2). ``FAL_KEY`` é o nome que o próprio fal.ai usa; ``CHAVE_API_FAL`` é o nome do projeto;
+    ``IMAGINEER_KEY_FAL_AI`` é a variável de conta do Allan (mesmo padrão do OpenRouter)."""
 
     chave_api_replicate: str = Field(default="", validation_alias=AliasChoices("REPLICATE_API_TOKEN", "CHAVE_API_REPLICATE"))
     """Chave do Replicate (F2). ``REPLICATE_API_TOKEN`` é o nome que o próprio Replicate usa."""

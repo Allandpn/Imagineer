@@ -1267,6 +1267,23 @@ def teste_chave_aceita_o_nome_alternativo_de_variavel_de_ambiente(
         obter.cache_clear()
 
 
+def teste_chave_do_fal_aceita_a_variavel_de_conta(cliente: TestClient, monkeypatch) -> None:
+    """IMAGINEER_KEY_FAL_AI (variável de conta do Allan) vale como chave do fal.ai, sem revelar o valor."""
+    from imagineer import configuracao as modulo_de_configuracao
+
+    obter = modulo_de_configuracao.obter_configuracoes
+    obter.cache_clear()
+    monkeypatch.delenv("FAL_KEY", raising=False)  # o conftest a deixa vazia, e a vazia ganharia da alternativa
+    monkeypatch.delenv("CHAVE_API_FAL", raising=False)
+    monkeypatch.setenv("IMAGINEER_KEY_FAL_AI", "chave-do-fal")
+    try:
+        resposta = cliente.get("/configuracao")
+        assert resposta.json()["fornecedores_de_imagem"]["fal"] is True
+        assert "chave-do-fal" not in resposta.text
+    finally:
+        obter.cache_clear()
+
+
 # --------------------------------------------------------------------------- #
 # Chave por header (item 4.3)
 # --------------------------------------------------------------------------- #
