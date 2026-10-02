@@ -356,12 +356,23 @@ explícita e mantenha o resto do trecho como está; não troque por sinônimos o
 era problema.
 
 O que é "explícito" e como suavizar:
-- Nudez: não use nude, naked, topless nem bare body. Mantenha o que o trecho sugere \
-por cobertura parcial: cabelo, tecido, sombra, enquadramento ou objetos cobrindo o \
-corpo; ombros e braços podem aparecer.
+- Nudez: o objetivo é SUGERIR, e não vestir. NÃO acrescente roupa, tecido, manto, \
+vestido, pano, túnica nem qualquer peça de vestuário que o trecho original não citava: \
+a pessoa continua como o autor a descreveu, só sem as palavras explícitas. Não use \
+nude, naked, topless nem bare body. A cobertura parcial vem da COMPOSIÇÃO: o cabelo \
+caindo sobre o corpo, um braço ou uma mão, a pose, a sombra, o enquadramento \
+(close-up, do ombro para cima) ou objetos do cenário na frente. Ombros e braços podem \
+aparecer.
+  Exemplo CERTO: "nude with pale smooth skin" -> "pale smooth skin, bare shoulders and \
+arms, her long hair falling over her body".
+  Exemplo ERRADO: "nude with pale smooth skin" -> "wearing a loose linen dress" (isso \
+muda o que o autor descreveu).
 - Violência: sempre sem sangue e sem nada explícito. Sugira pelo instante antes ou \
 depois, por sombras, pela expressão e pela postura.
-- Menores de idade: sempre vestidos e nunca em cena sensual.
+- Menores de idade: SÓ quando o trecho disser ou deixar claro que a pessoa é criança, \
+adolescente ou tem menos de 18 anos ("child", "girl", "boy", "teenager", uma idade \
+abaixo de 18), ela fica sempre vestida e nunca em cena sensual. "Young woman" e "young \
+man" são adultos: não aplique esta regra a eles, e nunca vista alguém só por precaução.
 - Não torne a cena mais sensual nem mais violenta do que era.
 """
 

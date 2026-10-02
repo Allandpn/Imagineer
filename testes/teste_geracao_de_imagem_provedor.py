@@ -291,4 +291,32 @@ def teste_a_instrucao_de_suavizacao_exige_fidelidade_e_traz_as_regras_do_allan()
     assert "o MÍNIMO" in instrucao
     assert "cobertura parcial" in instrucao
     assert "sempre sem sangue" in instrucao
-    assert "Menores de idade: sempre vestidos e nunca em cena sensual" in instrucao
+
+
+def teste_a_instrucao_de_suavizacao_manda_sugerir_e_nao_vestir() -> None:
+    """02/10: a suavização estava vestindo a personagem. Cobrir é composição (cabelo, braço, sombra, enquadramento)."""
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a")])
+
+    provedor.suavizar_prompt("a", "openai/gpt-4o-mini")
+
+    instrucao = json.loads(pedidos[0].content)["messages"][0]["content"]
+    assert "SUGERIR, e não vestir" in instrucao
+    assert "NÃO acrescente roupa" in instrucao
+    assert "cabelo" in instrucao and "enquadramento" in instrucao  # as formas de cobrir
+    assert "Exemplo CERTO" in instrucao and "Exemplo ERRADO" in instrucao
+    assert "wearing a loose linen dress" in instrucao  # o erro, mostrado como erro
+    # "tecido" saiu da lista de coberturas: o modelo o entendia como roupa.
+    assert "cabelo, tecido" not in instrucao
+
+
+def teste_a_regra_de_menores_so_vale_quando_o_trecho_diz_que_e_menor() -> None:
+    """02/10: "Menores sempre vestidos" estava sendo lida como regra geral. Só vale com menor claro (S9)."""
+    provedor, pedidos = _provedor_em_sequencia([_resposta_de_trechos("a")])
+
+    provedor.suavizar_prompt("a", "openai/gpt-4o-mini")
+
+    instrucao = json.loads(pedidos[0].content)["messages"][0]["content"]
+    assert "SÓ quando o trecho disser ou deixar claro" in instrucao
+    assert "sempre vestida e nunca em cena sensual" in instrucao
+    assert "Young woman" in instrucao  # adulto: a regra não se aplica
+    assert "nunca vista alguém só por precaução" in instrucao
