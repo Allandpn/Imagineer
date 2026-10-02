@@ -133,6 +133,13 @@ class Configuracao(Base):
 
     O ``modelo_imagem`` é o padrão e aparece na escolha mesmo que não esteja nesta lista."""
 
+    modelos_sem_filtro: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
+    """Os modelos de imagem em que o usuário **pode** pedir para desligar o filtro de segurança (F13).
+
+    Mantida à mão por ``PUT /configuracao``, com o prefixo do fornecedor (``replicate:...``); nasce **vazia**: nenhum
+    modelo permite desligar o filtro até o usuário incluí-lo. Só o parâmetro do próprio modelo é usado, e só depois
+    de uma recusa, por pedido explícito (F12)."""
+
     modelo_suavizacao: Mapped[str | None] = mapped_column(String(200))
     """Modelo de **texto** que reescreve um prompt recusado pelo provedor (S6).
 

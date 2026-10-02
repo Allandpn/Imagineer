@@ -1651,6 +1651,37 @@ def teste_modelos_de_imagem_recusa_lista_grande_demais_e_item_longo_demais(clien
     assert cliente.put("/configuracao", json={"modelos_de_imagem": [f"m/{i}" for i in range(20)]}).status_code == 200
 
 
+def teste_modelos_sem_filtro_nasce_vazia(cliente: TestClient) -> None:
+    """F13: nenhum modelo permite desligar o filtro até o usuário incluí-lo."""
+    assert cliente.get("/configuracao").json()["modelos_sem_filtro"] == []
+
+
+def teste_gravar_modelos_sem_filtro_normaliza_a_lista_e_nao_mexe_na_de_imagem(cliente: TestClient) -> None:
+    resposta = cliente.put(
+        "/configuracao",
+        json={"modelos_sem_filtro": [" replicate:black-forest-labs/flux-schnell ", "", "replicate:black-forest-labs/flux-schnell"]},
+    )
+
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["modelos_sem_filtro"] == ["replicate:black-forest-labs/flux-schnell"]
+    assert corpo["modelos_de_imagem"] != corpo["modelos_sem_filtro"]  # são listas separadas
+    assert cliente.get("/configuracao").json()["modelos_sem_filtro"] == ["replicate:black-forest-labs/flux-schnell"]
+
+
+def teste_modelos_sem_filtro_recusa_lista_grande_demais_e_item_longo_demais(cliente: TestClient) -> None:
+    assert cliente.put("/configuracao", json={"modelos_sem_filtro": [f"m/{i}" for i in range(21)]}).status_code == 422
+    assert cliente.put("/configuracao", json={"modelos_sem_filtro": ["x" * 201]}).status_code == 422
+
+
+def teste_gravar_outro_campo_nao_mexe_na_lista_de_modelos_sem_filtro(cliente: TestClient) -> None:
+    cliente.put("/configuracao", json={"modelos_sem_filtro": ["replicate:um/modelo"]})
+
+    resposta = cliente.put("/configuracao", json={"modelo_prompt": "um/modelo"})
+
+    assert resposta.json()["modelos_sem_filtro"] == ["replicate:um/modelo"]
+
+
 def teste_gravar_outro_campo_nao_mexe_na_lista_de_modelos_de_imagem(cliente: TestClient) -> None:
     cliente.put("/configuracao", json={"modelos_de_imagem": ["so/este"]})
 

@@ -91,6 +91,20 @@ Content-Type: application/json
   ]
 }
 
+### Modelos em que o usuario pode pedir para DESLIGAR o filtro de seguranca (item 7.5b, F12 e F13)
+# Lista mantida a mao, com o prefixo do fornecedor. Nasce VAZIA: nenhum modelo permite ate voce inclui-lo.
+# So vale para "replicate:" e so para modelos que tem o parametro "disable_safety_checker" no proprio Replicate.
+# O botao do app (a proxima fatia) so aparece depois de uma recusa e usa so esses modelos. Este PUT substitui a lista inteira.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "modelos_sem_filtro": [
+    "replicate:black-forest-labs/flux-schnell",
+    "replicate:black-forest-labs/flux-2-klein-4b"
+  ]
+}
+
 ### Modelos de imagem de OUTROS fornecedores: fal.ai e Replicate (item 7.5b, F1 a F11)
 # O id leva o fornecedor como prefixo: "fal:..." ou "replicate:...". Sem prefixo e o OpenRouter.
 # Precisa de FAL_KEY / REPLICATE_API_TOKEN no .env do servidor (GET /configuracao diz, em "fornecedores_de_imagem",

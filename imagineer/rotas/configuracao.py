@@ -79,6 +79,12 @@ class ConfiguracaoAtual(BaseModel):
             "aparece na escolha mesmo fora desta lista."
         )
     )
+    modelos_sem_filtro: list[str] = Field(
+        description=(
+            "Os modelos de imagem em que o usuário pode pedir para desligar o filtro de segurança, depois de uma "
+            "recusa (F12, F13). Vazia = nenhum. Só vale para `replicate:`; o app só oferece o botão se houver algum."
+        )
+    )
     modelo_suavizacao: str | None = Field(
         description=(
             "Modelo de texto que reescreve um prompt recusado pelo provedor de imagem. "
@@ -108,6 +114,7 @@ class ConfiguracaoNova(BaseModel):
     modelo_perfil: str | None = Field(default=None, max_length=200)
     modelo_imagem: str | None = Field(default=None, max_length=200)
     modelos_de_imagem: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=20)
+    modelos_sem_filtro: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=20)
     modelo_suavizacao: str | None = Field(default=None, max_length=200)
     prioridade_ia: PrioridadeIA | None = None
 
@@ -152,6 +159,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
             "replicate": bool(obter_configuracoes().chave_api_replicate.strip()),
         },
         modelos_de_imagem=list(configuracao.modelos_de_imagem or []),
+        modelos_sem_filtro=list(configuracao.modelos_sem_filtro or []),
         modelo_suavizacao=configuracao.modelo_suavizacao,
         prioridade_ia=configuracao.prioridade_ia,
     )
@@ -170,9 +178,9 @@ def gravar_configuracao(
             # vazia, então segue direto, sem a normalização abaixo.
             setattr(configuracao, campo, valor)
             continue
-        if campo == "modelos_de_imagem":
-            # Z2: sem espaços nas pontas, sem itens vazios nem repetidos, na ordem em que vieram.
-            configuracao.modelos_de_imagem = list(dict.fromkeys(m.strip() for m in (valor or []) if m.strip()))
+        if campo in ("modelos_de_imagem", "modelos_sem_filtro"):
+            # Z2/F13: sem espaços nas pontas, sem itens vazios nem repetidos, na ordem em que vieram.
+            setattr(configuracao, campo, list(dict.fromkeys(m.strip() for m in (valor or []) if m.strip())))
             continue
         limpo = (valor or "").strip() or None
         if campo == "modelo_imagem":
