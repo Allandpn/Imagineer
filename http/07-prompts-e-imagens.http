@@ -153,8 +153,9 @@ Content-Type: application/json
 }
 
 ### Gera SEM o filtro de seguranca do modelo, depois de uma recusa (item 7.5b, F12 a F18)
-# So vale se: o prompt esta RECUSADO; o "modelo" (obrigatorio, nunca o padrao) e "replicate:..." e esta em
-# "modelos_sem_filtro" (05-configuracao-ia.http); e o prompt nao traz sinal de menor de idade. Senao, 422 com a razao.
+# So vale se: o "modelo" (obrigatorio, nunca o padrao) e "replicate:..." e esta em "modelos_sem_filtro"
+# (05-configuracao-ia.http); e o prompt nao traz sinal de menor de idade. Senao, 422 com a razao. Nao exige recusa antes (F19):
+# o app manda isto quando o usuario escolhe um modelo da secao "Sem filtro" no modal de modelos.
 # Chamada direta (nao suaviza). O prompt e a imagem guardam "sem_filtro_de_seguranca": true.
 POST {{baseUrl}}/prompts/{{promptId}}/gerar-imagem
 Content-Type: application/json
