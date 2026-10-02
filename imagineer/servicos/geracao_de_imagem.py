@@ -103,9 +103,8 @@ def gerar_imagem_do_prompt(
 
 
 def _validar_sem_filtro(sessao: Session, prompt: Prompt, configuracao: Configuracao, modelo: str, texto: str) -> None:
-    """As regras de gerar sem o filtro (F12 a F15). Qualquer falha é ``SemFiltroNaoPermitido``, com a razão em português."""
-    if prompt.situacao_da_geracao != SituacaoDaGeracao.RECUSADO:
-        raise SemFiltroNaoPermitido("Só dá para tentar sem o filtro um prompt que o provedor recusou.")  # F12
+    """As regras de gerar sem o filtro (F12 a F15, F19). Qualquer falha é ``SemFiltroNaoPermitido``, com a razão em português."""
+    # F19: já não se exige que o prompt tenha sido recusado; a escolha explícita de um modelo da lista é o que vale.
     if not modelo:
         raise SemFiltroNaoPermitido("Escolha o modelo para gerar sem o filtro.")  # F12: nunca o padrão
     if separar_fornecedor(modelo)[0] != "replicate":

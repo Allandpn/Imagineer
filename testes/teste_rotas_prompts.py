@@ -1222,16 +1222,25 @@ def teste_f16_geracao_normal_nao_marca_sem_filtro(cliente: TestClient, usar_prov
     assert corpo["imagem"]["sem_filtro_de_seguranca"] is False
 
 
-def teste_f12_prompt_que_nunca_foi_recusado_nao_pode_ser_gerado_sem_filtro(cliente: TestClient, usar_provedor_falso) -> None:
-    _, prompt = _prompt_pronto(cliente, usar_provedor_falso)
+def teste_f19_um_prompt_que_nunca_foi_recusado_tambem_pode_ser_gerado_com_um_modelo_sem_filtro(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """F19: o modelo sem filtro é uma escolha do usuário no modal de modelos; não se exige uma recusa antes."""
+    provedor, prompt = _prompt_pronto(cliente, usar_provedor_falso)
     cliente.put("/configuracao", json={"modelos_sem_filtro": [MODELO_SEM_FILTRO]})
 
     resposta = cliente.post(
         f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": MODELO_SEM_FILTRO, "sem_filtro_de_seguranca": True}
     )
 
-    assert resposta.status_code == 422
-    assert "recusou" in resposta.json()["detail"]
+    assert resposta.status_code == 200
+    corpo = resposta.json()
+    assert corpo["resultado"] == "GERADA"
+    assert corpo["prompt"]["sem_filtro_de_seguranca"] is True
+    assert provedor.chamadas_de_imagem == [
+        {"prompt": provedor.chamadas_de_imagem[0]["prompt"], "modelo": MODELO_SEM_FILTRO, "sem_filtro_de_seguranca": True}
+    ]
+    assert provedor.chamadas_de_suavizacao == []  # direto, sem suavizar
 
 
 def teste_f12_sem_modelo_no_pedido_nunca_usa_o_padrao(cliente: TestClient, usar_provedor_falso) -> None:

@@ -177,9 +177,10 @@ class PedidoDeGeracao(BaseModel):
     sem_filtro_de_seguranca: bool = Field(
         default=False,
         description=(
-            "**Desliga o filtro de segurança do modelo** neste pedido (F12 a F18). Só vale se o prompt está `RECUSADO`, "
-            "se o `modelo` (obrigatório) é `replicate:` e está em `modelos_sem_filtro`, e se o prompt não traz sinal "
-            "de menor de idade; senão, 422. A chamada é direta: não suaviza nada."
+            "**Desliga o filtro de segurança do modelo** neste pedido (F12 a F19). Só vale se o `modelo` (obrigatório, "
+            "escolhido de propósito) é `replicate:` e está em `modelos_sem_filtro`, e se o prompt não traz sinal de "
+            "menor de idade; senão, 422. A chamada é direta: não suaviza nada. O app manda isto quando o usuário "
+            "escolhe um modelo da lista de modelos sem filtro."
         ),
     )
 
