@@ -351,6 +351,24 @@ def teste_f10_replicate_que_nao_termina_a_tempo_e_erro_do_provedor() -> None:
         _replicate(rede, relogio=RelogioQueAvanca(passo=100.0)).gerar("x", "black-forest-labs/flux-schnell")
 
 
+def teste_f10_o_limite_do_servidor_e_menor_que_o_tempo_de_espera_do_app() -> None:
+    """O app espera 180 s; o servidor tem de desistir antes, para o erro chegar com o nome do fornecedor."""
+    from imagineer.ia.fornecedores_de_imagem import TEMPO_LIMITE_DA_GERACAO
+
+    assert TEMPO_LIMITE_DA_GERACAO < 180
+
+
+def teste_f10_o_tempo_conta_desde_o_pedido_nao_so_depois_da_espera_do_replicate() -> None:
+    """A espera do `Prefer: wait` entra na conta: um pedido que já passou do limite não espera mais uma volta inteira."""
+    rede = Rede({("POST", PREDICAO): _json(_predicao("starting")), ("GET", CONSULTA): _json(_predicao("processing"))})
+    relogio = RelogioQueAvanca(passo=200.0)  # o primeiro `relogio()` (no pedido) e o segundo (na espera) já passam do limite
+
+    with pytest.raises(ErroDoProvedorIA, match="não terminou"):
+        _replicate(rede, relogio=relogio).gerar("x", "black-forest-labs/flux-schnell")
+
+    assert sum(1 for p in rede.pedidos if str(p.url) == CONSULTA) == 0  # nem chegou a consultar de novo
+
+
 @pytest.mark.parametrize(
     "mensagem",
     [

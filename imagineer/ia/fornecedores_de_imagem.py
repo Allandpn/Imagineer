@@ -25,8 +25,11 @@ from imagineer.ia.provedor import (
 FORNECEDORES_EXTERNOS = ("fal", "replicate")
 """Os fornecedores que têm gerador próprio. Qualquer outro id é do OpenRouter."""
 
-TEMPO_LIMITE_DA_GERACAO = 180.0
-"""Segundos esperando uma geração terminar (a mesma folga do OpenRouter)."""
+TEMPO_LIMITE_DA_GERACAO = 150.0
+"""Segundos, **contados desde o pedido**, esperando uma geração terminar.
+
+Menor que os 180 s que o app espera por uma resposta: se o fornecedor demorar, o servidor responde com o erro **de verdade**
+(com o nome do fornecedor) antes de o app desistir sozinho com um "demorou demais" que não diz nada."""
 
 INTERVALO_DA_CONSULTA = 1.5
 """Segundos entre uma consulta de status e a seguinte."""
@@ -152,12 +155,12 @@ class GeradorFal(GeradorDeImagemExterno):
             # F14: o filtro só se desliga no Replicate. Quem chama já barrou isso; aqui é a segunda trava.
             raise ErroDoProvedorIA("Desligar o filtro de segurança só é permitido no Replicate.")
         # F3: só o prompt. Nenhum parâmetro de segurança é enviado.
+        inicio = self._relogio()
         envio = self._pedir("POST", f"https://queue.fal.run/{id_do_modelo}", json={"prompt": prompt})
         url_do_status, url_do_resultado = envio.get("status_url"), envio.get("response_url")
         if not (isinstance(url_do_status, str) and isinstance(url_do_resultado, str)):
             raise ErroDoProvedorIA("O fal.ai respondeu num formato inesperado.")
 
-        inicio = self._relogio()
         while str(self._pedir("GET", url_do_status).get("status", "")).upper() != "COMPLETED":
             self._esperar(inicio)
 
@@ -196,13 +199,13 @@ class GeradorReplicate(GeradorDeImagemExterno):
             # F12: o ÚNICO caso em que se manda um parâmetro de segurança, só por pedido explícito do usuário.
             entrada["disable_safety_checker"] = True
         # F3: fora disso, só o prompt.
+        inicio = self._relogio()  # conta desde o pedido, inclusive o `Prefer: wait` do Replicate
         predicao = self._pedir(
             "POST",
             f"https://api.replicate.com/v1/models/{id_do_modelo}/predictions",
             json={"input": entrada},
             cabecalhos={"Prefer": "wait=60"},
         )
-        inicio = self._relogio()
         while predicao.get("status") in ("starting", "processing"):
             url_da_consulta = (predicao.get("urls") or {}).get("get")
             if not isinstance(url_da_consulta, str):
