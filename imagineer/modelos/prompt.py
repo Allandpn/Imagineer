@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, false, func
+from sqlalchemy import JSON, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -88,6 +88,9 @@ class Prompt(Base):
     """O modelo de imagem da **última tentativa** de gerar a imagem deste prompt, inclusive a recusada (Z1).
 
     Nulo se o prompt nunca foi tentado. O prompt suavizado e o editado guardam o modelo com que foram enviados."""
+
+    imagens_de_referencia: Mapped[list[int]] = mapped_column(JSON, default=list, server_default="[]")
+    """Os ids das imagens enviadas como **referência** na **última tentativa** (W7); lista vazia = nenhuma."""
 
     sem_filtro_de_seguranca: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     """A **última tentativa** deste prompt foi com o filtro de segurança do modelo desligado, a pedido do usuário (F16)."""

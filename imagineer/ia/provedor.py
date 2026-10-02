@@ -53,6 +53,28 @@ class ConteudoRecusado(ErroDoProvedorIA):
 
 
 @dataclass
+class ImagemDeReferencia:
+    """Uma imagem a enviar **como referência visual** junto do prompt (W4): os bytes e o tipo."""
+
+    conteudo: bytes
+    tipo_de_midia: str
+
+    def como_data_url(self) -> str:
+        """A imagem como ``data:image/jpeg;base64,...``, o formato que os fornecedores aceitam num campo de imagem."""
+        import base64
+
+        return f"data:{self.tipo_de_midia};base64,{base64.b64encode(self.conteudo).decode()}"
+
+
+@dataclass
+class ReferenciasParaGerar:
+    """As imagens de referência de uma geração e o **parâmetro** do modelo que as recebe (W1, W4)."""
+
+    imagens: list[ImagemDeReferencia]
+    parametro: str
+
+
+@dataclass
 class ImagemGerada:
     """Uma imagem que o provedor gerou: os bytes e o tipo, para gravar como qualquer imagem do catálogo."""
 
@@ -443,8 +465,16 @@ class ProvedorIA(ABC):
         """
 
     @abstractmethod
-    def gerar_imagem(self, prompt: str, modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+    def gerar_imagem(
+        self,
+        prompt: str,
+        modelo: str,
+        sem_filtro_de_seguranca: bool = False,
+        referencias: ReferenciasParaGerar | None = None,
+    ) -> ImagemGerada:
         """Gera a imagem a partir do prompt (item 6.6, "Gerar a imagem").
+
+        ``referencias`` são imagens enviadas **junto** como referência visual (W1 a W4); no fal.ai não existem.
 
         ``sem_filtro_de_seguranca`` desliga o filtro opcional do modelo, **só no Replicate** (F12 a F14); em outro
         fornecedor é um erro de programação (``ErroDoProvedorIA``), porque o serviço já o barra antes.

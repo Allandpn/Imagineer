@@ -457,3 +457,34 @@ def teste_a_instrucao_de_suavizacao_manda_a_frase_continuar_correta_depois_da_tr
     assert "a frase tem de continuar correta" in texto
     assert "palavras de ligação" in texto
     assert "a young woman with bare shoulders and arms, her torso softly lost in shadow, and long golden hair" in texto
+
+
+# --------------------------------------------------------------------------- #
+# Imagens de referência (item 7.5b, W4)
+# --------------------------------------------------------------------------- #
+
+
+def teste_w4_openrouter_manda_as_referencias_como_input_references_em_data_url() -> None:
+    from imagineer.ia.provedor import ImagemDeReferencia, ReferenciasParaGerar
+
+    provedor, pedidos = _provedor(_resposta_de_imagem())
+    referencias = ReferenciasParaGerar(
+        [ImagemDeReferencia(b"abc", "image/jpeg"), ImagemDeReferencia(b"def", "image/png")], "input_references"
+    )
+
+    provedor.gerar_imagem("uma cena", "meta/muse-image", referencias=referencias)
+
+    corpo = json.loads(pedidos[0].content)
+    assert corpo["model"] == "meta/muse-image" and corpo["prompt"] == "uma cena"
+    assert corpo["input_references"] == [
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(b"abc").decode()}},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(b"def").decode()}},
+    ]
+
+
+def teste_w4_sem_referencias_o_corpo_continua_so_com_modelo_e_prompt() -> None:
+    provedor, pedidos = _provedor(_resposta_de_imagem())
+
+    provedor.gerar_imagem("uma cena", "meta/muse-image")
+
+    assert json.loads(pedidos[0].content) == {"model": "meta/muse-image", "prompt": "uma cena"}

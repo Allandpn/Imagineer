@@ -79,6 +79,13 @@ class ConfiguracaoAtual(BaseModel):
             "aparece na escolha mesmo fora desta lista."
         )
     )
+    modelos_com_referencia: dict[str, str] = Field(
+        description=(
+            "Os modelos de imagem que aceitam **imagens de referência**, e o parâmetro que recebe a lista (W1): "
+            "`{\"replicate:bytedance/seedream-4.5\": \"image_input\"}`. Vazio = nenhum. O app só oferece escolher "
+            "referências se o modelo em uso está aqui."
+        )
+    )
     modelos_sem_filtro: list[str] = Field(
         description=(
             "Os modelos de imagem em que o usuário pode pedir para desligar o filtro de segurança, depois de uma "
@@ -115,6 +122,13 @@ class ConfiguracaoNova(BaseModel):
     modelo_imagem: str | None = Field(default=None, max_length=200)
     modelos_de_imagem: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=20)
     modelos_sem_filtro: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=20)
+    modelos_com_referencia: (
+        dict[
+            Annotated[str, Field(max_length=200)],
+            Annotated[str, Field(max_length=50, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")],
+        ]
+        | None
+    ) = Field(default=None, max_length=20)
     modelo_suavizacao: str | None = Field(default=None, max_length=200)
     prioridade_ia: PrioridadeIA | None = None
 
@@ -160,6 +174,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         },
         modelos_de_imagem=list(configuracao.modelos_de_imagem or []),
         modelos_sem_filtro=list(configuracao.modelos_sem_filtro or []),
+        modelos_com_referencia=dict(configuracao.modelos_com_referencia or {}),
         modelo_suavizacao=configuracao.modelo_suavizacao,
         prioridade_ia=configuracao.prioridade_ia,
     )
@@ -177,6 +192,12 @@ def gravar_configuracao(
             # Não é campo de texto livre — não faz sentido "apagar" com string
             # vazia, então segue direto, sem a normalização abaixo.
             setattr(configuracao, campo, valor)
+            continue
+        if campo == "modelos_com_referencia":
+            # W1: sem espaços nas pontas e sem chaves vazias.
+            configuracao.modelos_com_referencia = {
+                modelo.strip(): parametro for modelo, parametro in (valor or {}).items() if modelo.strip()
+            }
             continue
         if campo in ("modelos_de_imagem", "modelos_sem_filtro"):
             # Z2/F13: sem espaços nas pontas, sem itens vazios nem repetidos, na ordem em que vieram.

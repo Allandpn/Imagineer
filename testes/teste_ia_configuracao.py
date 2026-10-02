@@ -1688,3 +1688,42 @@ def teste_gravar_outro_campo_nao_mexe_na_lista_de_modelos_de_imagem(cliente: Tes
     resposta = cliente.put("/configuracao", json={"modelo_prompt": "um/modelo"})
 
     assert resposta.json()["modelos_de_imagem"] == ["so/este"]
+
+
+# --------------------------------------------------------------------------- #
+# Modelos que aceitam imagens de referência (item 7.5b, W1)
+# --------------------------------------------------------------------------- #
+
+
+def teste_w1_modelos_com_referencia_nasce_vazio(cliente: TestClient) -> None:
+    assert cliente.get("/configuracao").json()["modelos_com_referencia"] == {}
+
+
+def teste_w1_gravar_modelos_com_referencia_normaliza_as_chaves(cliente: TestClient) -> None:
+    resposta = cliente.put(
+        "/configuracao",
+        json={"modelos_com_referencia": {" replicate:bytedance/seedream-4.5 ": "image_input", "  ": "images"}},
+    )
+
+    assert resposta.status_code == 200
+    esperado = {"replicate:bytedance/seedream-4.5": "image_input"}
+    assert resposta.json()["modelos_com_referencia"] == esperado
+    assert cliente.get("/configuracao").json()["modelos_com_referencia"] == esperado
+
+
+def teste_w1_o_parametro_tem_de_ser_um_nome_simples(cliente: TestClient) -> None:
+    for parametro in ("", "image input", "image-input", "1imagens", "a" * 51):
+        resposta = cliente.put("/configuracao", json={"modelos_com_referencia": {"replicate:x/y": parametro}})
+        assert resposta.status_code == 422, parametro
+
+
+def teste_w1_limita_o_numero_de_modelos(cliente: TestClient) -> None:
+    assert cliente.put("/configuracao", json={"modelos_com_referencia": {f"m/{i}": "images" for i in range(21)}}).status_code == 422
+
+
+def teste_w1_gravar_outro_campo_nao_mexe_no_dicionario(cliente: TestClient) -> None:
+    cliente.put("/configuracao", json={"modelos_com_referencia": {"replicate:x/y": "images"}})
+
+    resposta = cliente.put("/configuracao", json={"modelo_prompt": "um/modelo"})
+
+    assert resposta.json()["modelos_com_referencia"] == {"replicate:x/y": "images"}

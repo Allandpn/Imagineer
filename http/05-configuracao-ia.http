@@ -123,3 +123,18 @@ Content-Type: application/json
     "replicate:black-forest-labs/flux-schnell"
   ]
 }
+
+### Modelos que aceitam IMAGENS DE REFERENCIA na geracao da cena (item 7.5b, W1)
+# Dicionario {id do modelo (com prefixo): nome do parametro que recebe a LISTA de imagens}. Nasce vazio: nenhum modelo
+# aceita referencia ate voce inclui-lo. O parametro varia por modelo (Replicate: "image_input" no seedream e no nano-banana,
+# "images" no flux-2-klein-4b, "input_references" no OpenRouter); confira o esquema do modelo. So parametros de LISTA.
+# Este PUT substitui o dicionario inteiro.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "modelos_com_referencia": {
+    "replicate:bytedance/seedream-4.5": "image_input",
+    "replicate:black-forest-labs/flux-2-klein-4b": "images"
+  }
+}

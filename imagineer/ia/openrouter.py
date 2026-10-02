@@ -22,6 +22,7 @@ from imagineer.ia.fornecedores_de_imagem import (
     separar_fornecedor,
 )
 from imagineer.ia.provedor import (
+    ReferenciasParaGerar,
     CenaSugerida,
     ChaveDeApiAusente,
     ConteudoRecusado,
@@ -849,7 +850,13 @@ class ProvedorOpenRouter(ProvedorIA):
             f"O modelo {modelo} não apontou trocas válidas para suavizar o prompt. Edite o prompt à mão e tente de novo."
         )
 
-    def gerar_imagem(self, prompt: str, modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+    def gerar_imagem(
+        self,
+        prompt: str,
+        modelo: str,
+        sem_filtro_de_seguranca: bool = False,
+        referencias: ReferenciasParaGerar | None = None,
+    ) -> ImagemGerada:
         """Gera a imagem por ``POST /images`` (não o ``/chat/completions``, que recusa modelos de imagem).
 
         Só ``model`` e ``prompt`` no pedido: foi o que se testou com o ``meta/muse-image``. A resposta
@@ -862,7 +869,9 @@ class ProvedorOpenRouter(ProvedorIA):
             )
         fornecedor, id_do_modelo = separar_fornecedor(modelo)
         if fornecedor != "openrouter":
-            return self._gerar_em_outro_fornecedor(fornecedor, id_do_modelo, prompt, modelo, sem_filtro_de_seguranca)
+            return self._gerar_em_outro_fornecedor(
+                fornecedor, id_do_modelo, prompt, modelo, sem_filtro_de_seguranca, referencias
+            )
         if sem_filtro_de_seguranca:
             raise ErroDoProvedorIA("Desligar o filtro de segurança só é permitido no Replicate.")  # F14
         modelo = id_do_modelo  # `openrouter:x` e `x` são o mesmo modelo
@@ -874,7 +883,13 @@ class ProvedorOpenRouter(ProvedorIA):
             )
 
         try:
-            dados = self._pedir("POST", "/images", json={"model": modelo, "prompt": prompt}, autenticado=True)
+            corpo: dict[str, object] = {"model": modelo, "prompt": prompt}
+            if referencias is not None:
+                # W4: `input_references` é uma lista de `{"type": "image_url", "image_url": {"url": <data URL>}}`.
+                corpo[referencias.parametro] = [
+                    {"type": "image_url", "image_url": {"url": imagem.como_data_url()}} for imagem in referencias.imagens
+                ]
+            dados = self._pedir("POST", "/images", json=corpo, autenticado=True)
         except ErroHttpDoProvedor as erro:
             motivo = _motivo_de_recusa(erro)
             if motivo is not None:
@@ -894,7 +909,13 @@ class ProvedorOpenRouter(ProvedorIA):
         return ImagemGerada(conteudo=conteudo, tipo_de_midia=tipo, modelo=modelo)
 
     def _gerar_em_outro_fornecedor(
-        self, fornecedor: str, id_do_modelo: str, prompt: str, modelo_completo: str, sem_filtro_de_seguranca: bool = False
+        self,
+        fornecedor: str,
+        id_do_modelo: str,
+        prompt: str,
+        modelo_completo: str,
+        sem_filtro_de_seguranca: bool = False,
+        referencias: ReferenciasParaGerar | None = None,
     ) -> ImagemGerada:
         """Gera a imagem no fal.ai ou no Replicate (F1 a F10). O fornecedor sem chave dá 422, dizendo qual variável falta."""
         if not id_do_modelo:
@@ -905,7 +926,7 @@ class ProvedorOpenRouter(ProvedorIA):
                 f"Não há chave do {NOMES_DOS_FORNECEDORES[fornecedor]} configurada. "
                 f"Defina {VARIAVEIS_DA_CHAVE[fornecedor]} no .env do servidor."
             )
-        imagem = gerador.gerar(prompt, id_do_modelo, sem_filtro_de_seguranca)
+        imagem = gerador.gerar(prompt, id_do_modelo, sem_filtro_de_seguranca, referencias)
         imagem.modelo = modelo_completo
         # F7: nenhum dos dois devolve o custo em dólares; o consumo é anotado com custo nulo, nunca um zero inventado.
         if self._ao_usar is not None:

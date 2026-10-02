@@ -106,6 +106,10 @@ class PromptResumo(BaseModel):
         default=False,
         description="A última tentativa foi com o filtro de segurança do modelo desligado, a pedido do usuário (F16).",
     )
+    imagens_de_referencia: list[int] = Field(
+        default_factory=list,
+        description="Os ids das imagens enviadas como referência na última tentativa; vazia = nenhuma (W7).",
+    )
 
 
 class PromptDetalhe(PromptResumo):
@@ -174,6 +178,15 @@ class PedidoDeGeracao(BaseModel):
             "configuração. Não muda o padrão do servidor."
         ),
     )
+    imagens_de_referencia: list[int] = Field(
+        default_factory=list,
+        max_length=4,
+        description=(
+            "Ids de imagens do catálogo enviadas **como referência visual** neste pedido (W3), no máximo 4. Só vale se "
+            "o `modelo` do pedido (ou o padrão) está em `modelos_com_referencia` da configuração, e não no fal.ai; senão, "
+            "422. O texto enviado ganha uma frase dizendo qual imagem é de quem (W5); o prompt guardado não muda."
+        ),
+    )
     sem_filtro_de_seguranca: bool = Field(
         default=False,
         description=(
@@ -199,3 +212,26 @@ class ResultadoDaGeracao(BaseModel):
         )
     )
     imagem: ImagemResumo | None = Field(default=None, description="A imagem gerada; nula se `RECUSADA`.")
+
+
+class ImagemCandidata(ImagemResumo):
+    """Uma imagem que pode ir como referência (W2): a imagem, e se é a **âncora** (a referência principal) do elemento."""
+
+    ancora: bool = Field(default=False, description="É a âncora do estado (ou a padrão do elemento): a referência principal.")
+
+
+class ElementoComImagens(BaseModel):
+    """Um elemento do frame e as imagens dele que podem ir como referência."""
+
+    elemento_id: int
+    nome: str
+    tipo: str = Field(description="O tipo do elemento (`PERSONAGEM`, `AMBIENTE`...).")
+    imagens: list[ImagemCandidata] = Field(
+        description="Mais recentes primeiro, até 12, com a âncora sempre incluída; vazia se o elemento ainda não tem imagem."
+    )
+
+
+class ReferenciasCandidatas(BaseModel):
+    """O que o modal de referências mostra para um frame (W2, W9)."""
+
+    elementos: list[ElementoComImagens]

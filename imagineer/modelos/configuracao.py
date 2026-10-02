@@ -133,6 +133,13 @@ class Configuracao(Base):
 
     O ``modelo_imagem`` é o padrão e aparece na escolha mesmo que não esteja nesta lista."""
 
+    modelos_com_referencia: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, server_default="{}")
+    """Os modelos de imagem que aceitam **imagens de referência**, e o **parâmetro** que recebe a lista (W1).
+
+    Dicionário ``{id do modelo (com prefixo): nome do parâmetro}``, por exemplo ``{"replicate:bytedance/seedream-4.5":
+    "image_input"}``. Mantido à mão por ``PUT /configuracao``; nasce **vazio**: nenhum modelo aceita referência até o
+    usuário incluí-lo. Só parâmetros que recebem uma **lista** de imagens."""
+
     modelos_sem_filtro: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
     """Os modelos de imagem em que o usuário **pode** pedir para desligar o filtro de segurança (F13).
 

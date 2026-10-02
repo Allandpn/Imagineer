@@ -606,3 +606,50 @@ def teste_f2_as_duas_formas_do_nome_da_variavel_valem(cliente: TestClient, _sem_
 
     assert corpo["fornecedores_de_imagem"]["fal"] is True
     assert corpo["fornecedores_de_imagem"]["replicate"] is True
+
+
+# --------------------------------------------------------------------------- #
+# Imagens de referência (item 7.5b, W4)
+# --------------------------------------------------------------------------- #
+
+
+def teste_w4_replicate_manda_as_referencias_numa_lista_no_parametro_do_modelo() -> None:
+    import base64
+
+    from imagineer.ia.provedor import ImagemDeReferencia, ReferenciasParaGerar
+
+    rede = Rede({("POST", PREDICAO): _json(_predicao("succeeded", output=SAIDA)), ("GET", SAIDA): _imagem()})
+    referencias = ReferenciasParaGerar([ImagemDeReferencia(b"abc", "image/jpeg")], "image_input")
+
+    _replicate(rede).gerar("uma cena", "black-forest-labs/flux-schnell", referencias=referencias)
+
+    assert json.loads(rede.pedidos[0].content) == {
+        "input": {"prompt": "uma cena", "image_input": ["data:image/jpeg;base64," + base64.b64encode(b"abc").decode()]}
+    }
+
+
+def teste_w4_replicate_com_referencias_e_sem_filtro_manda_os_dois_parametros() -> None:
+    from imagineer.ia.provedor import ImagemDeReferencia, ReferenciasParaGerar
+
+    rede = Rede({("POST", PREDICAO): _json(_predicao("succeeded", output=SAIDA)), ("GET", SAIDA): _imagem()})
+
+    _replicate(rede).gerar(
+        "p", "black-forest-labs/flux-schnell", sem_filtro_de_seguranca=True,
+        referencias=ReferenciasParaGerar([ImagemDeReferencia(b"x", "image/png")], "images"),
+    )
+
+    entrada = json.loads(rede.pedidos[0].content)["input"]
+    assert entrada["disable_safety_checker"] is True and "images" in entrada
+
+
+def teste_w4_fal_recusa_referencias_e_nao_chama_a_rede() -> None:
+    from imagineer.ia.provedor import ImagemDeReferencia, ReferenciasParaGerar
+
+    rede = Rede({})
+
+    with pytest.raises(ErroDoProvedorIA, match="fal.ai"):
+        GeradorFal("chave-fal", cliente=rede.cliente()).gerar(
+            "p", "fal-ai/flux/dev", referencias=ReferenciasParaGerar([ImagemDeReferencia(b"x", "image/png")], "images")
+        )
+
+    assert rede.pedidos == []

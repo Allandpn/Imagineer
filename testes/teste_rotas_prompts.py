@@ -1351,3 +1351,193 @@ def teste_z1_erro_do_provedor_nao_grava_o_modelo_no_prompt(cliente: TestClient, 
     assert cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "outro/modelo"}).status_code == 502
 
     assert cliente.get(f"/prompts/{prompt['id']}").json()["modelo_imagem"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Imagens de referência na geração da cena (item 7.5b, W1 a W12)
+# --------------------------------------------------------------------------- #
+
+MODELO_COM_REFERENCIA = "replicate:bytedance/seedream-4.5"
+PNG_PEQUENO = b"\x89PNG\r\n\x1a\nxx"
+
+
+def _imagem_importada(cliente: TestClient, prompt_id: int) -> dict:
+    resposta = cliente.post(f"/prompts/{prompt_id}/imagens", files={"arquivo": ("a.png", PNG_PEQUENO, "image/png")})
+    assert resposta.status_code == 201, resposta.text
+    return resposta.json()
+
+
+def _cena_com_referencia(cliente: TestClient, usar_provedor_falso, **opcoes):
+    """Uma cena (Ned Stark) com um prompt, uma imagem de retrato dele e o modelo na lista de modelos com referência."""
+    provedor = ProvedorFalso(prompt="close-up, Ned Stark", **opcoes)
+    livro, cena = _montar_frame_completo(cliente, usar_provedor_falso, provedor)
+    cliente.put("/configuracao", json={"modelos_com_referencia": {MODELO_COM_REFERENCIA: "image_input"}})
+    prompt_da_cena = cliente.post(f"/frames/{cena['id']}/prompts", json={}).json()
+    return provedor, livro, cena, prompt_da_cena
+
+
+def teste_w3_gera_com_referencias_envia_junto_e_registra_os_ids(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, _, _, prompt = _cena_com_referencia(cliente, usar_provedor_falso)
+    ref = _imagem_importada(cliente, prompt["id"])
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": MODELO_COM_REFERENCIA, "imagens_de_referencia": [ref["id"]]},
+    )
+
+    assert resposta.status_code == 200, resposta.text
+    corpo = resposta.json()
+    assert corpo["resultado"] == "GERADA"
+    assert corpo["prompt"]["imagens_de_referencia"] == [ref["id"]]  # W7
+    chamada = provedor.chamadas_de_imagem[-1]
+    assert chamada["referencias"] == {"parametro": "image_input", "quantidade": 1}
+    # W5: a frase de contexto vai na chamada, com o nome de quem é a imagem; o prompt guardado não muda.
+    assert chamada["prompt"].startswith("Reference images: image 1 is Ned Stark.")
+    assert chamada["prompt"].endswith("close-up, Ned Stark")
+    assert cliente.get(f"/prompts/{prompt['id']}").json()["texto"] == "close-up, Ned Stark"
+
+
+def teste_w1_modelo_fora_do_dicionario_nao_aceita_referencia(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, _, _, prompt = _cena_com_referencia(cliente, usar_provedor_falso)
+    ref = _imagem_importada(cliente, prompt["id"])
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": "outro/modelo", "imagens_de_referencia": [ref["id"]]}
+    )
+
+    assert resposta.status_code == 422
+    assert "modelos_com_referencia" in resposta.json()["detail"]
+    assert provedor.chamadas_de_imagem == []  # nada foi enviado
+
+
+def teste_w3_imagem_inexistente_da_422(cliente: TestClient, usar_provedor_falso) -> None:
+    _, _, _, prompt = _cena_com_referencia(cliente, usar_provedor_falso)
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": MODELO_COM_REFERENCIA, "imagens_de_referencia": [99999]}
+    )
+
+    assert resposta.status_code == 422
+    assert "99999" in resposta.json()["detail"]
+
+
+def teste_w3_no_maximo_quatro_referencias(cliente: TestClient, usar_provedor_falso) -> None:
+    _, _, _, prompt = _cena_com_referencia(cliente, usar_provedor_falso)
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": MODELO_COM_REFERENCIA, "imagens_de_referencia": [1, 2, 3, 4, 5]},
+    )
+
+    assert resposta.status_code == 422
+
+
+def teste_w4_fal_nao_recebe_referencia(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, _, _, prompt = _cena_com_referencia(cliente, usar_provedor_falso)
+    cliente.put("/configuracao", json={"modelos_com_referencia": {"fal:fal-ai/flux/dev": "image_urls"}})
+    ref = _imagem_importada(cliente, prompt["id"])
+
+    resposta = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": "fal:fal-ai/flux/dev", "imagens_de_referencia": [ref["id"]]},
+    )
+
+    assert resposta.status_code == 422
+    assert "fal.ai" in resposta.json()["detail"]
+
+
+def teste_w3_ids_repetidos_contam_uma_vez_so(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, _, _, prompt = _cena_com_referencia(cliente, usar_provedor_falso)
+    ref = _imagem_importada(cliente, prompt["id"])
+
+    cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": MODELO_COM_REFERENCIA, "imagens_de_referencia": [ref["id"], ref["id"]]},
+    )
+
+    assert provedor.chamadas_de_imagem[-1]["referencias"]["quantidade"] == 1
+
+
+def teste_w6_a_suavizacao_reenvia_as_mesmas_referencias(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, _, _, prompt = _cena_com_referencia(cliente, usar_provedor_falso, recusas_de_imagem=1)
+    ref = _imagem_importada(cliente, prompt["id"])
+
+    corpo = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": MODELO_COM_REFERENCIA, "imagens_de_referencia": [ref["id"]]},
+    ).json()
+
+    assert corpo["resultado"] == "GERADA" and corpo["suavizado"] is True
+    assert [c["referencias"]["quantidade"] for c in provedor.chamadas_de_imagem] == [1, 1]
+    assert corpo["prompt"]["imagens_de_referencia"] == [ref["id"]]
+
+
+def teste_w7_uma_geracao_sem_referencias_limpa_o_registro(cliente: TestClient, usar_provedor_falso) -> None:
+    _, _, _, prompt = _cena_com_referencia(cliente, usar_provedor_falso)
+    ref = _imagem_importada(cliente, prompt["id"])
+    cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": MODELO_COM_REFERENCIA, "imagens_de_referencia": [ref["id"]]},
+    )
+
+    corpo = cliente.post(f"/prompts/{prompt['id']}/gerar-imagem", json={"modelo": MODELO_COM_REFERENCIA}).json()
+
+    assert corpo["prompt"]["imagens_de_referencia"] == []
+
+
+def teste_w6_referencias_e_modelo_sem_filtro_juntos(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, _, _, prompt = _cena_com_referencia(cliente, usar_provedor_falso)
+    cliente.put("/configuracao", json={"modelos_sem_filtro": [MODELO_COM_REFERENCIA]})
+    ref = _imagem_importada(cliente, prompt["id"])
+
+    corpo = cliente.post(
+        f"/prompts/{prompt['id']}/gerar-imagem",
+        json={"modelo": MODELO_COM_REFERENCIA, "imagens_de_referencia": [ref["id"]], "sem_filtro_de_seguranca": True},
+    ).json()
+
+    assert corpo["resultado"] == "GERADA"
+    chamada = provedor.chamadas_de_imagem[-1]
+    assert chamada["sem_filtro_de_seguranca"] is True and chamada["referencias"]["quantidade"] == 1
+
+
+def teste_w5_a_frase_sem_dono_conhecido_so_numera_a_imagem() -> None:
+    from imagineer.servicos.geracao_de_imagem import _frase_de_contexto
+
+    assert _frase_de_contexto(["Auri", None]).startswith("Reference images: image 1 is Auri; image 2.")
+
+
+def teste_w2_candidatas_trazem_as_imagens_do_retrato_de_cada_elemento_com_a_ancora(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    provedor, livro, cena, _ = _cena_com_referencia(cliente, usar_provedor_falso)
+    capitulo = livro["capitulos"][0]
+
+    # O retrato do Ned: um frame PERSONAGEM só com ele (o mesmo estado da cena), com duas imagens.
+    ned = next(e for e in cliente.get(f"/livros/{livro['id']}/elementos").json() if e["nome"] == "Ned Stark")
+    estado_id = cliente.get(f"/elementos/{ned['id']}").json()["estados"][0]["id"]
+    retrato = _frame(cliente, capitulo["id"], [estado_id], tipo="PERSONAGEM")
+    prompt_do_retrato = cliente.post(f"/frames/{retrato['id']}/prompts", json={}).json()
+    primeira = _imagem_importada(cliente, prompt_do_retrato["id"])
+    segunda = _imagem_importada(cliente, prompt_do_retrato["id"])
+    cliente.patch(f"/elementos/{ned['id']}", json={"imagem_ancora_padrao_id": primeira["id"]})
+
+    resposta = cliente.get(f"/frames/{cena['id']}/referencias-candidatas")
+
+    assert resposta.status_code == 200, resposta.text
+    [elemento] = resposta.json()["elementos"]
+    assert elemento["nome"] == "Ned Stark" and elemento["tipo"] == "PERSONAGEM"
+    assert [i["id"] for i in elemento["imagens"]] == [segunda["id"], primeira["id"]]  # mais recente primeiro
+    assert [i["ancora"] for i in elemento["imagens"]] == [False, True]
+    assert elemento["imagens"][0]["orientacao"] is None or elemento["imagens"][0]["orientacao"] in ("RETRATO", "PAISAGEM")
+
+
+def teste_w2_elemento_sem_imagem_vem_com_a_lista_vazia(cliente: TestClient, usar_provedor_falso) -> None:
+    _, _, cena, _ = _cena_com_referencia(cliente, usar_provedor_falso)
+
+    corpo = cliente.get(f"/frames/{cena['id']}/referencias-candidatas").json()
+
+    assert corpo["elementos"][0]["imagens"] == []
+
+
+def teste_w2_frame_inexistente_da_404(cliente: TestClient) -> None:
+    assert cliente.get("/frames/99999/referencias-candidatas").status_code == 404

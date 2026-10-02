@@ -14,12 +14,15 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.prompt import (
+    ElementoComImagens,
+    ImagemCandidata,
     ImagemResumo,
     PromptAjuste,
     PromptDetalhe,
     PedidoDeGeracao,
     PromptNovo,
     PromptResumo,
+    ReferenciasCandidatas,
     ResultadoDaGeracao,
 )
 from imagineer.ia.provedor import (
@@ -53,7 +56,7 @@ from imagineer.servicos.catalogo_imagens import (
     salvar_imagem,
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
-from imagineer.servicos.geracao_de_imagem import SemFiltroNaoPermitido, gerar_imagem_do_prompt
+from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
 from imagineer.servicos.identidade_de_elemento import identidade_vigente
 from imagineer.servicos.imagens_reduzidas import (
     TamanhoDeImagem,
@@ -87,6 +90,49 @@ def listar_prompts(frame_id: int, sessao: Session = Depends(obter_sessao)) -> li
     )
     contagens = _contar_imagens(sessao, [prompt.id for prompt in prompts])
     return [_resumo(prompt, contagens.get(prompt.id, 0)) for prompt in prompts]
+
+
+@rotas_de_frame.get(
+    "/{frame_id}/referencias-candidatas",
+    response_model=ReferenciasCandidatas,
+    summary="As imagens dos elementos do frame que podem ir como referência",
+)
+def referencias_candidatas(frame_id: int, sessao: Session = Depends(obter_sessao)) -> ReferenciasCandidatas:
+    """Para cada elemento do frame, as imagens dele que o usuário pode mandar como referência visual (W2).
+
+    As dos **frames de retrato** dele (``PERSONAGEM``, só ele), em qualquer capítulo, mais recentes primeiro (até 12), e a
+    **âncora** (a do estado, senão a padrão do elemento) marcada e **sempre incluída**. Nunca chama a IA.
+    """
+    frame = _buscar_frame(sessao, frame_id)
+    elementos: list[ElementoComImagens] = []
+    for estado in sorted(frame.estados_elemento, key=lambda e: (e.elemento.tipo.name, e.elemento.nome)):
+        elemento = estado.elemento
+        ancora = estado.imagem_ancora or elemento.imagem_ancora_padrao
+
+        # Os frames de retrato do elemento: PERSONAGEM com ele como único estado.
+        imagens: dict[int, Imagem] = {}
+        for estado_do_elemento in elemento.estados:
+            for outro in estado_do_elemento.frames:
+                if outro.tipo == TipoDeFrame.PERSONAGEM and len(outro.estados_elemento) == 1:
+                    for prompt in outro.prompts:
+                        for imagem in prompt.imagens:
+                            imagens[imagem.id] = imagem
+        recentes = sorted(imagens.values(), key=lambda i: i.id, reverse=True)[:12]
+        if ancora is not None and all(i.id != ancora.id for i in recentes):
+            recentes.append(ancora)
+
+        elementos.append(
+            ElementoComImagens(
+                elemento_id=elemento.id,
+                nome=elemento.nome,
+                tipo=elemento.tipo.name,
+                imagens=[
+                    ImagemCandidata(**ImagemResumo.model_validate(i).model_dump(exclude={"orientacao"}), ancora=ancora is not None and i.id == ancora.id)
+                    for i in recentes
+                ],
+            )
+        )
+    return ReferenciasCandidatas(elementos=elementos)
 
 
 @rotas_de_frame.post(
@@ -268,8 +314,9 @@ def gerar_imagem(
             corpo.texto if corpo else None,
             corpo.modelo if corpo else None,
             sem_filtro_de_seguranca=bool(corpo and corpo.sem_filtro_de_seguranca),
+            imagens_de_referencia=corpo.imagens_de_referencia if corpo else None,
         )
-    except SemFiltroNaoPermitido as erro:
+    except PedidoDeGeracaoInvalido as erro:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)) from erro
     return ResultadoDaGeracao(
         resultado="GERADA" if resultado.gerada else "RECUSADA",
@@ -666,6 +713,7 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
         prompt_original_id=prompt.prompt_original_id,
         modelo_imagem=prompt.modelo_imagem,
         sem_filtro_de_seguranca=prompt.sem_filtro_de_seguranca,
+        imagens_de_referencia=list(prompt.imagens_de_referencia or []),
     )
 
 

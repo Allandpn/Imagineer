@@ -17,6 +17,7 @@ import io
 from PIL import Image
 
 from imagineer.ia.provedor import (
+    ReferenciasParaGerar,
     CenaSugerida,
     ConteudoRecusado,
     ElementoSugerido,
@@ -231,8 +232,16 @@ class ProvedorFalso(ProvedorIA):
             raise self._erro
         return PromptMontado(texto=self._prompt_suavizado, modelo=modelo)
 
-    def gerar_imagem(self, prompt: str, modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+    def gerar_imagem(
+        self,
+        prompt: str,
+        modelo: str,
+        sem_filtro_de_seguranca: bool = False,
+        referencias: ReferenciasParaGerar | None = None,
+    ) -> ImagemGerada:
         chamada = {"prompt": prompt, "modelo": modelo}
+        if referencias is not None:  # só aparece quando há referências, para os testes de antes não mudarem
+            chamada["referencias"] = {"parametro": referencias.parametro, "quantidade": len(referencias.imagens)}
         if sem_filtro_de_seguranca:  # só aparece quando é verdadeiro, para os testes de antes não mudarem
             chamada["sem_filtro_de_seguranca"] = True
         self.chamadas_de_imagem.append(chamada)

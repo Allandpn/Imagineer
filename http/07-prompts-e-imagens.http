@@ -164,3 +164,19 @@ Content-Type: application/json
   "modelo": "replicate:black-forest-labs/flux-schnell",
   "sem_filtro_de_seguranca": true
 }
+
+### As imagens dos elementos da cena que podem ir como REFERENCIA (item 7.5b, W2)
+# Para cada elemento do frame: as imagens do retrato dele (mais recentes primeiro, ate 12) e a ancora marcada. Nunca gasta IA.
+GET {{baseUrl}}/frames/{{frameId}}/referencias-candidatas
+
+### Gera a imagem levando imagens de REFERENCIA (item 7.5b, W3)
+# Ate 4 ids de imagens do catalogo. So vale se o "modelo" (obrigatorio aqui) esta em "modelos_com_referencia"
+# (05-configuracao-ia.http) e nao e fal.ai; senao 422. O texto enviado ganha uma frase dizendo qual imagem e de quem;
+# o prompt guardado nao muda. O prompt guarda os ids em "imagens_de_referencia".
+POST {{baseUrl}}/prompts/{{promptId}}/gerar-imagem
+Content-Type: application/json
+
+{
+  "modelo": "replicate:bytedance/seedream-4.5",
+  "imagens_de_referencia": [12, 15]
+}

@@ -16,6 +16,7 @@ from collections.abc import Callable
 import httpx
 
 from imagineer.ia.provedor import (
+    ReferenciasParaGerar,
     ChaveDeApiAusente,
     ConteudoRecusado,
     ErroDoProvedorIA,
@@ -71,10 +72,17 @@ class GeradorDeImagemExterno(ABC):
         """``dormir`` e ``relogio`` vêm de fora para os testes não esperarem de verdade."""
 
     @abstractmethod
-    def gerar(self, prompt: str, id_do_modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+    def gerar(
+        self,
+        prompt: str,
+        id_do_modelo: str,
+        sem_filtro_de_seguranca: bool = False,
+        referencias: ReferenciasParaGerar | None = None,
+    ) -> ImagemGerada:
         """Gera a imagem. Levanta ``ConteudoRecusado`` se o fornecedor recusar o conteúdo (F4).
 
-        ``sem_filtro_de_seguranca`` só existe no Replicate (F14); nos outros é recusado."""
+        ``sem_filtro_de_seguranca`` só existe no Replicate (F14); nos outros é recusado. ``referencias`` (W4) só no
+        Replicate nesta fatia."""
 
     # ----------------------------------------------------------------------- #
     # Compartilhado
@@ -155,10 +163,19 @@ class GeradorFal(GeradorDeImagemExterno):
         except (ValueError, AttributeError):
             return
 
-    def gerar(self, prompt: str, id_do_modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+    def gerar(
+        self,
+        prompt: str,
+        id_do_modelo: str,
+        sem_filtro_de_seguranca: bool = False,
+        referencias: ReferenciasParaGerar | None = None,
+    ) -> ImagemGerada:
         if sem_filtro_de_seguranca:
             # F14: o filtro só se desliga no Replicate. Quem chama já barrou isso; aqui é a segunda trava.
             raise ErroDoProvedorIA("Desligar o filtro de segurança só é permitido no Replicate.")
+        if referencias is not None:
+            # W4: imagens de referência no fal.ai ficam para outra fatia (cada modelo tem o seu parâmetro).
+            raise ErroDoProvedorIA("Imagens de referência ainda não são enviadas ao fal.ai.")
         # F3: só o prompt. Nenhum parâmetro de segurança é enviado.
         inicio = self._relogio()
         envio = self._pedir("POST", f"https://queue.fal.run/{id_do_modelo}", json={"prompt": prompt})
@@ -198,8 +215,17 @@ class GeradorReplicate(GeradorDeImagemExterno):
     def _cabecalho_de_autorizacao(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._chave_api}"}
 
-    def gerar(self, prompt: str, id_do_modelo: str, sem_filtro_de_seguranca: bool = False) -> ImagemGerada:
+    def gerar(
+        self,
+        prompt: str,
+        id_do_modelo: str,
+        sem_filtro_de_seguranca: bool = False,
+        referencias: ReferenciasParaGerar | None = None,
+    ) -> ImagemGerada:
         entrada: dict[str, object] = {"prompt": prompt}
+        if referencias is not None:
+            # W4: o parâmetro de imagens de cada modelo (image_input, images, input_images), com uma LISTA de data URLs.
+            entrada[referencias.parametro] = [imagem.como_data_url() for imagem in referencias.imagens]
         if sem_filtro_de_seguranca:
             # F12: o ÚNICO caso em que se manda um parâmetro de segurança, só por pedido explícito do usuário.
             entrada["disable_safety_checker"] = True
