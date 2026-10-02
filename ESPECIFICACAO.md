@@ -604,11 +604,18 @@ O registro de cada prompt gerado, que permite regenerar e comparar modelos depoi
 | `modelo_ia` | texto (200) | sim | identificador do modelo no OpenRouter |
 | `texto` | texto longo | não | o prompt em si, como foi copiado |
 | `avaliacao` | texto longo | sim | sua anotação sobre como a imagem saiu |
+| `situacao_da_geracao` | texto (20) | não | `NAO_TENTADO` (padrão), `RECUSADO` ou `COM_SUCESSO`: o resultado da **última tentativa de gerar a imagem no app** (incremento 12). `NAO_TENTADO` também vale para o prompt que só foi copiado para outra ferramenta |
+| `motivo_da_recusa` | texto longo | sim | a mensagem do provedor de imagem quando `RECUSADO`; nulo nos outros casos |
+| `prompt_original_id` | inteiro | sim | no prompt **suavizado**, o prompt de onde ele saiu (S5); nulo no resto. `ON DELETE SET NULL`: apagar o original não apaga o suavizado |
 | `data_criacao` | data/hora com fuso | não | preenchido pelo banco |
 
 `perfil_renderizacao_id` guarda o perfil **usado naquela geração**, que pode ser o padrão do livro ou um override pontual. Aceita nulo, e apagar um perfil não apaga prompts (`ON DELETE SET NULL`): o histórico de prompts é mais valioso que a referência ao perfil, e perder um registro de prompt por causa de uma limpeza de perfis seria um prejuízo desproporcional.
 
 `avaliacao` é a interpretação do campo "resultado" citado no item 3.1: um texto livre onde você anota como a imagem ficou ("acertou o rosto, errou a armadura"). É o que dá sentido a "comparar modelos depois" — sem a anotação, comparar exigiria reabrir as imagens e lembrar o que achou de cada uma.
+
+**Situação da geração e suavização (S5, incremento 12).** `situacao_da_geracao` registra o que o provedor de imagem respondeu: `COM_SUCESSO` (gerou), `RECUSADO` (recusou o conteúdo) ou `NAO_TENTADO` (nunca foi enviado). Quando um prompt é recusado e o sistema o suaviza, o suavizado é um **prompt novo** (com o seu próprio texto e a sua própria situação) ligado ao original por `prompt_original_id`; **o original nunca é sobrescrito**. As três colunas aparecem em `GET /frames/{id}/prompts` e `GET /prompts/{id}`; são só de leitura por enquanto (quem as muda é a geração de imagem, próxima fatia).
+
+**Implementado (02/10/2026): as três colunas** (migração `b8c0d2e4f6a8`, testada em Postgres: sobe, desce e sobe de novo; `alembic check` não vê diferença entre o modelo e o banco; os 11 prompts que já existiam ficaram `NAO_TENTADO`). `PromptResumo` e `PromptDetalhe` ganharam `situacao_da_geracao`, `motivo_da_recusa` e `prompt_original_id`. Nada ainda muda esses valores: quem os preenche é a geração de imagem (próxima fatia). 3 testes novos (551 no total): o prompt novo nasce `NAO_TENTADO`; a listagem e o detalhe trazem os três campos, com o suavizado ligado ao original; apagar o original não apaga o suavizado (`SET NULL`). **Para o app:** os três campos são **novos** na resposta; o app atual ignora campos desconhecidos, então nada quebra.
 
 `texto` guarda o prompt como foi copiado, e não os ingredientes para remontá-lo. Assim o registro continua fiel mesmo que o perfil de renderização ou a descrição de um estado mudem depois.
 

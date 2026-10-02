@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from imagineer.modelos.prompt import SituacaoDaGeracao
 from imagineer.servicos.imagens_reduzidas import Orientacao, orientacao_de
 
 
@@ -70,6 +71,20 @@ class PromptResumo(BaseModel):
     avaliacao: str | None
     data_criacao: datetime
     total_de_imagens: int = 0
+    situacao_da_geracao: SituacaoDaGeracao = Field(
+        default=SituacaoDaGeracao.NAO_TENTADO,
+        description=(
+            "O que o provedor de imagem respondeu à última tentativa de gerar a imagem no app: "
+            "`NAO_TENTADO`, `RECUSADO` ou `COM_SUCESSO` (item 3.4c)."
+        ),
+    )
+    motivo_da_recusa: str | None = Field(
+        default=None, description="A mensagem do provedor quando `RECUSADO`."
+    )
+    prompt_original_id: int | None = Field(
+        default=None,
+        description="No prompt suavizado, o prompt de onde ele saiu; nulo nos demais.",
+    )
 
 
 class PromptDetalhe(PromptResumo):

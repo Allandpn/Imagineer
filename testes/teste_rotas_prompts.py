@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from imagineer import configuracao as modulo_de_configuracao
 from imagineer.ia.falso import MODELO_FALSO, ProvedorFalso
 from imagineer.ia.provedor import ChaveDeApiAusente, ErroDoProvedorIA, PromptMontado
+from imagineer.modelos.prompt import Prompt
 
 TEXTO_LONGO = "Este é um parágrafo com texto suficiente para não ser descartado. " * 3
 
@@ -754,3 +755,69 @@ def teste_remover_prompt_apaga_as_imagens_e_os_arquivos(
 
 def teste_remover_imagem_inexistente_responde_404(cliente: TestClient) -> None:
     assert cliente.delete("/imagens/999").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Situação da geração e suavização (item 3.4c, S5)
+# --------------------------------------------------------------------------- #
+
+
+def teste_prompt_novo_nasce_nao_tentado_e_sem_original(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+
+    criado = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
+
+    assert criado["situacao_da_geracao"] == "NAO_TENTADO"
+    assert criado["motivo_da_recusa"] is None
+    assert criado["prompt_original_id"] is None
+
+
+def teste_listagem_e_detalhe_trazem_situacao_motivo_e_original(
+    cliente: TestClient, usar_provedor_falso, sessao_com_tabelas
+) -> None:
+    """O suavizado é um prompt novo, ligado ao original; os dois aparecem na lista."""
+    from imagineer.modelos.prompt import SituacaoDaGeracao
+
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+    original = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
+    registro = sessao_com_tabelas.get(Prompt, original["id"])
+    registro.situacao_da_geracao = SituacaoDaGeracao.RECUSADO
+    registro.motivo_da_recusa = "The response was filtered due to the prompt triggering our content management policy."
+    suavizado = Prompt(
+        frame_id=frame["id"],
+        texto="versão mais suave",
+        situacao_da_geracao=SituacaoDaGeracao.COM_SUCESSO,
+        prompt_original_id=original["id"],
+    )
+    sessao_com_tabelas.add(suavizado)
+    sessao_com_tabelas.commit()
+
+    lista = cliente.get(f"/frames/{frame['id']}/prompts").json()
+    por_id = {prompt["id"]: prompt for prompt in lista}
+
+    assert por_id[original["id"]]["situacao_da_geracao"] == "RECUSADO"
+    assert "content management policy" in por_id[original["id"]]["motivo_da_recusa"]
+    assert por_id[suavizado.id]["situacao_da_geracao"] == "COM_SUCESSO"
+    assert por_id[suavizado.id]["prompt_original_id"] == original["id"]
+    detalhe = cliente.get(f"/prompts/{suavizado.id}").json()
+    assert detalhe["prompt_original_id"] == original["id"]
+    assert detalhe["situacao_da_geracao"] == "COM_SUCESSO"
+
+
+def teste_apagar_o_original_nao_apaga_o_suavizado(
+    cliente: TestClient, usar_provedor_falso, sessao_com_tabelas
+) -> None:
+    """`ON DELETE SET NULL`: o suavizado é um prompt por si só; só perde o vínculo."""
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+    original = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
+    suavizado = Prompt(frame_id=frame["id"], texto="mais suave", prompt_original_id=original["id"])
+    sessao_com_tabelas.add(suavizado)
+    sessao_com_tabelas.commit()
+
+    assert cliente.delete(f"/prompts/{original['id']}").status_code == 204
+
+    restante = cliente.get(f"/prompts/{suavizado.id}")
+    assert restante.status_code == 200
+    assert restante.json()["prompt_original_id"] is None

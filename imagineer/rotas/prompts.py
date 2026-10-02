@@ -621,6 +621,9 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
         avaliacao=prompt.avaliacao,
         data_criacao=prompt.data_criacao,
         total_de_imagens=total_de_imagens,
+        situacao_da_geracao=prompt.situacao_da_geracao,
+        motivo_da_recusa=prompt.motivo_da_recusa,
+        prompt_original_id=prompt.prompt_original_id,
     )
 
 

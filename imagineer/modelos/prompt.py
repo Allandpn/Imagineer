@@ -1,11 +1,29 @@
 """Modelos do Prompt e da Imagem — a geração e o catálogo (item 3.4c)."""
 
+import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
+
+
+class SituacaoDaGeracao(enum.Enum):
+    """O que o provedor de imagem respondeu à última tentativa de gerar a imagem (S5).
+
+    Só descreve a geração **dentro do app**: um prompt que o usuário apenas copiou para
+    outra ferramenta continua ``NAO_TENTADO``.
+    """
+
+    NAO_TENTADO = "NAO_TENTADO"
+    """Nunca foi enviado ao provedor de imagem."""
+
+    RECUSADO = "RECUSADO"
+    """O provedor recusou o conteúdo (moderação). O motivo fica em ``motivo_da_recusa``."""
+
+    COM_SUCESSO = "COM_SUCESSO"
+    """O provedor gerou a imagem."""
 
 
 class Prompt(Base):
@@ -55,6 +73,31 @@ class Prompt(Base):
     sentido a comparar modelos depois: sem a anotação, comparar dois modelos
     exigiria reabrir as imagens e lembrar o que achou de cada uma.
     """
+
+    situacao_da_geracao: Mapped[SituacaoDaGeracao] = mapped_column(
+        Enum(
+            SituacaoDaGeracao,
+            native_enum=False,
+            length=20,
+            create_constraint=True,
+            name="situacao_da_geracao",
+            values_callable=lambda tipo: [membro.value for membro in tipo],
+        ),
+        default=SituacaoDaGeracao.NAO_TENTADO,
+        server_default=SituacaoDaGeracao.NAO_TENTADO.value,
+    )
+    """O resultado da última tentativa de gerar a imagem no app (S5)."""
+
+    motivo_da_recusa: Mapped[str | None] = mapped_column(Text)
+    """A mensagem do provedor quando ``RECUSADO``; nula nos outros casos."""
+
+    prompt_original_id: Mapped[int | None] = mapped_column(
+        # SET NULL, e não CASCADE: apagar o original não pode apagar o suavizado, que
+        # é um prompt por si só (com texto e situação próprios).
+        ForeignKey("prompts.id", ondelete="SET NULL"),
+        index=True,
+    )
+    """No prompt **suavizado**, o prompt de onde ele saiu (S5); nulo nos demais."""
 
     data_criacao: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
