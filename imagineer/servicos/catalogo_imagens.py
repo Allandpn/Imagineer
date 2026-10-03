@@ -13,6 +13,23 @@ from imagineer.configuracao import obter_configuracoes
 EXTENSOES_ACEITAS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 """O que as ferramentas de geração de imagem em uso produzem (item 6.6)."""
 
+TIPOS_POR_EXTENSAO = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+"""O ``Content-Type`` de cada extensão aceita. Explícito, e não pelo módulo ``mimetypes``: no contêiner (Python 3.12 sem
+``/etc/mime.types``) ele não conhece ``.webp`` e a resposta saía como ``application/octet-stream``, que o Android recusa ao salvar
+na galeria."""
+
+
+def tipo_da_imagem(caminho: Path) -> str | None:
+    """O tipo de mídia pela extensão do arquivo, ou ``None`` se não for uma das aceitas."""
+    return TIPOS_POR_EXTENSAO.get(caminho.suffix.lower())
+
+
 TAMANHO_MAXIMO_DA_IMAGEM = 25 * 1024 * 1024
 """Limite de upload por imagem, em bytes.
 

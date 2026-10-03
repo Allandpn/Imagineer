@@ -200,7 +200,7 @@ def definir_vinculos(
 ) -> FrameDetalhe:
     """Substitui os vinculados do retrato pelos que vieram (V4); lista vazia tira todos.
 
-    Só vale em frame ``PERSONAGEM`` cujo sujeito **não** é um personagem, e só com vinculados que também não o sejam (V2, V3).
+    Só vale em frame ``PERSONAGEM`` cujo sujeito **não** é um personagem; os vinculados podem ser de qualquer tipo (V2, V3 revisto).
     **Não** refaz os prompts que já existem (V7): o próximo **Novo prompt** usa estes vínculos.
     """
     frame = _buscar_frame(sessao, frame_id)
@@ -312,8 +312,9 @@ def _exigir_vinculos_validos(
 ) -> None:
     """As regras V2 e V3 do retrato com elementos vinculados. Sem vinculados não há o que conferir.
 
-    **Personagem é individual** (decisão do Allan, 02/10/2026): nem o sujeito nem um vinculado pode ser ``PERSONAGEM``.
-    O sujeito é o único estado do frame de retrato (``_exigir_contagem_valida`` garante isso).
+    **O retrato de um personagem é individual** (V2, decisão do Allan, 02/10/2026): o **sujeito** não pode ser ``PERSONAGEM``.
+    Um personagem **pode ser vinculado** ao retrato de outro elemento (V3 revisto em 03/10/2026: *"a Auri não apareceu no
+    elemento do Porto"*). O sujeito é o único estado do frame de retrato (``_exigir_contagem_valida`` garante isso).
     """
     if not vinculados:
         return
@@ -334,8 +335,6 @@ def _exigir_vinculos_validos(
     vistos: set[int] = set()
     for estado in vinculados:
         elemento = estado.elemento
-        if elemento.tipo == TipoElemento.PERSONAGEM:
-            raise _422(f"{elemento.nome} é um personagem e fica individual: não pode ser vinculado a outro retrato.")
         if sujeito is not None and elemento.id == sujeito.id:
             raise _422(f"{elemento.nome} é o próprio sujeito do retrato: não pode ser vinculado a si mesmo.")
         if elemento.id in vistos:

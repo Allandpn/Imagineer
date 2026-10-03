@@ -106,7 +106,7 @@ def teste_ev5_na_cena_entram_todos_os_tipos_inclusive_personagem(cliente: TestCl
     assert "Auri" in _nomes(corpo["identificados"])
 
 
-def teste_ev5_no_retrato_personagem_e_o_sujeito_ficam_de_fora(cliente: TestClient, usar_provedor_falso, sessao_com_tabelas) -> None:
+def teste_ev5_no_retrato_so_o_sujeito_fica_de_fora_e_o_personagem_aparece(cliente: TestClient, usar_provedor_falso, sessao_com_tabelas) -> None:
     capitulo, e = _montar(cliente, usar_provedor_falso)
     retrato = _retrato(cliente, capitulo, e["criatura"]).json()
     for nome in ("criatura", "objeto", "personagem"):
@@ -114,7 +114,7 @@ def teste_ev5_no_retrato_personagem_e_o_sujeito_ficam_de_fora(cliente: TestClien
 
     corpo = _consultar(cliente, retrato["id"])
 
-    assert _nomes(corpo["identificados"]) == ["Prato"]  # sem o sujeito (Foxen) e sem a personagem (Auri)
+    assert sorted(_nomes(corpo["identificados"])) == ["Auri", "Prato"]  # sem o sujeito (Foxen), mas com a personagem (Auri)
     assert sorted(_nomes(corpo["outros"])) == ["Manto", "Xícara"]
 
 

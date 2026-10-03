@@ -60,6 +60,7 @@ from imagineer.servicos.catalogo_imagens import (
     caminho_absoluto,
     remover_arquivo,
     salvar_imagem,
+    tipo_da_imagem,
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
@@ -161,7 +162,7 @@ def elementos_para_vincular(frame_id: int, sessao: Session = Depends(obter_sessa
 
     **Identificados:** os elementos das sugestões do capítulo (ligadas a um elemento, não descartadas), com o estado vigente
     até o capítulo. **Outros:** os elementos do livro com estado **neste** capítulo que a IA não sugeriu, com esse estado.
-    Num **retrato**, o sujeito e os **personagens** ficam de fora (personagem é individual, V2) e, se o sujeito é um personagem,
+    Num **retrato**, só o próprio sujeito fica de fora (um personagem **pode** ser vinculado, V3 revisto) e, se o sujeito é um personagem (individual, V2),
     as duas listas vêm vazias. Numa **cena**, entram todos os tipos.
     """
     frame = _buscar_frame(sessao, frame_id)
@@ -180,7 +181,7 @@ def elementos_para_vincular(frame_id: int, sessao: Session = Depends(obter_sessa
 
     def pode_aparecer(elemento: Elemento) -> bool:
         if retrato:
-            return elemento.tipo != TipoElemento.PERSONAGEM and elemento.id != sujeito.id
+            return elemento.id != sujeito.id  # V3 revisto: um personagem pode ser vinculado ao retrato de outro elemento
         return True
 
     def montar(elemento: Elemento, estado: EstadoElemento) -> ElementoParaVincular:
@@ -462,7 +463,7 @@ def baixar_imagem(
         )
 
     servido, tipo_da_versao = arquivo_no_tamanho(imagem.id, caminho, tamanho)
-    tipo = tipo_da_versao or mimetypes.guess_type(caminho.name)[0]
+    tipo = tipo_da_versao or tipo_da_imagem(caminho) or mimetypes.guess_type(caminho.name)[0]
     return FileResponse(
         servido,
         media_type=tipo or "application/octet-stream",

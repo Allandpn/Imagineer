@@ -79,13 +79,15 @@ def teste_v2_o_sujeito_personagem_nao_aceita_vinculados(cliente: TestClient) -> 
     assert "personagem" in resposta.json()["detail"] and "cena" in resposta.json()["detail"]
 
 
-def teste_v2_um_personagem_nao_pode_ser_vinculado(cliente: TestClient) -> None:
+def teste_v3_um_personagem_pode_ser_vinculado_ao_retrato_de_outro_elemento(cliente: TestClient) -> None:
+    """V3 revisto (03/10/2026): a Auri (personagem) tem de poder aparecer no retrato do Porto (ambiente)."""
     _, capitulo, e = _cenario(cliente)
 
-    resposta = _retrato(cliente, capitulo, e["criatura"], [e["personagem"]])
+    resposta = _retrato(cliente, capitulo, e["ambiente"], [e["personagem"], e["objeto"]])
 
-    assert resposta.status_code == 422
-    assert "Auri" in resposta.json()["detail"] and "individual" in resposta.json()["detail"]
+    assert resposta.status_code == 201, resposta.text
+    nomes = sorted(v["nome"] for v in cliente.get(f"/frames/{resposta.json()['id']}").json()["vinculados"])
+    assert nomes == ["Auri", "Prato"]
 
 
 def teste_v3_o_sujeito_nao_pode_ser_vinculado_a_si_mesmo(cliente: TestClient) -> None:

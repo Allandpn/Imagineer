@@ -1545,3 +1545,19 @@ def teste_w2_elemento_sem_imagem_vem_com_a_lista_vazia(cliente: TestClient, usar
 
 def teste_w2_frame_inexistente_da_404(cliente: TestClient) -> None:
     assert cliente.get("/frames/99999/referencias-candidatas").status_code == 404
+
+
+def teste_o_arquivo_da_imagem_sai_com_o_tipo_de_midia_certo_mesmo_para_webp(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """O contêiner (Python sem /etc/mime.types) não conhece .webp: o tipo vem da tabela explícita, e não do `mimetypes`."""
+    _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
+    prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
+    for nome, esperado in (("a.webp", "image/webp"), ("a.png", "image/png"), ("a.jpg", "image/jpeg"), ("a.gif", "image/gif")):
+        imagem = cliente.post(
+            f"/prompts/{prompt['id']}/imagens", files={"arquivo": (nome, b"conteudo-fake", "image/png")}
+        ).json()
+
+        resposta = cliente.get(f"/imagens/{imagem['id']}/arquivo")
+
+        assert resposta.headers["content-type"] == esperado, nome
