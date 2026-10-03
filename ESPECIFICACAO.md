@@ -3139,7 +3139,7 @@ Teste do Allan com o app, depois do incremento 11 (ícones de elemento) e da nav
 - [ ] **M2 — Botão de pesquisar no capítulo (melhoria pedida em 01/10/2026; do app).** Busca dentro do texto do capítulo aberto, com avanço entre as ocorrências. É a "busca no texto" da lista do `EXPERIENCIA_DE_LEITURA.md` (prioridade 4). A busca no capítulo já carregado pode ser **só do app** (o texto está lá); busca no livro todo é outra conversa (item 6.2 teria de ganhar uma rota).
 - [ ] **M3 — Guardar o custo de cada chamada de IA, para métricas (pedido em 01/10/2026; ver "Custo das chamadas de IA" no item 4.3).** O OpenRouter devolve o custo e os tokens de cada chamada; o servidor passa a **gravar** isso.
 
-- [ ] **Decisão do Allan (01/10/2026): o Raspberry Pi só recebe a migração no fim do projeto.** Até lá, desenvolve-se e testa-se **localmente**; o roteiro do `SERVIDOR.md` fica pronto para quando chegar a hora. As migrations novas continuam sendo criadas normalmente.
+- [x] **Atualizado em 03/10/2026:** o Allan subiu esta versão (migrations até `b4c6d8e0f2a4`) no Pi, com o banco e as imagens do PC restaurados por cima (`pg_dump` + `imagens.tar.gz`); falta repetir a atualização quando houver novos commits. *Decisão original:* **o Raspberry Pi só recebe a migração no fim do projeto.** Até lá, desenvolve-se e testa-se **localmente**; o roteiro do `SERVIDOR.md` fica pronto para quando chegar a hora. As migrations novas continuam sendo criadas normalmente.
 
 ### Pendências técnicas (achadas revisando a API, ainda sem decisão de implementar)
 
