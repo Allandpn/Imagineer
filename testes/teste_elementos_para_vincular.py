@@ -123,7 +123,7 @@ def teste_ev5_retrato_de_personagem_nao_oferece_nada(cliente: TestClient, usar_p
     retrato = _retrato(cliente, capitulo, e["personagem"]).json()
     _sugerir(sessao_com_tabelas, capitulo["id"], e["objeto"], "OBJETO")
 
-    assert _consultar(cliente, retrato["id"]) == {"identificados": [], "outros": []}
+    assert _consultar(cliente, retrato["id"]) == {"identificados": [], "outros": [], "de_outros_capitulos": []}
 
 
 def teste_ev5_no_retrato_os_vinculados_aparecem_como_no_frame_e_removiveis(cliente: TestClient, usar_provedor_falso) -> None:
@@ -194,3 +194,53 @@ def teste_ev6_quem_ja_esta_no_frame_sempre_aparece_mesmo_com_estado_de_outro_cap
 
     [escudo] = [x for x in corpo["identificados"] + corpo["outros"] if x["nome"] == "Escudo"]
     assert escudo["no_frame"] is True and escudo["estado_id"] == de_antes["estado_id"]
+
+
+def teste_vm7_elementos_sem_estado_neste_capitulo_vem_em_de_outros_capitulos_com_o_estado_vigente(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    from testes.teste_rotas_sugestoes import _livro_com_capitulos
+
+    usar_provedor_falso(ProvedorFalso(prompt="um prompt"))
+    livro = _livro_com_capitulos(cliente)
+    primeiro, segundo = livro["capitulos"][0], livro["capitulos"][1]
+    de_antes = _elemento(cliente, livro["id"], primeiro["id"], "Escudo", "OBJETO")  # só tem estado no capítulo 1
+    cena = _frame(cliente, segundo["id"], [], tipo="CENA")  # a cena do capítulo 2 não o cita
+
+    corpo = _consultar(cliente, cena["id"])
+
+    [escudo] = corpo["de_outros_capitulos"]
+    assert escudo["nome"] == "Escudo" and escudo["estado_id"] == de_antes["estado_id"]
+    assert escudo["no_frame"] is False
+    assert all(x["nome"] != "Escudo" for x in corpo["identificados"] + corpo["outros"])
+
+
+def teste_vm7_elemento_que_so_aparece_depois_usa_o_primeiro_estado_dele(cliente: TestClient, usar_provedor_falso) -> None:
+    from testes.teste_rotas_sugestoes import _livro_com_capitulos
+
+    usar_provedor_falso(ProvedorFalso(prompt="um prompt"))
+    livro = _livro_com_capitulos(cliente)
+    primeiro, segundo = livro["capitulos"][0], livro["capitulos"][1]
+    do_futuro = _elemento(cliente, livro["id"], segundo["id"], "Rei", "PERSONAGEM")  # só tem estado no capítulo 2
+    cena = _frame(cliente, primeiro["id"], [], tipo="CENA")
+
+    [rei] = _consultar(cliente, cena["id"])["de_outros_capitulos"]
+
+    assert rei["nome"] == "Rei" and rei["estado_id"] == do_futuro["estado_id"]
+
+
+def teste_vm7_a_cena_aceita_participante_de_outro_capitulo(cliente: TestClient, usar_provedor_falso) -> None:
+    from testes.teste_rotas_sugestoes import _livro_com_capitulos
+
+    usar_provedor_falso(ProvedorFalso(prompt="um prompt"))
+    livro = _livro_com_capitulos(cliente)
+    primeiro, segundo = livro["capitulos"][0], livro["capitulos"][1]
+    escudo = _elemento(cliente, livro["id"], primeiro["id"], "Escudo", "OBJETO")
+    cena = _frame(cliente, segundo["id"], [], tipo="CENA")
+
+    resposta = cliente.put(f"/frames/{cena['id']}/estados", json={"estados_ids": [escudo["estado_id"]]})
+
+    assert resposta.status_code == 200, resposta.text
+    assert [x["nome"] for x in resposta.json()["elementos"]] == ["Escudo"]
+    [escudo_na_cena] = [x for x in _consultar(cliente, cena["id"])["outros"] if x["nome"] == "Escudo"]  # agora está no frame
+    assert escudo_na_cena["no_frame"] is True

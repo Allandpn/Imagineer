@@ -225,6 +225,16 @@ def elementos_para_vincular(frame_id: int, sessao: Session = Depends(obter_sessa
             continue
         outros[elemento.id] = montar(elemento, estado)
 
+    # VM7: os demais elementos do livro (sem estado neste capítulo), com o estado vigente até aqui ou, se só aparecem depois, o primeiro.
+    de_outros_capitulos: dict[int, ElementoParaVincular] = {}
+    elementos_do_livro = sessao.scalars(select(Elemento).where(Elemento.livro_id == livro_id).order_by(Elemento.id))
+    for elemento in elementos_do_livro:
+        if elemento.id in identificados or elemento.id in outros or not pode_aparecer(elemento):
+            continue
+        estado = vigentes.get(elemento.id) or next(iter(sorted(elemento.estados, key=lambda e: (e.capitulo.ordem, e.id))), None)
+        if estado is not None:
+            de_outros_capitulos[elemento.id] = montar(elemento, estado)
+
     # Quem já está no frame entra sempre numa das listas (EV6), mesmo sem sugestão nem estado neste capítulo: o app grava o conjunto
     # inteiro (`PUT .../estados`), e um participante que sumisse da lista seria apagado da cena sem querer.
     for estado in [*frame.estados_elemento, *frame.estados_vinculados]:
@@ -235,7 +245,13 @@ def elementos_para_vincular(frame_id: int, sessao: Session = Depends(obter_sessa
     def ordenar(lista):
         return sorted(lista, key=lambda e: (e.tipo, e.nome))
 
-    return ElementosParaVincular(identificados=ordenar(identificados.values()), outros=ordenar(outros.values()))
+    # Quem já está no frame, vindo de outro capítulo, aparece em "outros" (acima); aqui só quem ainda não está em nenhuma lista.
+    de_outros_capitulos = {i: e for i, e in de_outros_capitulos.items() if i not in outros and i not in identificados}
+    return ElementosParaVincular(
+        identificados=ordenar(identificados.values()),
+        outros=ordenar(outros.values()),
+        de_outros_capitulos=ordenar(de_outros_capitulos.values()),
+    )
 
 
 @rotas_de_frame.post(

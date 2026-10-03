@@ -114,3 +114,21 @@ def teste_tr3_a_cena_avulsa_de_um_trecho_nasce_sem_elementos_e_vira_artefato_no_
     assert artefato["tipo"] == "CENA"
     assert artefato["sugestao_id"] is None and artefato["frame_id"] == resposta.json()["id"]
     assert artefato["posicao_no_texto"] == INICIO_DO_VENTO
+
+
+def teste_pm3_reposicionar_a_cena_com_frame_posicionado_move_de_verdade(cliente: TestClient, usar_provedor_falso, sessao_com_tabelas: Session) -> None:
+    """O frame com posição própria manda sobre a manual; ao reposicionar a sugestão, o frame a segue (senão nada mudaria)."""
+    _, capitulo_id = _cenario(cliente, usar_provedor_falso, sessao_com_tabelas)
+    cena = sessao_com_tabelas.query(SugestaoDeCena).one()
+    # Uma cena confirmada tem frame; aqui ele é criado à mão e ligado à sugestão.
+    criado = cliente.post(
+        f"/capitulos/{capitulo_id}/frames",
+        json={"tipo": "CENA", "titulo": "A espada", "posicao_no_texto": INICIO_DO_VENTO, "estados_ids": []},
+    ).json()
+    cena.frame_id = criado["id"]
+    sessao_com_tabelas.commit()
+    assert _artefatos(cliente, capitulo_id)["A espada"]["posicao_no_texto"] == INICIO_DO_VENTO
+
+    cliente.put(f"/sugestoes-cena/{cena.id}/posicao", json={"posicao_no_texto": INICIO_DO_FIM})
+
+    assert _artefatos(cliente, capitulo_id)["A espada"]["posicao_no_texto"] == INICIO_DO_FIM

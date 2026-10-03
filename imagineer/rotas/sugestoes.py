@@ -23,7 +23,7 @@ from imagineer.esquemas.elemento import (
     SugestoesDeCapitulo,
 )
 from imagineer.ia.provedor import ProvedorIA
-from imagineer.modelos import Capitulo, EstadoElemento, SugestaoDeCena, SugestaoDeElemento
+from imagineer.modelos import Capitulo, EstadoElemento, Frame, SugestaoDeCena, SugestaoDeElemento, TipoDeFrame
 from imagineer.rotas._comum import (
     buscar_capitulo as _buscar_capitulo,
     buscar_elemento as _buscar_elemento,
@@ -202,6 +202,14 @@ def posicionar_elemento(
     sugestao = _buscar_sugestao_de_elemento(sessao, sugestao_elemento_id)
     _exigir_posicao_manual_valida(sugestao.capitulo, corpo.posicao_no_texto)
     sugestao.posicao_manual = corpo.posicao_no_texto
+    # O frame (o retrato) com posição própria manda sobre a manual: para reposicionar de verdade, ele a segue.
+    if sugestao.elemento_id is not None:
+        retrato = None
+        for frame in sessao.scalars(select(Frame).where(Frame.capitulo_id == sugestao.capitulo_id).order_by(Frame.id)):
+            if frame.tipo == TipoDeFrame.PERSONAGEM and len(frame.estados_elemento) == 1 and frame.estados_elemento[0].elemento_id == sugestao.elemento_id:
+                retrato = frame  # o mais novo vence, como nos artefatos
+        if retrato is not None and retrato.posicao_no_texto is not None:
+            retrato.posicao_no_texto = corpo.posicao_no_texto
     sessao.commit()
     return PosicaoManualDoArtefato(sugestao_id=sugestao.id, posicao_manual=sugestao.posicao_manual)
 
@@ -223,6 +231,8 @@ def posicionar_cena(
         )
     _exigir_posicao_manual_valida(cena.capitulo, corpo.posicao_no_texto)
     cena.posicao_manual = corpo.posicao_no_texto
+    if cena.frame is not None and cena.frame.posicao_no_texto is not None:
+        cena.frame.posicao_no_texto = corpo.posicao_no_texto  # o frame manda sobre a manual: ele a segue
     sessao.commit()
     return PosicaoManualDoArtefato(sugestao_id=cena.id, posicao_manual=cena.posicao_manual)
 

@@ -287,3 +287,10 @@ class ElementosParaVincular(BaseModel):
 
     identificados: list[ElementoParaVincular] = Field(description="Os elementos que a IA identificou neste capítulo (sugestões ligadas a um elemento).")
     outros: list[ElementoParaVincular] = Field(description="Os elementos com estado neste capítulo que a IA não sugeriu.")
+    de_outros_capitulos: list[ElementoParaVincular] = Field(
+        default_factory=list,
+        description=(
+            "Os demais elementos do livro, que não têm estado neste capítulo (VM7). Cada um vem com o estado **vigente até este capítulo** "
+            "ou, se só aparece depois, o primeiro que tem: é o que a cena passa a citar."
+        ),
+    )
