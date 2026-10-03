@@ -41,6 +41,10 @@ class FrameResumo(BaseModel):
         description="Onde a pessoa pôs o frame no texto (UTF-16, item 3.4g); nulo = sem escolha.",
     )
     total_de_elementos: int
+    imagem_canonica_id: int | None = Field(
+        default=None,
+        description="A imagem canônica do frame (CAN1): a que o capítulo mostra; nulo = sem escolha (vale a mais recente).",
+    )
 
 
 class FrameDetalhe(FrameResumo):
@@ -257,3 +261,16 @@ class LivroAjuste(BaseModel):
     autor: str | None = Field(default=None, max_length=300)
     idioma: str | None = Field(default=None, max_length=20)
     perfil_renderizacao_padrao_id: int | None = None
+
+
+class ImagemCanonicaNova(BaseModel):
+    """O que o app manda para escolher a imagem canônica de um frame (CAN3)."""
+
+    imagem_id: int | None = Field(description="Uma imagem de um prompt **deste frame**; nulo tira a escolha.")
+
+
+class ImagemCanonicaDoFrame(BaseModel):
+    """A escolha vigente depois do `PUT` (CAN3)."""
+
+    frame_id: int
+    imagem_canonica_id: int | None

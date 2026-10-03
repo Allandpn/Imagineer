@@ -20,6 +20,8 @@ from imagineer.esquemas.frame import (
     FrameDetalhe,
     FrameNovo,
     FrameResumo,
+    ImagemCanonicaDoFrame,
+    ImagemCanonicaNova,
     VinculosDoFrame,
 )
 from imagineer.modelos import (
@@ -27,6 +29,7 @@ from imagineer.modelos import (
     Elemento,
     EstadoElemento,
     Frame,
+    Imagem,
     SugestaoDeCena,
     TipoDeFrame,
     TipoElemento,
@@ -209,6 +212,44 @@ def definir_vinculos(
     sessao.commit()
     sessao.refresh(frame)
     return _detalhe(sessao, frame)
+
+
+@rotas.put(
+    "/{frame_id}/imagem-canonica",
+    response_model=ImagemCanonicaDoFrame,
+    summary="Escolhe a imagem canônica do frame (a que o capítulo mostra)",
+)
+def definir_imagem_canonica(
+    frame_id: int, corpo: ImagemCanonicaNova, sessao: Session = Depends(obter_sessao)
+) -> ImagemCanonicaDoFrame:
+    """Marca uma das variações como a **canônica** do frame (CAN1 a CAN3); `null` tira a escolha.
+
+    No **retrato** de um elemento ela é também a **âncora** do estado dele (a referência do item 4.5) e, se o elemento ainda
+    não tem âncora padrão, passa a ser a padrão; uma padrão já escolhida **não** é trocada (CAN2). As outras variações ficam
+    como alternativas: nada é apagado.
+    """
+    frame = _buscar_frame(sessao, frame_id)
+    anterior = frame.imagem_canonica_id
+    if corpo.imagem_id is not None:
+        imagem = sessao.get(Imagem, corpo.imagem_id)
+        if imagem is None or imagem.prompt.frame_id != frame.id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Essa imagem não é de um prompt deste frame.",
+            )
+    frame.imagem_canonica_id = corpo.imagem_id
+
+    if frame.tipo == TipoDeFrame.PERSONAGEM and len(frame.estados_elemento) == 1:
+        estado = frame.estados_elemento[0]
+        if corpo.imagem_id is not None:
+            estado.imagem_ancora_id = corpo.imagem_id
+            if estado.elemento.imagem_ancora_padrao_id is None:
+                estado.elemento.imagem_ancora_padrao_id = corpo.imagem_id
+        elif anterior is not None and estado.imagem_ancora_id == anterior:
+            estado.imagem_ancora_id = None  # só solta a âncora se era a mesma imagem (CAN3)
+
+    sessao.commit()
+    return ImagemCanonicaDoFrame(frame_id=frame.id, imagem_canonica_id=frame.imagem_canonica_id)
 
 
 @rotas.delete(
@@ -487,6 +528,7 @@ def _resumo(frame: Frame, total: int) -> FrameResumo:
         humor=frame.humor,
         posicao_no_texto=frame.posicao_no_texto,
         total_de_elementos=total,
+        imagem_canonica_id=frame.imagem_canonica_id,
     )
 
 

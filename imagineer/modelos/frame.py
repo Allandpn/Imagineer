@@ -110,6 +110,14 @@ class Frame(Base):
     deslocamento em UTF-16 desde o início de ``Capitulo.texto``. Nulo = sem escolha: o artefato cai
     para a posição da sugestão que o originou, se houver. **Não é copiada da sugestão.**"""
 
+    imagem_canonica_id: Mapped[int | None] = mapped_column(
+        # use_alter: frames -> imagens -> prompts -> frames forma um ciclo; a chave sai por ALTER depois das tabelas.
+        # SET NULL: apagar a imagem não apaga o frame, só desfaz a escolha (CAN4).
+        ForeignKey("imagens.id", ondelete="SET NULL", use_alter=True, name="fk_frames_imagem_canonica_id"),
+    )
+    """A imagem **canônica** do frame: a escolhida entre as variações para representá-lo e a que o capítulo mostra
+    (item 7.5b, CAN1 a CAN4). Nulo = sem escolha: vale a mais recente."""
+
     contexto_do_livro: Mapped[str | None] = mapped_column(Text)
     """O que a leitura profunda do frame (item 4.4) confirmou no capítulo sobre
     quem, onde e o quê — só para ``tipo=CENA``.

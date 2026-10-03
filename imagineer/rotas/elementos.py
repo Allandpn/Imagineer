@@ -196,10 +196,12 @@ def galeria_do_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao
                             sem_filtro_de_seguranca=imagem.sem_filtro_de_seguranca,
                             data_importacao=imagem.data_importacao,
                             ancora=imagem.id in ancoras,
+                            canonica=frame.imagem_canonica_id == imagem.id,
                         )
             elif frame.tipo == TipoDeFrame.CENA and frame.id not in cenas:
                 todas = [i for prompt in frame.prompts for i in prompt.imagens]
-                ultima = max(todas, key=lambda i: i.id) if todas else None
+                canonica = next((i for i in todas if i.id == frame.imagem_canonica_id), None)
+                ultima = canonica or (max(todas, key=lambda i: i.id) if todas else None)
                 orientacao = orientacao_de(ultima.largura, ultima.altura) if ultima else None
                 cenas[frame.id] = CenaDoElemento(
                     frame_id=frame.id,

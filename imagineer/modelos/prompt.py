@@ -210,5 +210,11 @@ class Imagem(Base):
 
     prompt: Mapped["Prompt"] = relationship(back_populates="imagens")
 
+    @property
+    def canonica(self) -> bool:
+        """É a imagem canônica do frame dela (item 7.5b, CAN5)."""
+        frame = self.prompt.frame if self.prompt is not None else None
+        return frame is not None and frame.imagem_canonica_id == self.id
+
     def __repr__(self) -> str:
         return f"<Imagem id={self.id} caminho={self.caminho_arquivo!r}>"

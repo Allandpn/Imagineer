@@ -29,14 +29,15 @@ def _campos_da_imagem(imagem: Imagem | None) -> dict:
 
 
 def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[SituacaoDoArtefato, Imagem | None]:
-    """A situação de um artefato e a imagem a mostrar (a mais recente do frame, se houver).
+    """A situação de um artefato e a imagem a mostrar: a **canônica** do frame (CAN4) ou, sem escolha, a mais recente.
 
     ``confirmado`` diz se a sugestão já virou elemento ou frame; sem isso, é só ``SUGERIDO``.
     """
     if not confirmado:
         return SituacaoDoArtefato.SUGERIDO, None
     imagens = [imagem for prompt in frame.prompts for imagem in prompt.imagens] if frame else []
-    ultima = max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
+    canonica = next((i for i in imagens if frame is not None and i.id == frame.imagem_canonica_id), None)
+    ultima = canonica or max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
     if ultima is not None:
         return SituacaoDoArtefato.ILUSTRADO, ultima
     if frame is not None and frame.prompts:

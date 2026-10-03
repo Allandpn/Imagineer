@@ -609,6 +609,7 @@ class ImagemDoElemento(BaseModel):
     sem_filtro_de_seguranca: bool = False
     data_importacao: datetime
     ancora: bool = Field(description="É a referência principal do elemento (a padrão ou a do estado), item 4.5.")
+    canonica: bool = Field(default=False, description="É a imagem canônica do retrato dela (CAN5): a que o capítulo mostra.")
 
 
 class CenaDoElemento(BaseModel):
@@ -622,7 +623,7 @@ class CenaDoElemento(BaseModel):
     ordem_do_capitulo: int
     participantes: list[str] = Field(description="Os nomes dos **outros** elementos da cena.")
     total_de_imagens: int
-    imagem_id: int | None = Field(default=None, description="A imagem mais recente da cena; nulo se ainda não tem.")
+    imagem_id: int | None = Field(default=None, description="A imagem canônica da cena ou, sem escolha, a mais recente (CAN5); nulo se ainda não tem.")
     imagem_orientacao: str | None = None
 
 

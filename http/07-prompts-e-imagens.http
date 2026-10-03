@@ -192,6 +192,17 @@ Content-Type: application/json
   "estados_ids": [12, 15]
 }
 
+### A imagem CANONICA de um frame (item 7.5b, CAN1 a CAN9)
+# Marca uma das variacoes (de um prompt DESTE frame) como a que representa o frame e que o capitulo mostra. No retrato de um
+# elemento ela tambem vira a ancora do estado e, se o elemento ainda nao tem ancora padrao, a padrao. "imagem_id": null tira a
+# escolha (volta a valer a mais recente). 422 se a imagem nao e deste frame.
+PUT {{baseUrl}}/frames/{{frameId}}/imagem-canonica
+Content-Type: application/json
+
+{
+  "imagem_id": 31
+}
+
 ### Cria o retrato ja com vinculados (campo opcional "estados_vinculados_ids")
 POST {{baseUrl}}/capitulos/{{capituloId}}/frames
 Content-Type: application/json
