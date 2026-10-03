@@ -89,3 +89,28 @@ def teste_pm2_a_reanalise_nao_desfaz_a_posicao_manual(cliente: TestClient, usar_
     artefatos = _artefatos(cliente, capitulo_id)
     assert artefatos["Arya"]["posicao_no_texto"] == INICIO_DO_VENTO
     assert artefatos["A espada"]["posicao_no_texto"] == INICIO_DO_FIM
+
+
+def teste_tr3_a_cena_avulsa_de_um_trecho_nasce_sem_elementos_e_vira_artefato_no_paragrafo(
+    cliente: TestClient, usar_provedor_falso, sessao_com_tabelas: Session
+) -> None:
+    """O app cria a cena de um trecho selecionado por `POST /capitulos/{id}/frames` (tipo CENA): zero elementos é válido, a
+    descrição leva o trecho e a posição é a do parágrafo; ela aparece como artefato de cena, sem sugestão por trás (TR3, TR4)."""
+    _, capitulo_id = _cenario(cliente, usar_provedor_falso, sessao_com_tabelas)
+
+    resposta = cliente.post(
+        f"/capitulos/{capitulo_id}/frames",
+        json={
+            "tipo": "CENA",
+            "titulo": "O vento",
+            "descricao": "Em close\n\nTrecho do capítulo: «O vento soprou forte.»",
+            "posicao_no_texto": INICIO_DO_VENTO,
+            "estados_ids": [],
+        },
+    )
+
+    assert resposta.status_code == 201, resposta.text
+    artefato = _artefatos(cliente, capitulo_id)["O vento"]
+    assert artefato["tipo"] == "CENA"
+    assert artefato["sugestao_id"] is None and artefato["frame_id"] == resposta.json()["id"]
+    assert artefato["posicao_no_texto"] == INICIO_DO_VENTO
