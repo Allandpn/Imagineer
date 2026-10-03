@@ -205,6 +205,11 @@ GET {{baseUrl}}/lixeira/imagens
 ### Esvazia a lixeira (apaga de vez tudo o que esta nela; nada disso roda sozinho). Devolve {"removidas", "liberados_em_bytes"}.
 # DELETE {{baseUrl}}/lixeira/imagens
 
+### Os elementos do livro POR CAPITULO, com as imagens dos retratos (item 7.5b, VM1 a VM3)
+# O que o seletor unico de vinculo mostra: cada capitulo, na ordem, com os elementos que tem estado ou retrato ali e as imagens
+# daquele capitulo. Nunca chama a IA. (Usar uma dessas imagens num retrato de outro capitulo: PUT /frames/{id}/imagem-canonica.)
+GET {{baseUrl}}/livros/{{livroId}}/elementos-por-capitulo
+
 ### OCULTAR a imagem do frame no capitulo, sem apagar (item 7.5b, OC1 a OC3)
 # O artefato volta a ser so o icone; a imagem continua no catalogo e na galeria. {"oculta": false} mostra de novo;
 # escolher uma canonica tambem desfaz a ocultacao.

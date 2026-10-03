@@ -245,6 +245,21 @@ def definir_referencias(
     return _detalhe(sessao, frame)
 
 
+def _imagem_pode_ser_canonica(frame: Frame, imagem: Imagem) -> bool:
+    """A imagem é de um prompt **deste** frame ou, num **retrato**, de outro retrato **do mesmo elemento** (VM3: usar uma imagem que
+    já existe, de outro capítulo, sem gerar nada)."""
+    outro = imagem.prompt.frame
+    if outro is None:
+        return False
+    if outro.id == frame.id:
+        return True
+    if frame.tipo != TipoDeFrame.PERSONAGEM or outro.tipo != TipoDeFrame.PERSONAGEM:
+        return False
+    if len(frame.estados_elemento) != 1 or len(outro.estados_elemento) != 1:
+        return False
+    return frame.estados_elemento[0].elemento_id == outro.estados_elemento[0].elemento_id
+
+
 @rotas.put(
     "/{frame_id}/imagem-canonica",
     response_model=ImagemCanonicaDoFrame,
@@ -263,7 +278,7 @@ def definir_imagem_canonica(
     anterior = frame.imagem_canonica_id
     if corpo.imagem_id is not None:
         imagem = sessao.get(Imagem, corpo.imagem_id)
-        if imagem is None or imagem.apagada_em is not None or imagem.prompt.frame_id != frame.id:
+        if imagem is None or imagem.apagada_em is not None or not _imagem_pode_ser_canonica(frame, imagem):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Essa imagem não é de um prompt deste frame.",

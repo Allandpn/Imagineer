@@ -226,6 +226,32 @@ class ImagemCandidata(ImagemResumo):
     ancora: bool = Field(default=False, description="É a âncora do estado (ou a padrão do elemento): a referência principal.")
 
 
+class ElementoDoCapitulo(BaseModel):
+    """Um elemento numa lista **por capítulo** (VM2): as imagens do retrato dele **naquele** capítulo."""
+
+    elemento_id: int
+    nome: str
+    tipo: str = Field(description="O tipo do elemento (`PERSONAGEM`, `AMBIENTE`...).")
+    imagens: list[ImagemCandidata] = Field(
+        description="As imagens ativas dos retratos dele **neste capítulo**, mais recentes primeiro; vazia se ele só tem estado aqui."
+    )
+
+
+class CapituloComElementos(BaseModel):
+    """Um capítulo e os elementos que aparecem nele (com estado ou retrato), para o seletor navegável (VM2)."""
+
+    capitulo_id: int
+    ordem: int
+    titulo: str | None
+    elementos: list[ElementoDoCapitulo]
+
+
+class ElementosPorCapitulo(BaseModel):
+    """O livro inteiro por capítulo: o que o seletor único de vínculo mostra (VM1, VM2)."""
+
+    capitulos: list[CapituloComElementos]
+
+
 class ElementoComImagens(BaseModel):
     """Um elemento do frame e as imagens dele que podem ir como referência."""
 

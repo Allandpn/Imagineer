@@ -22,13 +22,23 @@ from imagineer.esquemas.livro import (
     RespostaImportacao,
     TextoDeCapitulo,
 )
-from imagineer.esquemas.prompt import MidiaDeImagem, MidiasDoLivro
+from imagineer.esquemas.prompt import (
+    CapituloComElementos,
+    ElementoDoCapitulo,
+    ElementosPorCapitulo,
+    ImagemCandidata,
+    ImagemResumo,
+    MidiaDeImagem,
+    MidiasDoLivro,
+)
 from imagineer.ia.provedor import (
     ModeloNaoEscolhido,
     ProvedorIA,
 )
+from imagineer.modelos.frame import TipoDeFrame
 from imagineer.modelos import (
     Capitulo,
+    EstadoElemento,
     Frame,
     Imagem,
     Livro,
@@ -187,6 +197,61 @@ def baixar_textos(livro_id: int, sessao: Session = Depends(obter_sessao)) -> lis
         .order_by(Capitulo.ordem)
     ).all()
     return [TextoDeCapitulo(capitulo_id=i, ordem=o, texto=t) for i, o, t in linhas]
+
+
+@rotas.get(
+    "/{livro_id}/elementos-por-capitulo",
+    response_model=ElementosPorCapitulo,
+    summary="Os elementos do livro por capítulo, com as imagens dos retratos (o seletor único de vínculo)",
+)
+def elementos_por_capitulo(livro_id: int, sessao: Session = Depends(obter_sessao)) -> ElementosPorCapitulo:
+    """VM1, VM2: o que o modal de vincular mostra, rolando **capítulo a capítulo**. Nunca chama a IA.
+
+    Em cada capítulo (na ordem do livro) entram os elementos que **têm estado ali** (mesmo sem imagem) e os que **têm retrato ali**
+    (``PERSONAGEM``, só ele), cada um com as imagens ativas dos retratos **daquele capítulo**, mais recentes primeiro. Capítulo sem
+    nenhum elemento não aparece.
+    """
+    livro = _buscar_livro(sessao, livro_id)
+    capitulos = sessao.scalars(select(Capitulo).where(Capitulo.livro_id == livro.id).order_by(Capitulo.ordem, Capitulo.id)).all()
+    saida: list[CapituloComElementos] = []
+    for capitulo in capitulos:
+        elementos: dict[int, ElementoDoCapitulo] = {}
+
+        def entrada(elemento) -> ElementoDoCapitulo:
+            if elemento.id not in elementos:
+                elementos[elemento.id] = ElementoDoCapitulo(elemento_id=elemento.id, nome=elemento.nome, tipo=elemento.tipo.name, imagens=[])
+            return elementos[elemento.id]
+
+        for estado in sessao.scalars(select(EstadoElemento).where(EstadoElemento.capitulo_id == capitulo.id).order_by(EstadoElemento.id)):
+            entrada(estado.elemento)
+        frames = sessao.scalars(select(Frame).where(Frame.capitulo_id == capitulo.id, Frame.tipo == TipoDeFrame.PERSONAGEM)).all()
+        for frame in frames:
+            if len(frame.estados_elemento) != 1:
+                continue
+            estado = frame.estados_elemento[0]
+            ancora = estado.imagem_ancora or estado.elemento.imagem_ancora_padrao
+            imagens = entrada(estado.elemento).imagens
+            for prompt in frame.prompts:
+                for imagem in prompt.imagens_ativas:
+                    imagens.append(
+                        ImagemCandidata(
+                            **ImagemResumo.model_validate(imagem).model_dump(exclude={"orientacao"}),
+                            ancora=ancora is not None and imagem.id == ancora.id,
+                        )
+                    )
+        if not elementos:
+            continue
+        for item in elementos.values():
+            item.imagens.sort(key=lambda i: i.id, reverse=True)
+        saida.append(
+            CapituloComElementos(
+                capitulo_id=capitulo.id,
+                ordem=capitulo.ordem,
+                titulo=capitulo.titulo,
+                elementos=sorted(elementos.values(), key=lambda e: (e.tipo, e.nome)),
+            )
+        )
+    return ElementosPorCapitulo(capitulos=saida)
 
 
 @rotas.get(

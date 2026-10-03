@@ -3,7 +3,7 @@
 Junta, num só lugar, o que o leitor precisa para desenhar o capítulo: as sugestões de elemento e de cena e os frames, cada um com a posição, a situação e a imagem mais recente. Só lê; nunca chama a IA."""
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from imagineer.esquemas.elemento import Artefato, SituacaoDoArtefato, TipoDeArtefato
 from imagineer.modelos import Capitulo, Frame, Imagem, SugestaoDeCena, SugestaoDeElemento, TipoDeFrame
@@ -38,6 +38,10 @@ def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[Situac
     # OC1: com a imagem oculta, o capítulo não a mostra (o artefato cai para "prompt pronto", se há prompt).
     imagens = [] if frame is None or frame.imagem_oculta else [imagem for prompt in frame.prompts for imagem in prompt.imagens_ativas]
     canonica = next((i for i in imagens if frame is not None and i.id == frame.imagem_canonica_id), None)
+    if canonica is None and frame is not None and not frame.imagem_oculta and frame.imagem_canonica_id is not None:
+        # VM3: a canônica de um retrato pode ser a imagem de outro retrato do mesmo elemento (de outro capítulo).
+        de_fora = object_session(frame).get(Imagem, frame.imagem_canonica_id)
+        canonica = de_fora if de_fora is not None and de_fora.apagada_em is None else None
     ultima = canonica or max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
     if ultima is not None:
         return SituacaoDoArtefato.ILUSTRADO, ultima
