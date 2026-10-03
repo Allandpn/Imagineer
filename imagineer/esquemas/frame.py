@@ -274,6 +274,21 @@ class ImagemCanonicaNova(BaseModel):
     imagem_id: int | None = Field(description="Uma imagem de um prompt **deste frame**; nulo tira a escolha.")
 
 
+class PosicaoManualNova(BaseModel):
+    """O que o app manda para posicionar um artefato à mão (PM1, PM4)."""
+
+    posicao_no_texto: int | None = Field(
+        ge=0, description="Início do parágrafo escolhido, em UTF-16 (como o `Capitulo.texto`); nulo tira a posição manual."
+    )
+
+
+class PosicaoManualDoArtefato(BaseModel):
+    """A posição manual vigente depois do `PUT` (PM4)."""
+
+    sugestao_id: int
+    posicao_manual: int | None
+
+
 class ImagemOcultaNova(BaseModel):
     """O que o app manda para ocultar ou mostrar a imagem do frame no capítulo (OC1, OC3)."""
 

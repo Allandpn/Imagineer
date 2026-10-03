@@ -205,6 +205,16 @@ GET {{baseUrl}}/lixeira/imagens
 ### Esvazia a lixeira (apaga de vez tudo o que esta nela; nada disso roda sozinho). Devolve {"removidas", "liberados_em_bytes"}.
 # DELETE {{baseUrl}}/lixeira/imagens
 
+### POSICIONAR a mao o artefato de um elemento (ou de uma cena) num paragrafo (item 7.5b, PM1 a PM4)
+# "posicao_no_texto" = inicio do paragrafo em UTF-16 (como o Capitulo.texto); null tira a posicao manual. Vale mais que a posicao
+# achada pelo nome e sobrevive a uma reanalise. Para cena: PUT {{baseUrl}}/sugestoes-cena/{{sugestaoCenaId}}/posicao.
+PUT {{baseUrl}}/sugestoes-elemento/{{sugestaoElementoId}}/posicao
+Content-Type: application/json
+
+{
+  "posicao_no_texto": 1250
+}
+
 ### Os elementos do livro POR CAPITULO, com as imagens dos retratos (item 7.5b, VM1 a VM3)
 # O que o seletor unico de vinculo mostra: cada capitulo, na ordem, com os elementos que tem estado ou retrato ali e as imagens
 # daquele capitulo. Nunca chama a IA. (Usar uma dessas imagens num retrato de outro capitulo: PUT /frames/{id}/imagem-canonica.)

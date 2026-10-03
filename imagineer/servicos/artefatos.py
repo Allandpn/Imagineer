@@ -118,10 +118,13 @@ def artefatos_do_capitulo(sessao: Session, capitulo: Capitulo) -> list[Artefato]
                 sugestao_id=sugestao.id,
                 frame_id=frame.id if frame is not None else None,
                 rotulo=elemento.nome if elemento is not None else sugestao.nome,
-                # O frame manda: se a pessoa pôs o retrato num lugar, é ali (item 3.4g).
+                # O frame manda: se a pessoa pôs o retrato num lugar, é ali (item 3.4g); depois, a posição posta à mão
+                # (PM1); só então a achada pelo nome.
                 posicao_no_texto=(
                     frame.posicao_no_texto
                     if frame is not None and frame.posicao_no_texto is not None
+                    else sugestao.posicao_manual
+                    if sugestao.posicao_manual is not None
                     else posicao_da_primeira_mencao(capitulo.texto, sugestao.nome)
                 ),
                 situacao=situacao,
@@ -149,6 +152,8 @@ def artefatos_do_capitulo(sessao: Session, capitulo: Capitulo) -> list[Artefato]
                 posicao_no_texto=(
                     cena.frame.posicao_no_texto
                     if cena.frame is not None and cena.frame.posicao_no_texto is not None
+                    else cena.posicao_manual
+                    if cena.posicao_manual is not None
                     else cena.posicao_no_texto
                 ),
                 situacao=situacao,

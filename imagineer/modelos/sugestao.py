@@ -116,6 +116,11 @@ class SugestaoDeElemento(Base):
     contar como pendente, não é casada automaticamente e **sobrevive a uma
     reanálise**. Só se descarta uma sugestão ainda não ligada a um elemento."""
 
+    posicao_manual: Mapped[int | None] = mapped_column()
+    """Onde o usuário **pôs à mão** este artefato (início do parágrafo, UTF-16; item 7.5b, PM1 a PM4). Manda sobre a posição achada
+    pelo nome; o frame, se tem posição, manda sobre esta. **Sobrevive a uma reanálise** (volta para a sugestão que repetir o mesmo
+    tipo e nome, ou o mesmo título de cena). Nulo = sem escolha."""
+
     capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
     elemento: Mapped["Elemento | None"] = relationship()  # noqa: F821
 
@@ -156,6 +161,11 @@ class SugestaoDeCena(Base):
     posicao_no_texto: Mapped[int | None] = mapped_column()
     """Início do parágrafo do momento, em UTF-16, achado pelo servidor a partir de
     ``trecho_ancora``. Nulo = não achado (ou cena analisada antes desta coluna existir)."""
+
+    posicao_manual: Mapped[int | None] = mapped_column()
+    """Onde o usuário **pôs à mão** este artefato (início do parágrafo, UTF-16; item 7.5b, PM1 a PM4). Manda sobre a posição achada
+    pelo nome; o frame, se tem posição, manda sobre esta. **Sobrevive a uma reanálise** (volta para a sugestão que repetir o mesmo
+    tipo e nome, ou o mesmo título de cena). Nulo = sem escolha."""
 
     frame_id: Mapped[int | None] = mapped_column(
         ForeignKey("frames.id", ondelete="SET NULL"),

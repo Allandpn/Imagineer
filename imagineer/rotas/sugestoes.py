@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
+from imagineer.esquemas.frame import PosicaoManualDoArtefato, PosicaoManualNova
 from imagineer.esquemas.elemento import (
     ArtefatosDoCapitulo,
     CenaSugerida as CenaSugeridaResposta,
@@ -33,7 +34,7 @@ from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.artefatos import artefatos_do_capitulo
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
-from imagineer.servicos.posicao_no_texto import posicao_da_primeira_mencao
+from imagineer.servicos.posicao_no_texto import posicao_da_primeira_mencao, tamanho_em_utf16
 from imagineer.servicos.sugestoes import (
     casar_sugestoes_pendentes,
     estado_id_no_capitulo,
@@ -174,6 +175,56 @@ def ajustar_sugestao_de_elemento(
     capitulo = sugestao.capitulo
     vigentes = estado_vigente_por_elemento(sessao, capitulo.livro_id, capitulo.ordem)
     return _resposta_de_elemento(sessao, sugestao, capitulo, vigentes)
+
+
+def _exigir_posicao_manual_valida(capitulo, posicao: int | None) -> None:
+    """422 se a posição passa do fim do texto do capítulo, contado em UTF-16 (PM4)."""
+    if posicao is None:
+        return
+    tamanho = tamanho_em_utf16(capitulo.texto)
+    if posicao > tamanho:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"A posição {posicao} passa do fim do capítulo, que tem {tamanho} unidades UTF-16.",
+        )
+
+
+@rotas_de_sugestao_elemento.put(
+    "/{sugestao_elemento_id}/posicao",
+    response_model=PosicaoManualDoArtefato,
+    summary="Põe o artefato do elemento num parágrafo, à mão (ou tira a posição manual)",
+)
+def posicionar_elemento(
+    sugestao_elemento_id: int, corpo: PosicaoManualNova, sessao: Session = Depends(obter_sessao)
+) -> PosicaoManualDoArtefato:
+    """PM1 a PM4: o usuário escolheu o parágrafo do artefato. Vale mais que a posição achada pelo nome e **sobrevive a uma
+    reanálise**. `null` tira a escolha. Nunca chama a IA."""
+    sugestao = _buscar_sugestao_de_elemento(sessao, sugestao_elemento_id)
+    _exigir_posicao_manual_valida(sugestao.capitulo, corpo.posicao_no_texto)
+    sugestao.posicao_manual = corpo.posicao_no_texto
+    sessao.commit()
+    return PosicaoManualDoArtefato(sugestao_id=sugestao.id, posicao_manual=sugestao.posicao_manual)
+
+
+@rotas_de_sugestao_cena.put(
+    "/{sugestao_cena_id}/posicao",
+    response_model=PosicaoManualDoArtefato,
+    summary="Põe o artefato da cena num parágrafo, à mão (ou tira a posição manual)",
+)
+def posicionar_cena(
+    sugestao_cena_id: int, corpo: PosicaoManualNova, sessao: Session = Depends(obter_sessao)
+) -> PosicaoManualDoArtefato:
+    """PM1 a PM4, para cenas. Mesmas regras de `PUT /sugestoes-elemento/{id}/posicao`."""
+    cena = sessao.get(SugestaoDeCena, sugestao_cena_id)
+    if cena is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Não existe sugestão de cena com id {sugestao_cena_id}.",
+        )
+    _exigir_posicao_manual_valida(cena.capitulo, corpo.posicao_no_texto)
+    cena.posicao_manual = corpo.posicao_no_texto
+    sessao.commit()
+    return PosicaoManualDoArtefato(sugestao_id=cena.id, posicao_manual=cena.posicao_manual)
 
 
 @rotas_de_sugestao_cena.patch(

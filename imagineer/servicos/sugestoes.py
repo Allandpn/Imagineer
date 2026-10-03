@@ -80,6 +80,30 @@ def gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) -
         capitulo.texto, elementos_conhecidos, modelo_extracao, capitulo.orientacao_da_analise
     )
 
+    # PM2: a posição posta à mão sobrevive à reanálise; guarda-se antes de apagar e devolve-se a quem repetir o mesmo tipo e nome
+    # (ou o mesmo título de cena).
+    posicoes_manuais_de_elementos = {
+        chave_normalizada(s.tipo, s.nome): s.posicao_manual
+        for s in sessao.scalars(
+            select(SugestaoDeElemento).where(
+                SugestaoDeElemento.capitulo_id == capitulo.id,
+                SugestaoDeElemento.elemento_id.is_(None),
+                SugestaoDeElemento.descartada.is_(False),
+                SugestaoDeElemento.posicao_manual.is_not(None),
+            )
+        )
+    }
+    posicoes_manuais_de_cenas = {
+        texto_normalizado(c.titulo): c.posicao_manual
+        for c in sessao.scalars(
+            select(SugestaoDeCena).where(
+                SugestaoDeCena.capitulo_id == capitulo.id,
+                SugestaoDeCena.frame_id.is_(None),
+                SugestaoDeCena.descartada.is_(False),
+                SugestaoDeCena.posicao_manual.is_not(None),
+            )
+        )
+    }
     sessao.execute(
         delete(SugestaoDeElemento).where(
             SugestaoDeElemento.capitulo_id == capitulo.id,
@@ -129,6 +153,7 @@ def gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) -
             descricao=item.descricao,
             manter_estado_atual=item.manter_estado_atual,
             modelo=extracao.modelo,
+            posicao_manual=posicoes_manuais_de_elementos.get(chave_normalizada(item.tipo, item.nome)),
         )
         sessao.add(linha)
         elementos_desta_rodada[chave_normalizada(item.tipo, item.nome)] = linha
@@ -147,6 +172,7 @@ def gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) -
             trecho_ancora=cena.trecho_ancora[:300] if cena.trecho_ancora else None,
             # A posição vem da citação, calculada aqui — a IA nunca devolve número (item 3.4g).
             posicao_no_texto=posicao_da_citacao(capitulo.texto, cena.trecho_ancora),
+            posicao_manual=posicoes_manuais_de_cenas.get(texto_normalizado(cena.titulo)),
         )
         for participante in cena.participantes:
             correspondente = elementos_desta_rodada.get(
