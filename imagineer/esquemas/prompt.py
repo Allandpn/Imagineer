@@ -32,6 +32,7 @@ class ImagemResumo(BaseModel):
         description="A imagem foi gerada com o filtro de segurança do modelo desligado, a pedido do usuário (F16).",
     )
     canonica: bool = Field(default=False, description="É a imagem canônica do frame dela (CAN5).")
+    oculta_no_capitulo: bool = Field(default=False, description="O frame desta imagem está com a imagem oculta no capítulo (OC1).")
     imagens_de_referencia: list[int] = Field(
         default_factory=list,
         description="Os ids das imagens enviadas como referência quando **esta** imagem foi gerada (RS2); vazia = nenhuma.",

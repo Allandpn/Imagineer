@@ -118,6 +118,10 @@ class Frame(Base):
     """A imagem **canônica** do frame: a escolhida entre as variações para representá-lo e a que o capítulo mostra
     (item 7.5b, CAN1 a CAN4). Nulo = sem escolha: vale a mais recente."""
 
+    imagem_oculta: Mapped[bool] = mapped_column(default=False, server_default="0")
+    """O capítulo **não mostra** a imagem deste frame (item 7.5b, OC1 a OC3): o artefato volta a ser só o ícone. A imagem continua
+    no catálogo e na galeria; vale só no capítulo. Escolher outra canônica desfaz."""
+
     imagens_de_referencia: Mapped[list[int]] = mapped_column(JSON, default=list, server_default="[]")
     """Os ids das imagens que o usuário **escolheu** como referência para a próxima geração (item 7.5b, RS1). Fica no servidor
     para valer em qualquer aparelho e depois de fechar o app; quem mostra filtra as que foram para a lixeira."""

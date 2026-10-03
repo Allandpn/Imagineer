@@ -45,6 +45,7 @@ class FrameResumo(BaseModel):
         default=None,
         description="A imagem canônica do frame (CAN1): a que o capítulo mostra; nulo = sem escolha (vale a mais recente).",
     )
+    imagem_oculta: bool = Field(default=False, description="O capítulo não mostra a imagem deste frame (OC1); ela continua no catálogo.")
 
 
 class FrameDetalhe(FrameResumo):
@@ -273,11 +274,18 @@ class ImagemCanonicaNova(BaseModel):
     imagem_id: int | None = Field(description="Uma imagem de um prompt **deste frame**; nulo tira a escolha.")
 
 
+class ImagemOcultaNova(BaseModel):
+    """O que o app manda para ocultar ou mostrar a imagem do frame no capítulo (OC1, OC3)."""
+
+    oculta: bool = Field(description="Verdadeiro: o capítulo deixa de mostrar a imagem (ela não é apagada). Falso: volta a mostrar.")
+
+
 class ImagemCanonicaDoFrame(BaseModel):
     """A escolha vigente depois do `PUT` (CAN3)."""
 
     frame_id: int
     imagem_canonica_id: int | None
+    imagem_oculta: bool = False
 
 
 class ReferenciasDoFrame(BaseModel):

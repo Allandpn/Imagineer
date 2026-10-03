@@ -26,7 +26,7 @@ def teste_can3_escolher_grava_e_o_frame_informa(cliente: TestClient, usar_proved
     resposta = _escolher(cliente, retrato["id"], primeira["id"])
 
     assert resposta.status_code == 200, resposta.text
-    assert resposta.json() == {"frame_id": retrato["id"], "imagem_canonica_id": primeira["id"]}
+    assert resposta.json() == {"frame_id": retrato["id"], "imagem_canonica_id": primeira["id"], "imagem_oculta": False}
     assert cliente.get(f"/frames/{retrato['id']}").json()["imagem_canonica_id"] == primeira["id"]
 
 
@@ -134,3 +134,43 @@ def teste_can5_a_imagem_do_prompt_diz_se_e_a_canonica(cliente: TestClient, usar_
 
     imagens = cliente.get(f"/prompts/{primeira['prompt_id']}").json()["imagens"]
     assert {i["id"]: i["canonica"] for i in imagens} == {primeira["id"]: True, segunda["id"]: False}
+
+
+def _ocultar(cliente: TestClient, frame_id: int, oculta: bool):
+    return cliente.put(f"/frames/{frame_id}/imagem-oculta", json={"oculta": oculta})
+
+
+def teste_oc1_ocultar_tira_a_imagem_do_capitulo_sem_apagar_nada(cliente: TestClient, usar_provedor_falso) -> None:
+    capitulo, _, retrato, primeira, segunda = _retrato_com_duas_imagens(cliente, usar_provedor_falso)
+    _escolher(cliente, retrato["id"], primeira["id"])
+
+    resposta = _ocultar(cliente, retrato["id"], True)
+
+    assert resposta.status_code == 200, resposta.text
+    assert resposta.json()["imagem_oculta"] is True
+    artefato = _artefato_do_frame(cliente, capitulo["id"], retrato["id"])
+    assert artefato["imagem_id"] is None  # o capítulo volta a mostrar só o ícone
+    assert artefato["situacao"] == "PROMPT_PRONTO"
+    assert cliente.get(f"/frames/{retrato['id']}").json()["imagem_oculta"] is True
+    # Nada foi apagado: as duas imagens e a canônica continuam no catálogo.
+    prompt = cliente.get(f"/prompts/{primeira['prompt_id']}").json()
+    assert {i["id"] for i in prompt["imagens"]} == {primeira["id"], segunda["id"]}
+    assert cliente.get(f"/frames/{retrato['id']}").json()["imagem_canonica_id"] == primeira["id"]
+
+
+def teste_oc3_mostrar_de_novo_e_escolher_outra_canonica_desfaz_a_ocultacao(cliente: TestClient, usar_provedor_falso) -> None:
+    capitulo, _, retrato, primeira, segunda = _retrato_com_duas_imagens(cliente, usar_provedor_falso)
+    _escolher(cliente, retrato["id"], primeira["id"])
+
+    _ocultar(cliente, retrato["id"], True)
+    _ocultar(cliente, retrato["id"], False)
+    assert _artefato_do_frame(cliente, capitulo["id"], retrato["id"])["imagem_id"] == primeira["id"]
+
+    _ocultar(cliente, retrato["id"], True)
+    _escolher(cliente, retrato["id"], segunda["id"])
+    assert cliente.get(f"/frames/{retrato['id']}").json()["imagem_oculta"] is False
+    assert _artefato_do_frame(cliente, capitulo["id"], retrato["id"])["imagem_id"] == segunda["id"]
+
+
+def teste_oc1_frame_inexistente_da_404(cliente: TestClient) -> None:
+    assert _ocultar(cliente, 99999, True).status_code == 404

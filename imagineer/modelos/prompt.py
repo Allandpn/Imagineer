@@ -231,5 +231,11 @@ class Imagem(Base):
         frame = self.prompt.frame if self.prompt is not None else None
         return frame is not None and frame.imagem_canonica_id == self.id
 
+    @property
+    def oculta_no_capitulo(self) -> bool:
+        """O frame desta imagem está com a imagem oculta no capítulo (item 7.5b, OC1)."""
+        frame = self.prompt.frame if self.prompt is not None else None
+        return frame is not None and frame.imagem_oculta
+
     def __repr__(self) -> str:
         return f"<Imagem id={self.id} caminho={self.caminho_arquivo!r}>"

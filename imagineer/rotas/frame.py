@@ -22,6 +22,7 @@ from imagineer.esquemas.frame import (
     FrameResumo,
     ImagemCanonicaDoFrame,
     ImagemCanonicaNova,
+    ImagemOcultaNova,
     ReferenciasDoFrame,
     VinculosDoFrame,
 )
@@ -268,6 +269,8 @@ def definir_imagem_canonica(
                 detail="Essa imagem não é de um prompt deste frame.",
             )
     frame.imagem_canonica_id = corpo.imagem_id
+    if corpo.imagem_id is not None:
+        frame.imagem_oculta = False  # OC3: escolher uma canônica é querer vê-la no capítulo
 
     if frame.tipo == TipoDeFrame.PERSONAGEM and len(frame.estados_elemento) == 1:
         estado = frame.estados_elemento[0]
@@ -279,7 +282,21 @@ def definir_imagem_canonica(
             estado.imagem_ancora_id = None  # só solta a âncora se era a mesma imagem (CAN3)
 
     sessao.commit()
-    return ImagemCanonicaDoFrame(frame_id=frame.id, imagem_canonica_id=frame.imagem_canonica_id)
+    return ImagemCanonicaDoFrame(frame_id=frame.id, imagem_canonica_id=frame.imagem_canonica_id, imagem_oculta=frame.imagem_oculta)
+
+
+@rotas.put(
+    "/{frame_id}/imagem-oculta",
+    response_model=ImagemCanonicaDoFrame,
+    summary="Oculta (ou volta a mostrar) a imagem do frame no capítulo, sem apagar nada",
+)
+def definir_imagem_oculta(frame_id: int, corpo: ImagemOcultaNova, sessao: Session = Depends(obter_sessao)) -> ImagemCanonicaDoFrame:
+    """OC1 a OC3: o capítulo deixa de mostrar a imagem do frame (o artefato volta a ser só o ícone). Nenhuma imagem é apagada
+    nem sai da galeria ou do perfil do elemento; vale só no capítulo."""
+    frame = _buscar_frame(sessao, frame_id)
+    frame.imagem_oculta = corpo.oculta
+    sessao.commit()
+    return ImagemCanonicaDoFrame(frame_id=frame.id, imagem_canonica_id=frame.imagem_canonica_id, imagem_oculta=frame.imagem_oculta)
 
 
 @rotas.delete(
@@ -558,6 +575,7 @@ def _resumo(frame: Frame, total: int) -> FrameResumo:
         posicao_no_texto=frame.posicao_no_texto,
         total_de_elementos=total,
         imagem_canonica_id=frame.imagem_canonica_id,
+        imagem_oculta=frame.imagem_oculta,
     )
 
 
