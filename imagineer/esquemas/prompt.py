@@ -32,6 +32,10 @@ class ImagemResumo(BaseModel):
         description="A imagem foi gerada com o filtro de segurança do modelo desligado, a pedido do usuário (F16).",
     )
     canonica: bool = Field(default=False, description="É a imagem canônica do frame dela (CAN5).")
+    imagens_de_referencia: list[int] = Field(
+        default_factory=list,
+        description="Os ids das imagens enviadas como referência quando **esta** imagem foi gerada (RS2); vazia = nenhuma.",
+    )
     origem: OrigemDaImagem = Field(
         default=OrigemDaImagem.IMPORTADA,
         description="`IMPORTADA` (o usuário a trouxe de fora) ou `GERADA` (o servidor a gerou): item 7.5b, T3.",

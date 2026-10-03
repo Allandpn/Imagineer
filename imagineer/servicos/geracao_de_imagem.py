@@ -263,7 +263,7 @@ def _tentar(
         sessao.commit()
         return None
 
-    imagem = _gravar_imagem(sessao, prompt, gerada, modelo, sem_filtro)
+    imagem = _gravar_imagem(sessao, prompt, gerada, modelo, sem_filtro, ids_das_referencias)
     prompt.modelo_imagem = modelo
     prompt.sem_filtro_de_seguranca = sem_filtro
     prompt.imagens_de_referencia = ids_das_referencias
@@ -274,7 +274,9 @@ def _tentar(
     return imagem
 
 
-def _gravar_imagem(sessao: Session, prompt: Prompt, gerada: ImagemGerada, modelo: str, sem_filtro: bool = False) -> Imagem:
+def _gravar_imagem(
+    sessao: Session, prompt: Prompt, gerada: ImagemGerada, modelo: str, sem_filtro: bool = False, referencias: list[int] | None = None
+) -> Imagem:
     """Grava a imagem gerada pelo mesmo caminho da importação (disco, linha no catálogo, dimensões)."""
     extensao = EXTENSOES_POR_TIPO.get(gerada.tipo_de_midia.lower(), ".png")
     caminho = salvar_imagem(prompt.id, f"gerada{extensao}", gerada.conteudo)
@@ -288,6 +290,7 @@ def _gravar_imagem(sessao: Session, prompt: Prompt, gerada: ImagemGerada, modelo
         origem=OrigemDaImagem.GERADA,
         modelo=modelo,
         sem_filtro_de_seguranca=sem_filtro,
+        imagens_de_referencia=list(referencias or []),
     )
     sessao.add(imagem)
     return imagem

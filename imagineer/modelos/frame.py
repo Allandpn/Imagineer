@@ -10,7 +10,7 @@ engano — ver a divergência registrada na Etapa 5.
 
 import enum
 
-from sqlalchemy import Boolean, Column, Enum, ForeignKey, String, Table, Text, false
+from sqlalchemy import JSON, Boolean, Column, Enum, ForeignKey, String, Table, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -117,6 +117,10 @@ class Frame(Base):
     )
     """A imagem **canônica** do frame: a escolhida entre as variações para representá-lo e a que o capítulo mostra
     (item 7.5b, CAN1 a CAN4). Nulo = sem escolha: vale a mais recente."""
+
+    imagens_de_referencia: Mapped[list[int]] = mapped_column(JSON, default=list, server_default="[]")
+    """Os ids das imagens que o usuário **escolheu** como referência para a próxima geração (item 7.5b, RS1). Fica no servidor
+    para valer em qualquer aparelho e depois de fechar o app; quem mostra filtra as que foram para a lixeira."""
 
     contexto_do_livro: Mapped[str | None] = mapped_column(Text)
     """O que a leitura profunda do frame (item 4.4) confirmou no capítulo sobre

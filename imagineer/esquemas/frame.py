@@ -55,6 +55,10 @@ class FrameDetalhe(FrameResumo):
         default_factory=list,
         description="Os elementos vinculados ao sujeito do retrato (V4); vazia na cena e no retrato solo.",
     )
+    imagens_de_referencia: list[int] = Field(
+        default_factory=list,
+        description="As imagens que o usuário escolheu como referência para a próxima geração (RS1); só as que não estão na lixeira.",
+    )
     contexto_do_livro: str | None = Field(
         default=None,
         description=(
@@ -274,3 +278,9 @@ class ImagemCanonicaDoFrame(BaseModel):
 
     frame_id: int
     imagem_canonica_id: int | None
+
+
+class ReferenciasDoFrame(BaseModel):
+    """O que o app manda para guardar as imagens de referência escolhidas para um frame (RS1, RS3)."""
+
+    imagens_ids: list[int] = Field(max_length=4, description="Até 4 imagens do catálogo, sem repetir e fora da lixeira; vazia limpa a escolha.")

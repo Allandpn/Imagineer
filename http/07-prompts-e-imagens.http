@@ -205,6 +205,16 @@ GET {{baseUrl}}/lixeira/imagens
 ### Esvazia a lixeira (apaga de vez tudo o que esta nela; nada disso roda sozinho). Devolve {"removidas", "liberados_em_bytes"}.
 # DELETE {{baseUrl}}/lixeira/imagens
 
+### As imagens de REFERENCIA escolhidas para um frame (item 7.5b, RS1 a RS3)
+# Guarda no servidor o que foi marcado no seletor, para valer em qualquer aparelho e depois de fechar o app. Ate 4 ids, sem repetir,
+# de imagens fora da lixeira; lista vazia limpa a escolha. GET /frames/{id} devolve "imagens_de_referencia".
+PUT {{baseUrl}}/frames/{{frameId}}/referencias
+Content-Type: application/json
+
+{
+  "imagens_ids": [31, 11]
+}
+
 ### A imagem CANONICA de um frame (item 7.5b, CAN1 a CAN9)
 # Marca uma das variacoes (de um prompt DESTE frame) como a que representa o frame e que o capitulo mostra. No retrato de um
 # elemento ela tambem vira a ancora do estado e, se o elemento ainda nao tem ancora padrao, a padrao. "imagem_id": null tira a

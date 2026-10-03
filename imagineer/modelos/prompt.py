@@ -215,6 +215,10 @@ class Imagem(Base):
         server_default=func.now(),
     )
 
+    imagens_de_referencia: Mapped[list[int]] = mapped_column(JSON, default=list, server_default="[]")
+    """Os ids das imagens enviadas como **referência** quando **esta** imagem foi gerada (item 7.5b, RS2): o histórico por imagem
+    (o do prompt, W7, guarda só a última tentativa). Lista vazia = nenhuma, ou imagem importada."""
+
     apagada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     """Quando foi movida para a **lixeira** (item 7.5b, LX3); nulo = ativa. O arquivo continua no disco até o usuário apagar
     de vez."""

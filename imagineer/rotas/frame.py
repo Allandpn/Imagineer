@@ -22,6 +22,7 @@ from imagineer.esquemas.frame import (
     FrameResumo,
     ImagemCanonicaDoFrame,
     ImagemCanonicaNova,
+    ReferenciasDoFrame,
     VinculosDoFrame,
 )
 from imagineer.modelos import (
@@ -209,6 +210,35 @@ def definir_vinculos(
     _exigir_vinculos_validos(frame.tipo, list(frame.estados_elemento), vinculados)
 
     frame.estados_vinculados = vinculados
+    sessao.commit()
+    sessao.refresh(frame)
+    return _detalhe(sessao, frame)
+
+
+@rotas.put(
+    "/{frame_id}/referencias",
+    response_model=FrameDetalhe,
+    summary="Guarda as imagens de referência escolhidas para a próxima geração",
+)
+def definir_referencias(
+    frame_id: int, corpo: ReferenciasDoFrame, sessao: Session = Depends(obter_sessao)
+) -> FrameDetalhe:
+    """Substitui as imagens de referência **escolhidas** do frame (RS1, RS3); lista vazia limpa a escolha.
+
+    Só **guarda**: quem manda a geração continua sendo o app, que lê isto ao abrir o frame. Cada id tem de ser de uma imagem
+    do catálogo que **não** esteja na lixeira, sem repetir, e são no máximo 4 (o limite do envio, W3).
+    """
+    frame = _buscar_frame(sessao, frame_id)
+    ids = list(dict.fromkeys(corpo.imagens_ids))
+    if len(ids) != len(corpo.imagens_ids):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Há imagens repetidas entre as referências.")
+    for imagem_id in ids:
+        imagem = sessao.get(Imagem, imagem_id)
+        if imagem is None or imagem.apagada_em is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"Não existe imagem com id {imagem_id} para usar como referência."
+            )
+    frame.imagens_de_referencia = ids
     sessao.commit()
     sessao.refresh(frame)
     return _detalhe(sessao, frame)
@@ -575,10 +605,17 @@ def _detalhe(sessao: Session, frame: Frame) -> FrameDetalhe:
         for estado in sorted(frame.estados_vinculados, key=lambda e: (e.elemento.tipo.name, e.elemento.nome))
     ]
 
+    # RS1: só as referências que continuam ativas (uma imagem que foi para a lixeira ou foi apagada de vez sai da escolha).
+    guardadas = list(frame.imagens_de_referencia or [])
+    ativas = set(
+        sessao.scalars(select(Imagem.id).where(Imagem.id.in_(guardadas), Imagem.apagada_em.is_(None)))
+    ) if guardadas else set()
+
     return FrameDetalhe(
         **_resumo(frame, len(elementos)).model_dump(),
         elementos=elementos,
         vinculados=vinculados,
+        imagens_de_referencia=[i for i in guardadas if i in ativas],
         contexto_do_livro=frame.contexto_do_livro,
     )
 
