@@ -402,6 +402,13 @@ nada ao modelo de imagem: no prompt, troque-os pelo que se vê ("a small glowing
 on a plate", não "Foxen"; "a small stone room", não "the Manto"). Só a pessoa do retrato pode \
 aparecer pelo nome. Não conte saídas, portas ou coisas fora do quadro, e não repita o mesmo \
 elemento duas vezes.
+- **Numa cena, a ação vem da cena.** O que acontece (quem faz o quê, com quem ou com o quê) vem **só** da descrição da \
+cena (e do contexto do livro, no que ela não cobre). O "Neste instante:" de cada elemento descreve o estado dele no \
+capítulo, que pode ser **outro momento**: dele use só roupa, penteado e estado físico, **nunca a pose, o gesto, a \
+expressão ou a ação** quando a cena diz o que a pessoa ou o objeto está fazendo. A **ação principal da cena tem de \
+estar clara no prompt** (no bloco do sujeito, num instante congelado) e não pode ser trocada por uma pose parada de um \
+elemento: se a cena diz que Auri pinga gotas em Foxen, o prompt mostra isso, e não "Auri parada ao lado". Um elemento \
+acrescentado à cena contribui com a **aparência** dele, e não muda o que a cena conta.
 - **O lugar vem da cena; num retrato, do "Onde está:".** Numa cena, o cenário é o da \
 descrição da cena; o "Onde está:" dos elementos só preenche o que a cena não diz, e nunca \
 a contradiz. Num retrato, o "Onde está:" é o cenário: descreva o sujeito dentro dele, em \

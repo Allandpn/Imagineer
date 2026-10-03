@@ -267,3 +267,28 @@ def teste_v10_sem_vinculados_o_pedido_nao_menciona_o_bloco() -> None:
     provedor.montar_prompt("", ["Foxen: brilha"], "estilo: x", "modelo/x")
 
     assert "ELEMENTOS VINCULADOS AO SUJEITO (" not in capturado["messages"][1]["content"]
+
+
+def teste_a_instrucao_diz_que_numa_cena_a_acao_vem_da_cena_e_nao_do_neste_instante() -> None:
+    """03/10/2026: ao acrescentar um elemento à cena, o 'Neste instante:' dele trocava a ação da cena por uma pose parada."""
+    import json
+
+    import httpx
+
+    from imagineer.ia.openrouter import ENDERECO_BASE, ProvedorOpenRouter
+
+    capturado: dict = {}
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        capturado.update(json.loads(pedido.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "um prompt"}}]})
+
+    provedor = ProvedorOpenRouter(chave_api="k", cliente=httpx.Client(base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder)))
+
+    provedor.montar_prompt("Auri pinga gotas em Foxen", ["Auri: x", "Foxen: y"], "estilo: x", "modelo/x")
+
+    sistema = " ".join(capturado["messages"][0]["content"].replace("**", "").split())
+    assert "Numa cena, a ação vem da cena" in sistema
+    assert "nunca a pose, o gesto, a expressão ou a ação" in sistema
+    assert "A ação principal da cena tem de estar clara no prompt" in sistema
+    assert "contribui com a aparência dele, e não muda o que a cena conta" in sistema
