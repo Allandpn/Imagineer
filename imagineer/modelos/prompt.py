@@ -132,6 +132,13 @@ class Prompt(Base):
         back_populates="prompt",
         cascade="all, delete-orphan",
     )
+    """**Todas** as imagens do prompt, inclusive as da lixeira (LX3): serve a quem apaga de vez. Quem **mostra** usa
+    ``imagens_ativas``."""
+
+    @property
+    def imagens_ativas(self) -> list["Imagem"]:
+        """As imagens que não estão na lixeira (LX4)."""
+        return [imagem for imagem in self.imagens if imagem.apagada_em is None]
 
     def __repr__(self) -> str:
         return f"<Prompt id={self.id} frame_id={self.frame_id}>"
@@ -207,6 +214,10 @@ class Imagem(Base):
         DateTime(timezone=True),
         server_default=func.now(),
     )
+
+    apagada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    """Quando foi movida para a **lixeira** (item 7.5b, LX3); nulo = ativa. O arquivo continua no disco até o usuário apagar
+    de vez."""
 
     prompt: Mapped["Prompt"] = relationship(back_populates="imagens")
 

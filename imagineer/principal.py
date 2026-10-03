@@ -22,6 +22,7 @@ from imagineer.rotas import (
     frame,
     leitura,
     livros,
+    lixeira,
     perfis_renderizacao,
     prompts,
     saude,
@@ -67,3 +68,4 @@ aplicacao.include_router(configuracao.rotas)
 aplicacao.include_router(prompts.rotas_de_frame)
 aplicacao.include_router(prompts.rotas)
 aplicacao.include_router(prompts.rotas_de_imagem)
+aplicacao.include_router(lixeira.rotas)

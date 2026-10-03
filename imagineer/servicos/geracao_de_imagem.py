@@ -156,7 +156,7 @@ def _preparar_referencias(
     nomes: list[str | None] = []
     for imagem_id in ids:
         imagem = sessao.get(Imagem, imagem_id)
-        if imagem is None:
+        if imagem is None or imagem.apagada_em is not None:  # LX4: a da lixeira não serve de referência
             raise ReferenciasNaoPermitidas(f"Não existe imagem com id {imagem_id} para usar como referência.")
         original = caminho_absoluto(imagem.caminho_arquivo)
         if not original.is_file():

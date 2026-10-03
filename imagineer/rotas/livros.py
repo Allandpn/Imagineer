@@ -214,7 +214,7 @@ def listar_midias(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Mid
         .join(Prompt, Prompt.id == Imagem.prompt_id)
         .join(Frame, Frame.id == Prompt.frame_id)
         .join(Capitulo, Capitulo.id == Frame.capitulo_id)
-        .where(Capitulo.livro_id == livro_id)
+        .where(Capitulo.livro_id == livro_id, Imagem.apagada_em.is_(None))
         .order_by(Imagem.id)
     ).all()
 

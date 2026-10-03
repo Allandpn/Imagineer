@@ -721,19 +721,23 @@ def teste_importar_imagem_de_prompt_inexistente_responde_404(cliente: TestClient
     assert resposta.status_code == 404
 
 
-def teste_remover_imagem_apaga_o_arquivo_do_disco(
+def teste_remover_imagem_so_move_para_a_lixeira_e_apagar_de_vez_apaga_o_arquivo(
     cliente: TestClient, usar_provedor_falso, _diretorio_de_imagens
 ) -> None:
     _, frame = _montar_frame_completo(cliente, usar_provedor_falso)
     prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
     imagem = _importar_imagem(cliente, prompt["id"])
-
-    arquivos_antes = list(_diretorio_de_imagens.rglob("*.png"))
-    assert len(arquivos_antes) == 1
+    assert len(list(_diretorio_de_imagens.rglob("*.png"))) == 1
 
     resposta = cliente.delete(f"/imagens/{imagem['id']}")
 
+    # LX3, LX4: o arquivo fica (a lixeira mostra a miniatura) e a imagem some do prompt.
     assert resposta.status_code == 204
+    assert len(list(_diretorio_de_imagens.rglob("*.png"))) == 1
+    assert cliente.get(f"/imagens/{imagem['id']}/arquivo").status_code == 200
+    assert cliente.get(f"/prompts/{prompt['id']}").json()["imagens"] == []
+
+    assert cliente.delete(f"/lixeira/imagens/{imagem['id']}").status_code == 204
     assert list(_diretorio_de_imagens.rglob("*.png")) == []
     assert cliente.get(f"/imagens/{imagem['id']}/arquivo").status_code == 404
 

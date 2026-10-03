@@ -120,7 +120,7 @@ GET {{baseUrl}}/imagens/{{imagemId}}/arquivo
 # Veja os ids em GET /prompts/{{promptId}} (campo imagens[].id) acima.
 GET {{baseUrl}}/imagens/1/arquivo
 
-### Remove a imagem — apaga a linha do catálogo e o arquivo do disco
+### Move a imagem para a LIXEIRA (LX4) — o arquivo fica no disco; some dos prompts, do capitulo e da galeria
 # DELETE {{baseUrl}}/imagens/{{imagemId}}
 
 ### Remove o prompt — leva as imagens dele junto, banco e disco
@@ -191,6 +191,19 @@ Content-Type: application/json
 {
   "estados_ids": [12, 15]
 }
+
+### A LIXEIRA de imagens (item 7.5b, LX1 a LX10)
+# Lista, da apagada mais recentemente para a mais antiga, com livro, capitulo e frame, e o total em bytes.
+GET {{baseUrl}}/lixeira/imagens
+
+### Tira uma imagem da lixeira (a canonica e as ancoras que ela tinha NAO voltam)
+# POST {{baseUrl}}/lixeira/imagens/{{imagemId}}/restaurar
+
+### Apaga DE VEZ uma imagem da lixeira (linha + arquivo + reduzidas; sem volta). 404 se nao esta na lixeira.
+# DELETE {{baseUrl}}/lixeira/imagens/{{imagemId}}
+
+### Esvazia a lixeira (apaga de vez tudo o que esta nela; nada disso roda sozinho). Devolve {"removidas", "liberados_em_bytes"}.
+# DELETE {{baseUrl}}/lixeira/imagens
 
 ### A imagem CANONICA de um frame (item 7.5b, CAN1 a CAN9)
 # Marca uma das variacoes (de um prompt DESTE frame) como a que representa o frame e que o capitulo mostra. No retrato de um

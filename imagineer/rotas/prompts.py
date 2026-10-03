@@ -65,6 +65,7 @@ from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente
+from imagineer.servicos.lixeira import mover_para_a_lixeira
 from imagineer.servicos.imagens_reduzidas import (
     TamanhoDeImagem,
     arquivo_no_tamanho,
@@ -136,7 +137,7 @@ def _imagens_candidatas(elemento: Elemento, ancora: Imagem | None) -> list[Image
         for outro in estado_do_elemento.frames:
             if outro.tipo == TipoDeFrame.PERSONAGEM and len(outro.estados_elemento) == 1:
                 for prompt in outro.prompts:
-                    for imagem in prompt.imagens:
+                    for imagem in prompt.imagens_ativas:
                         imagens[imagem.id] = imagem
     recentes = sorted(imagens.values(), key=lambda i: i.id, reverse=True)[:12]
     if ancora is not None and all(i.id != ancora.id for i in recentes):
@@ -305,7 +306,7 @@ def abrir_prompt(prompt_id: int, sessao: Session = Depends(obter_sessao)) -> Pro
     prompt = _buscar_prompt(sessao, prompt_id)
     imagens = list(
         sessao.scalars(
-            select(Imagem).where(Imagem.prompt_id == prompt_id).order_by(Imagem.id)
+            select(Imagem).where(Imagem.prompt_id == prompt_id, Imagem.apagada_em.is_(None)).order_by(Imagem.id)
         )
     )
     return _detalhe(prompt, imagens, _referencias_visuais(prompt.frame))
@@ -423,7 +424,7 @@ def gerar_imagem(
     return ResultadoDaGeracao(
         resultado="GERADA" if resultado.gerada else "RECUSADA",
         suavizado=resultado.suavizado,
-        prompt=_resumo(resultado.prompt, len(resultado.prompt.imagens)),
+        prompt=_resumo(resultado.prompt, len(resultado.prompt.imagens_ativas)),
         imagem=ImagemResumo.model_validate(resultado.imagem) if resultado.imagem else None,
     )
 
@@ -472,19 +473,13 @@ def baixar_imagem(
 @rotas_de_imagem.delete(
     "/{imagem_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Remove a imagem do catálogo, e o arquivo do disco",
+    summary="Move a imagem para a lixeira",
 )
 def remover_imagem(imagem_id: int, sessao: Session = Depends(obter_sessao)) -> None:
-    """Apaga a linha do catálogo e o arquivo em disco."""
-    imagem = _buscar_imagem(sessao, imagem_id)
-    caminho_relativo = imagem.caminho_arquivo
-
-    imagem_removida_id = imagem.id
-    sessao.delete(imagem)
+    """**Move a imagem para a lixeira** (LX4): ela some dos prompts, do capítulo e da galeria, mas o arquivo continua no disco
+    até o usuário apagar de vez (``DELETE /lixeira/imagens/{id}``). Mover uma que já está lá não dá erro."""
+    mover_para_a_lixeira(sessao, _buscar_imagem(sessao, imagem_id))
     sessao.commit()
-    remover_derivadas(imagem_removida_id)
-
-    remover_arquivo(caminho_relativo)
 
 
 # --------------------------------------------------------------------------- #
@@ -805,7 +800,7 @@ def _contar_imagens(sessao: Session, prompts_ids: list[int]) -> dict[int, int]:
     return dict(
         sessao.execute(
             select(Imagem.prompt_id, func.count(Imagem.id))
-            .where(Imagem.prompt_id.in_(prompts_ids))
+            .where(Imagem.prompt_id.in_(prompts_ids), Imagem.apagada_em.is_(None))
             .group_by(Imagem.prompt_id)
         ).all()
     )

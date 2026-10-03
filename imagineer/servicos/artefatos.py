@@ -35,7 +35,7 @@ def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[Situac
     """
     if not confirmado:
         return SituacaoDoArtefato.SUGERIDO, None
-    imagens = [imagem for prompt in frame.prompts for imagem in prompt.imagens] if frame else []
+    imagens = [imagem for prompt in frame.prompts for imagem in prompt.imagens_ativas] if frame else []
     canonica = next((i for i in imagens if frame is not None and i.id == frame.imagem_canonica_id), None)
     ultima = canonica or max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
     if ultima is not None:

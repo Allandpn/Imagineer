@@ -170,7 +170,7 @@ def teste_tamanho_desconhecido_e_recusado(cliente: TestClient, usar_provedor_fal
     assert cliente.get(f"/imagens/{imagem['id']}/arquivo?tamanho=640").status_code == 422
 
 
-def teste_apagar_a_imagem_apaga_as_versoes_reduzidas(
+def teste_apagar_de_vez_a_imagem_apaga_as_versoes_reduzidas(
     cliente: TestClient, usar_provedor_falso, _diretorio_de_imagens
 ) -> None:
     _, _, prompt = _cenario(cliente, usar_provedor_falso)
@@ -180,7 +180,11 @@ def teste_apagar_a_imagem_apaga_as_versoes_reduzidas(
     derivadas = list((_diretorio_de_imagens / "derivadas").rglob("*.jpg"))
     assert len(derivadas) == 2
 
+    # LX4: apagar só move para a lixeira; as reduzidas ficam até apagar de vez (LX5).
     assert cliente.delete(f"/imagens/{imagem['id']}").status_code == 204
+    assert len(list((_diretorio_de_imagens / "derivadas").rglob("*.jpg"))) == 2
+
+    assert cliente.delete(f"/lixeira/imagens/{imagem['id']}").status_code == 204
 
     assert list((_diretorio_de_imagens / "derivadas").rglob("*.jpg")) == []
 

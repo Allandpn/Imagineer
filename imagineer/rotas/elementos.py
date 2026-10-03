@@ -179,7 +179,7 @@ def galeria_do_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao
             capitulo = frame.capitulo
             if frame.tipo == TipoDeFrame.PERSONAGEM and len(frame.estados_elemento) == 1:
                 for prompt in frame.prompts:
-                    for imagem in prompt.imagens:
+                    for imagem in prompt.imagens_ativas:
                         orientacao = orientacao_de(imagem.largura, imagem.altura)
                         imagens[imagem.id] = ImagemDoElemento(
                             id=imagem.id,
@@ -199,7 +199,7 @@ def galeria_do_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao
                             canonica=frame.imagem_canonica_id == imagem.id,
                         )
             elif frame.tipo == TipoDeFrame.CENA and frame.id not in cenas:
-                todas = [i for prompt in frame.prompts for i in prompt.imagens]
+                todas = [i for prompt in frame.prompts for i in prompt.imagens_ativas]
                 canonica = next((i for i in todas if i.id == frame.imagem_canonica_id), None)
                 ultima = canonica or (max(todas, key=lambda i: i.id) if todas else None)
                 orientacao = orientacao_de(ultima.largura, ultima.altura) if ultima else None
@@ -664,6 +664,7 @@ def _capas_dos_elementos(sessao: Session, elementos_ids: list[int]) -> dict[int,
             .join(Prompt, Prompt.frame_id == Frame.id)
             .join(Imagem, Imagem.prompt_id == Prompt.id)
             .where(
+                Imagem.apagada_em.is_(None),
                 Frame.tipo == TipoDeFrame.PERSONAGEM,
                 Frame.id.in_(de_um_estado_so),
                 EstadoElemento.elemento_id.in_(elementos_ids),
@@ -826,7 +827,8 @@ def _exigir_imagem(sessao: Session, imagem_id: int) -> None:
 
     Sem isto, a chave estrangeira falharia no commit e o app receberia um 500.
     """
-    if sessao.get(Imagem, imagem_id) is None:
+    imagem = sessao.get(Imagem, imagem_id)
+    if imagem is None or imagem.apagada_em is not None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Não existe imagem com id {imagem_id}.",

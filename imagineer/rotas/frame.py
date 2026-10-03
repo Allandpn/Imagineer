@@ -232,7 +232,7 @@ def definir_imagem_canonica(
     anterior = frame.imagem_canonica_id
     if corpo.imagem_id is not None:
         imagem = sessao.get(Imagem, corpo.imagem_id)
-        if imagem is None or imagem.prompt.frame_id != frame.id:
+        if imagem is None or imagem.apagada_em is not None or imagem.prompt.frame_id != frame.id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Essa imagem não é de um prompt deste frame.",

@@ -3,7 +3,7 @@
 from fastapi.testclient import TestClient
 
 from testes.teste_galeria_do_elemento import _galeria, _montar, _prompt_do_frame
-from testes.teste_rotas_prompts import _frame, _importar_imagem
+from testes.teste_rotas_prompts import _diretorio_de_imagens, _frame, _importar_imagem  # noqa: F401
 from testes.teste_vinculos_do_retrato import _retrato
 
 
