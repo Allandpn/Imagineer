@@ -140,6 +140,10 @@ class Configuracao(Base):
     "image_input"}``. Mantido à mão por ``PUT /configuracao``; nasce **vazio**: nenhum modelo aceita referência até o
     usuário incluí-lo. Só parâmetros que recebem uma **lista** de imagens."""
 
+    precos_informados: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, server_default="{}")
+    """O preço **por imagem**, em dólares, que a pessoa informou para um modelo de imagem (PD5); a chave é o id como o ``usos_ia`` o grava
+    (OpenRouter sem prefixo; ``fal:`` e ``replicate:`` com). Vale mais que o preço do fornecedor (PD1)."""
+
     modelos_sem_filtro: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
     """Os modelos de imagem em que o usuário **pode** pedir para desligar o filtro de segurança (F13).
 

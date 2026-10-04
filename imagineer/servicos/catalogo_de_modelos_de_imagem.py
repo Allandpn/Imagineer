@@ -1,8 +1,9 @@
-"""O catálogo dos modelos de imagem, com preço por imagem, moderação e resolução (item 7.5b, MI1 a MI5).
+"""O catálogo dos modelos de imagem, com preço por imagem, moderação e resolução (item 7.5b, MI1 a MI5, PD1 a PD4).
 
 O OpenRouter cobra a imagem **por token**, e não por imagem; quantos tokens uma imagem tem depende da resolução. Por isso o preço
-por imagem **não se calcula**: ou vem do que as imagens do modelo **já custaram** de verdade (``medido``), ou da tabela de preços
-de lista do fal.ai/Replicate (``tabela``, estimado), ou fica **sem preço** (MI2). Nunca um valor inventado.
+por imagem **não se calcula**: ou vem do que as imagens do modelo **já custaram** de verdade (``medido``), ou do preço
+que a pessoa **informou** (``informado``), ou do que o fal.ai **publica** (``fornecedor``, estimado); sem nenhum dos três fica **sem
+preço** (MI2, PD1). Nunca um valor inventado, e **nenhum nome ou preço escrito no código** (PD2, PD4).
 """
 
 import base64
@@ -19,7 +20,8 @@ from imagineer.ia.fornecedores_de_imagem import separar_fornecedor
 from imagineer.ia.provedor import ErroDoProvedorIA, ModeloDeImagemDisponivel, ProvedorIA
 from imagineer.modelos import Configuracao, Imagem, UsoDeIA
 from imagineer.servicos.imagens_reduzidas import ler_dimensoes
-from imagineer.servicos.precos_de_imagem import PRECOS_POR_IMAGEM, preco_estimado_da_imagem
+from imagineer.servicos import precos_de_imagem as fornecedores
+from imagineer.servicos.precos_de_imagem import preco_informado
 from imagineer.servicos.uso_de_ia import coletando_o_custo
 
 PROMPT_DE_TESTE = "a single red apple on a plain white table, soft daylight, simple still life"
@@ -51,6 +53,11 @@ def _chave_do_uso(modelo: str) -> str:
     return id_do_modelo if fornecedor == "openrouter" else f"{fornecedor}:{id_do_modelo}"
 
 
+def chave_do_modelo_de_imagem(modelo: str) -> str:
+    """A chave de um modelo como o ``usos_ia`` e os preços informados a guardam (o OpenRouter sem prefixo; os outros com)."""
+    return _chave_do_uso(modelo)
+
+
 def _precos_medidos(sessao: Session) -> dict[str, Decimal]:
     """A **média** do custo das imagens já geradas, por modelo (MI2). Só vale o custo que o fornecedor informou (não o estimado)."""
     linhas = sessao.execute(
@@ -71,6 +78,15 @@ def _resolucoes_tipicas(sessao: Session) -> dict[str, str]:
     return {_chave_do_uso(modelo): f"{largura}×{altura}" for modelo, largura, altura in linhas}  # a última sobrescreve
 
 
+def _megapixels(resolucao: str | None) -> float:
+    """Os megapixels de uma resolução ``larguraxaltura`` (MI4), ou 1 se não se sabe (PD1)."""
+    try:
+        largura, altura = (int(parte) for parte in (resolucao or "").replace("x", "×").split("×"))
+        return largura * altura / 1_000_000
+    except ValueError:
+        return 1.0
+
+
 def _moderacao(fornecedor: str, moderado: bool, modelo: str, sem_filtro: set[str]) -> str:
     """O texto de moderação (MI3)."""
     if fornecedor == "openrouter":
@@ -89,6 +105,20 @@ def montar_catalogo(sessao: Session, configuracao: Configuracao, provedor: Prove
 
     medidos = _precos_medidos(sessao)
     resolucoes = _resolucoes_tipicas(sessao)
+    informados = {_chave_do_uso(m): v for m, v in (configuracao.precos_informados or {}).items()}
+    do_fal = fornecedores.modelos_de_imagem_do_fal()
+    do_replicate = fornecedores.modelos_de_imagem_do_replicate()
+    if fornecedores._chave_do_fal() and not do_fal:
+        aviso = (aviso + " " if aviso else "") + "Não foi possível ler a lista de modelos do fal.ai agora."
+    if fornecedores._chave_do_replicate() and not do_replicate:
+        aviso = (aviso + " " if aviso else "") + "Não foi possível ler a lista de modelos do Replicate agora."
+    # Um pedido só ao fal.ai com o preço de todos os modelos dele que aparecem (guardado por 6 horas).
+    ids_do_fal = {_chave_do_uso(i).split(":", 1)[1] for i, _ in do_fal} | {
+        _chave_do_uso(m).split(":", 1)[1]
+        for m in [*(configuracao.modelos_de_imagem or []), configuracao.modelo_imagem, *medidos]
+        if _chave_do_uso(m).startswith("fal:")
+    }
+    precos_do_fornecedor = fornecedores.precos_do_fal(sorted(ids_do_fal))
     sem_filtro = set(configuracao.modelos_sem_filtro or [])
     com_referencia = set((configuracao.modelos_com_referencia or {}).keys())
     escolhiveis = {_chave_do_uso(m) for m in (configuracao.modelos_de_imagem or [])} | {_chave_do_uso(configuracao.modelo_imagem)}
@@ -106,8 +136,11 @@ def montar_catalogo(sessao: Session, configuracao: Configuracao, provedor: Prove
         preco_por_imagem, origem = None, None
         if chave in medidos:
             preco_por_imagem, origem = medidos[chave], "medido"
-        elif (tabela := preco_estimado_da_imagem(chave)) is not None:
-            preco_por_imagem, origem = tabela, "tabela"
+        elif (digitado := preco_informado(chave, informados)) is not None:
+            preco_por_imagem, origem = digitado, "informado"
+        elif chave.startswith("fal:") and chave.split(":", 1)[1] in precos_do_fornecedor:
+            preco_por_imagem = precos_do_fornecedor[chave.split(":", 1)[1]].por_imagem(_megapixels(resolucoes.get(chave)))
+            origem = "fornecedor" if preco_por_imagem is not None else None
         entradas[chave] = EntradaDoCatalogo(
             id=id_publico,
             nome=nome,
@@ -124,8 +157,8 @@ def montar_catalogo(sessao: Session, configuracao: Configuracao, provedor: Prove
 
     for modelo in do_openrouter:
         acrescentar(modelo.id, modelo.nome, modelo.preco_por_token, modelo.moderado)
-    for id_da_tabela in PRECOS_POR_IMAGEM:
-        acrescentar(id_da_tabela, id_da_tabela.split(":", 1)[1], None, False)
+    for id_do_fornecedor, nome in [*do_fal, *do_replicate]:
+        acrescentar(id_do_fornecedor, nome, None, False)
     for id_da_configuracao in [*(configuracao.modelos_de_imagem or []), configuracao.modelo_imagem, *medidos]:
         if id_da_configuracao:
             acrescentar(id_da_configuracao, id_da_configuracao.split(":", 1)[-1], None, False)

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from typing import Annotated
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ from imagineer.banco.sessao import obter_sessao
 from imagineer.configuracao import obter_configuracoes
 from imagineer.ia.provedor import ProvedorIA
 from imagineer.modelos import PrioridadeIA
-from imagineer.servicos.catalogo_de_modelos_de_imagem import montar_catalogo, testar_modelo_de_imagem
+from imagineer.servicos.catalogo_de_modelos_de_imagem import chave_do_modelo_de_imagem, montar_catalogo, testar_modelo_de_imagem
 from imagineer.servicos.configuracao_ia import (
     construir_provedor,
     obter_ou_criar,
@@ -172,6 +172,15 @@ class PedidoDeTeste(BaseModel):
     modelo: str = Field(min_length=1, max_length=200)
 
 
+class PrecoInformado(BaseModel):
+    """O preço por imagem que a pessoa informa para um modelo de imagem (PD5)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    modelo: str = Field(min_length=1, max_length=200)
+    preco: str | None = Field(default=None, description="Dólares por imagem, maior que zero. Nulo ou vazio limpa o preço informado.")
+
+
 class TesteDeImagem(BaseModel):
     """O resultado do teste de um modelo de imagem (MI5)."""
 
@@ -282,6 +291,32 @@ def listar_modelos_de_imagem(
     (medido ou de tabela; MI2), a moderação (MI3) e a resolução que o modelo já entregou aqui (MI4)."""
     entradas, aviso = montar_catalogo(sessao, obter_ou_criar(sessao), provedor)
     return CatalogoDeImagem(modelos=[ModeloDeImagemDoCatalogo(**vars(e)) for e in entradas], aviso=aviso)
+
+
+@rotas.put("/modelos-de-imagem/preco", response_model=CatalogoDeImagem, summary="Informa (ou limpa) o preço por imagem de um modelo")
+def informar_preco_do_modelo(
+    corpo: PrecoInformado, sessao: Session = Depends(obter_sessao), provedor: ProvedorIA = Depends(obter_provedor)
+) -> CatalogoDeImagem:
+    """Grava o preço por imagem que a pessoa digitou (PD5); vale na hora, em cima do que o fornecedor publica. Devolve o catálogo."""
+    configuracao = obter_ou_criar(sessao)
+    chave = chave_do_modelo_de_imagem(corpo.modelo)
+    informados = dict(configuracao.precos_informados or {})
+    texto = (corpo.preco or "").strip().replace(",", ".")
+    if not texto:
+        informados.pop(chave, None)
+    else:
+        try:
+            valor = Decimal(texto)
+        except InvalidOperation:
+            valor = Decimal(0)
+        if not valor.is_finite() or valor <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="O preço por imagem precisa ser um número maior que zero (em dólares)."
+            )
+        informados[chave] = format(valor.normalize(), "f")
+    configuracao.precos_informados = informados  # reatribui: o JSON não percebe a mudança dentro do dict
+    sessao.commit()
+    return listar_modelos_de_imagem(sessao, provedor)
 
 
 @rotas.post("/modelos-de-imagem/testar", response_model=TesteDeImagem, summary="Gera uma imagem de teste e mede resolução e custo")

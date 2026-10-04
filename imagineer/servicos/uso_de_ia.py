@@ -10,11 +10,12 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from imagineer.banco.sessao import CriadorDeSessao
 from imagineer.ia.provedor import UsoDaChamada
-from imagineer.modelos import UsoDeIA
+from imagineer.modelos import Configuracao, UsoDeIA
 from imagineer.servicos.precos_de_imagem import preco_estimado_da_imagem
 
 _livro_do_gasto: ContextVar[int | None] = ContextVar("livro_do_gasto", default=None)
@@ -54,15 +55,17 @@ def gravar_uso(uso: UsoDaChamada, criador: sessionmaker = CriadorDeSessao) -> No
         uso: o que a chamada consumiu.
         criador: de onde sai a sessão; os testes passam um ligado ao banco de teste.
     """
-    # CU2: o fornecedor não informou o custo de uma imagem: estima pelo preço da tabela (marcado como estimado).
+    # CU2: o fornecedor não informou o custo de uma imagem: estima (marcado como estimado), sem tabela fixa (PD3).
     custo, estimado = uso.custo, False
-    if custo is None and uso.operacao == "imagem":
-        custo = preco_estimado_da_imagem(uso.modelo)
-        estimado = custo is not None
-    coletor = _coletor_de_custo.get()
-    if coletor is not None:
-        coletor.append(custo)
     with criador() as sessao:
+        if custo is None and uso.operacao == "imagem":
+            # PD3: o preço informado pela pessoa; senão o que o fal.ai publica; senão nenhum (nunca um valor inventado).
+            informados = sessao.scalar(select(Configuracao.precos_informados).limit(1))
+            custo = preco_estimado_da_imagem(uso.modelo, informados)
+            estimado = custo is not None
+        coletor = _coletor_de_custo.get()
+        if coletor is not None:
+            coletor.append(custo)
         sessao.add(
             UsoDeIA(
                 operacao=uso.operacao,

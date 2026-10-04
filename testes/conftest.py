@@ -111,6 +111,19 @@ def sessao_de_teste() -> Session:
         motor.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _sem_rede_nos_precos_de_imagem(monkeypatch):
+    """Nenhum teste vai ao fal.ai ou ao Replicate (PD1): a leitura de preços e de listas devolve vazio, e o cache começa limpo."""
+    from imagineer.servicos import precos_de_imagem
+
+    precos_de_imagem.limpar_cache()
+    monkeypatch.setattr(precos_de_imagem, "_get", lambda *a, **k: {})
+    monkeypatch.setattr(precos_de_imagem, "_chave_do_fal", lambda: "")
+    monkeypatch.setattr(precos_de_imagem, "_chave_do_replicate", lambda: "")
+    yield
+    precos_de_imagem.limpar_cache()
+
+
 @pytest.fixture
 def usar_provedor_falso():
     """Substitui o provedor de IA da aplicação por um falso, e desfaz no fim.
