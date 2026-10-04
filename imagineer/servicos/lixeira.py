@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from imagineer.modelos import Capitulo, Elemento, EstadoElemento, Frame, Imagem, Livro, Prompt
+from imagineer.modelos import Capitulo, Elemento, EstadoElemento, Frame, Imagem, Livro, Prompt, SugestaoDeCena
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
 from imagineer.servicos.imagens_reduzidas import remover_derivadas
 
@@ -71,6 +71,46 @@ def apagar_livro_de_vez(sessao: Session, livro: Livro) -> int:
     """
     liberados = sum(apagar_de_vez(sessao, imagem) for imagem in imagens_do_livro(sessao, livro.id))
     sessao.delete(livro)
+    sessao.flush()
+    return liberados
+
+
+# --------------------------------------------------------------------------- #
+# Frames: cenas e retratos (LT3)
+# --------------------------------------------------------------------------- #
+
+
+def mover_frame_para_a_lixeira(sessao: Session, frame: Frame) -> None:
+    """Marca o frame como apagado. A cena sugerida que ele confirmara **volta a ser pendente** (``frame_id`` nulo), e o frame guarda
+    de qual era, para restaurar religar. Já estando na lixeira, não faz nada. Quem chama faz o ``commit``."""
+    if frame.apagado_em is not None:
+        return
+    frame.apagado_em = datetime.now(timezone.utc)
+    sugestao = sessao.scalar(select(SugestaoDeCena).where(SugestaoDeCena.frame_id == frame.id))
+    if sugestao is not None:
+        frame.sugestao_de_cena_antes_id = sugestao.id
+        sugestao.frame_id = None
+
+
+def restaurar_frame(sessao: Session, frame: Frame) -> None:
+    """Tira o frame da lixeira e, se a cena sugerida de antes ainda existe e **continua sem frame**, a religa a ele."""
+    frame.apagado_em = None
+    if frame.sugestao_de_cena_antes_id is not None:
+        sugestao = sessao.get(SugestaoDeCena, frame.sugestao_de_cena_antes_id)
+        if sugestao is not None and sugestao.frame_id is None and sugestao.capitulo_id == frame.capitulo_id:
+            sugestao.frame_id = frame.id
+        frame.sugestao_de_cena_antes_id = None
+
+
+def imagens_do_frame(frame: Frame) -> list[Imagem]:
+    """Todas as imagens do frame (ativas e as que já estavam na lixeira de imagens)."""
+    return [imagem for prompt in frame.prompts for imagem in prompt.imagens]
+
+
+def apagar_frame_de_vez(sessao: Session, frame: Frame) -> int:
+    """Remove o frame, os prompts e as imagens dele, **com os arquivos**. Devolve os bytes liberados. Quem chama faz o ``commit``."""
+    liberados = sum(apagar_de_vez(sessao, imagem) for imagem in imagens_do_frame(frame))
+    sessao.delete(frame)
     sessao.flush()
     return liberados
 

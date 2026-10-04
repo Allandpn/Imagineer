@@ -141,7 +141,7 @@ def _imagens_candidatas(elemento: Elemento, ancora: Imagem | None) -> list[Image
     imagens: dict[int, Imagem] = {}
     for estado_do_elemento in elemento.estados:
         for outro in estado_do_elemento.frames:
-            if outro.tipo == TipoDeFrame.PERSONAGEM and len(outro.estados_elemento) == 1:
+            if outro.apagado_em is None and outro.tipo == TipoDeFrame.PERSONAGEM and len(outro.estados_elemento) == 1:
                 for prompt in outro.prompts:
                     for imagem in prompt.imagens_ativas:
                         imagens[imagem.id] = imagem

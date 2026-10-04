@@ -191,8 +191,20 @@ Content-Type: application/json
   ]
 }
 
-### Remove o frame — não apaga os estados que ele citava
+### Move o frame para a lixeira (LT3) — leva prompts e imagens, não apaga os estados que ele citava
 # DELETE {{baseUrl}}/frames/{{frameId}}
+
+### As cenas e retratos da lixeira, com prompts, imagens e espaço
+GET {{baseUrl}}/lixeira/frames
+
+### Tira o frame da lixeira (religa a cena sugerida, se ainda der)
+POST {{baseUrl}}/lixeira/frames/{{frameId}}/restaurar
+
+### Apaga de vez um frame da lixeira (prompts e arquivos das imagens). Não tem volta
+# DELETE {{baseUrl}}/lixeira/frames/{{frameId}}
+
+### Esvazia a lixeira de cenas e retratos
+# DELETE {{baseUrl}}/lixeira/frames
 
 ### Remove o perfil — não apaga livros nem prompts, só desfaz a referência
 # DELETE {{baseUrl}}/perfis-renderizacao/{{perfilId}}

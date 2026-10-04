@@ -62,3 +62,29 @@ class LivrosDaLixeira(BaseModel):
     livros: list[LivroNaLixeira]
     total_em_bytes: int = Field(description="A soma do espaço das imagens de todos os livros da lixeira.")
 
+
+class FrameNaLixeira(BaseModel):
+    """Uma cena ou um retrato movido para a lixeira, com o contexto para a pessoa reconhecê-lo (LT3)."""
+
+    id: int
+    titulo: str
+    tipo: str = Field(description="`CENA` ou `PERSONAGEM` (retrato).")
+    nome_do_elemento: str | None = Field(default=None, description="No retrato, o elemento retratado; nulo na cena.")
+    capitulo_id: int
+    titulo_do_capitulo: str | None = None
+    ordem_do_capitulo: int
+    livro_id: int
+    titulo_do_livro: str
+    apagado_em: datetime
+    total_de_prompts: int
+    total_de_imagens: int
+    tamanho_em_bytes: int = Field(description="O espaço em disco das imagens do frame: o que se libera ao apagar de vez.")
+    imagem_id: int | None = Field(default=None, description="Uma imagem do frame (a mais recente ativa) para mostrar; nulo se não tem.")
+
+
+class FramesDaLixeira(BaseModel):
+    """Os frames da lixeira, do apagado mais recentemente para o mais antigo (LT3)."""
+
+    frames: list[FrameNaLixeira]
+    total_em_bytes: int
+

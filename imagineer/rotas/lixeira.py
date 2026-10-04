@@ -9,10 +9,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
-from imagineer.esquemas.lixeira import ImagemNaLixeira, LivroNaLixeira, LivrosDaLixeira, Lixeira, LixeiraEsvaziada
-from imagineer.modelos import Capitulo, Imagem, Livro, TipoDeFrame
+from imagineer.esquemas.lixeira import FrameNaLixeira, FramesDaLixeira, ImagemNaLixeira, LivroNaLixeira, LivrosDaLixeira, Lixeira, LixeiraEsvaziada
+from imagineer.modelos import Capitulo, Frame, Imagem, Livro, TipoDeFrame
 from imagineer.servicos.imagens_reduzidas import orientacao_de
-from imagineer.servicos.lixeira import apagar_de_vez, apagar_livro_de_vez, imagens_do_livro, tamanho_da_imagem
+from imagineer.servicos.lixeira import (
+    apagar_de_vez,
+    apagar_frame_de_vez,
+    apagar_livro_de_vez,
+    imagens_do_frame,
+    imagens_do_livro,
+    restaurar_frame,
+    tamanho_da_imagem,
+)
 
 rotas = APIRouter(prefix="/lixeira", tags=["Lixeira"])
 
@@ -145,3 +153,85 @@ def esvaziar_livros(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada
     liberados = sum(apagar_livro_de_vez(sessao, livro) for livro in livros)
     sessao.commit()
     return LixeiraEsvaziada(removidas=len(livros), liberados_em_bytes=liberados)
+
+
+# --------------------------------------------------------------------------- #
+# Frames: cenas e retratos (LT3)
+# --------------------------------------------------------------------------- #
+
+
+def _frame_na_lixeira(sessao: Session, frame_id: int) -> Frame:
+    """O frame, desde que esteja na lixeira; senão 404 (LT1)."""
+    frame = sessao.get(Frame, frame_id)
+    if frame is None or frame.apagado_em is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não há frame com id {frame_id} na lixeira.")
+    return frame
+
+
+def _descrever_frame(frame: Frame) -> FrameNaLixeira:
+    capitulo = frame.capitulo
+    imagens = imagens_do_frame(frame)
+    ativas = [i for i in imagens if i.apagada_em is None]
+    elemento = frame.estados_elemento[0].elemento if frame.tipo == TipoDeFrame.PERSONAGEM and frame.estados_elemento else None
+    return FrameNaLixeira(
+        id=frame.id,
+        titulo=frame.titulo,
+        tipo=frame.tipo.name,
+        nome_do_elemento=elemento.nome if elemento is not None else None,
+        capitulo_id=capitulo.id,
+        titulo_do_capitulo=capitulo.titulo,
+        ordem_do_capitulo=capitulo.ordem,
+        livro_id=capitulo.livro_id,
+        titulo_do_livro=capitulo.livro.titulo,
+        apagado_em=frame.apagado_em,
+        total_de_prompts=len(frame.prompts),
+        total_de_imagens=len(imagens),
+        tamanho_em_bytes=sum(tamanho_da_imagem(i) for i in imagens),
+        imagem_id=max((i.id for i in ativas), default=None),
+    )
+
+
+def _frames_da_lixeira(sessao: Session) -> list[Frame]:
+    """Os frames na lixeira, do mais recentemente apagado ao mais antigo, **sem os de um livro que também está na lixeira**."""
+    return list(
+        sessao.scalars(
+            select(Frame)
+            .join(Capitulo, Capitulo.id == Frame.capitulo_id)
+            .join(Livro, Livro.id == Capitulo.livro_id)
+            .where(Frame.apagado_em.is_not(None), Livro.apagado_em.is_(None))
+            .order_by(Frame.apagado_em.desc(), Frame.id.desc())
+        )
+    )
+
+
+@rotas.get("/frames", response_model=FramesDaLixeira, summary="As cenas e os retratos da lixeira")
+def listar_frames_da_lixeira(sessao: Session = Depends(obter_sessao)) -> FramesDaLixeira:
+    """Do apagado mais recentemente para o mais antigo, com o capítulo, o livro e o que cada um leva junto (LT3)."""
+    descritos = [_descrever_frame(frame) for frame in _frames_da_lixeira(sessao)]
+    return FramesDaLixeira(frames=descritos, total_em_bytes=sum(d.tamanho_em_bytes for d in descritos))
+
+
+@rotas.post("/frames/{frame_id}/restaurar", response_model=FrameNaLixeira, summary="Tira a cena ou o retrato da lixeira")
+def restaurar_o_frame(frame_id: int, sessao: Session = Depends(obter_sessao)) -> FrameNaLixeira:
+    """O frame volta ao capítulo com os prompts e as imagens; a cena sugerida de antes é religada, se ainda existe e está sem frame."""
+    frame = _frame_na_lixeira(sessao, frame_id)
+    descricao = _descrever_frame(frame)
+    restaurar_frame(sessao, frame)
+    sessao.commit()
+    return descricao
+
+
+@rotas.delete("/frames/{frame_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Apaga de vez uma cena ou um retrato da lixeira")
+def apagar_o_frame_de_vez(frame_id: int, sessao: Session = Depends(obter_sessao)) -> None:
+    """Remove o frame, os prompts e as imagens, com os arquivos. **Não tem volta.**"""
+    apagar_frame_de_vez(sessao, _frame_na_lixeira(sessao, frame_id))
+    sessao.commit()
+
+
+@rotas.delete("/frames", response_model=LixeiraEsvaziada, summary="Esvazia a lixeira de cenas e retratos")
+def esvaziar_frames(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada:
+    """Apaga de vez **todos** os frames da lixeira (os de livros na lixeira ficam, saem com o livro). Nada disso roda sozinho (LX6)."""
+    frames = _frames_da_lixeira(sessao)
+    liberados = sum(apagar_frame_de_vez(sessao, frame) for frame in frames)
+    sessao.commit()
+    return LixeiraEsvaziada(removidas=len(frames), liberados_em_bytes=liberados)

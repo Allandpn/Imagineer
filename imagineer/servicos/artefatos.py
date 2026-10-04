@@ -94,7 +94,7 @@ def artefatos_do_capitulo(sessao: Session, capitulo: Capitulo) -> list[Artefato]
 
     # Todos os frames do capítulo (item 3.4g, "Ilustrar aqui"): os que uma sugestão representa mandam a
     # posição para o artefato dela; os que nenhuma representa viram artefatos próprios, mais abaixo.
-    frames = list(sessao.scalars(select(Frame).where(Frame.capitulo_id == capitulo.id).order_by(Frame.id)))
+    frames = list(sessao.scalars(select(Frame).where(Frame.capitulo_id == capitulo.id, Frame.apagado_em.is_(None)).order_by(Frame.id)))
 
     # O retrato de cada elemento NESTE capítulo: o frame PERSONAGEM cujo único estado é dele.
     retratos: dict[int, Frame] = {}

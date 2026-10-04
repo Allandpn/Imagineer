@@ -9,8 +9,9 @@ engano — ver a divergência registrada na Etapa 5.
 """
 
 import enum
+from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, Enum, ForeignKey, String, Table, Text, false
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, String, Table, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -117,6 +118,13 @@ class Frame(Base):
     )
     """A imagem **canônica** do frame: a escolhida entre as variações para representá-lo e a que o capítulo mostra
     (item 7.5b, CAN1 a CAN4). Nulo = sem escolha: vale a mais recente."""
+
+    apagado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    """Quando o frame foi para a **lixeira** (LT3); nulo = ativo. Some do capítulo, dos artefatos e da galeria; leva os prompts e as imagens."""
+
+    sugestao_de_cena_antes_id: Mapped[int | None] = mapped_column()
+    """De qual ``SugestaoDeCena`` este frame era a confirmação quando foi para a lixeira (sem chave estrangeira, de propósito): restaurar
+    o frame a **religa**, se ela ainda existe e continua sem frame (LT3)."""
 
     imagem_oculta: Mapped[bool] = mapped_column(default=False, server_default="0")
     """O capítulo **não mostra** a imagem deste frame (item 7.5b, OC1 a OC3): o artefato volta a ser só o ícone. A imagem continua

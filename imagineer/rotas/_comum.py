@@ -64,7 +64,11 @@ def buscar_estado(sessao: Session, estado_id: int) -> EstadoElemento:
 
 
 def buscar_frame(sessao: Session, frame_id: int) -> Frame:
-    return obter_ou_404(sessao, Frame, frame_id, "frame")
+    """O frame, **a não ser que esteja na lixeira** (LT3)."""
+    frame = obter_ou_404(sessao, Frame, frame_id, "frame")
+    if frame.apagado_em is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe frame com id {frame_id}.")
+    return frame
 
 
 def buscar_prompt(sessao: Session, prompt_id: int) -> Prompt:

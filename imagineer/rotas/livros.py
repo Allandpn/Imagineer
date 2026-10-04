@@ -231,7 +231,7 @@ def elementos_por_capitulo(livro_id: int, sessao: Session = Depends(obter_sessao
 
         for estado in sessao.scalars(select(EstadoElemento).where(EstadoElemento.capitulo_id == capitulo.id).order_by(EstadoElemento.id)):
             entrada(estado.elemento)
-        frames = sessao.scalars(select(Frame).where(Frame.capitulo_id == capitulo.id, Frame.tipo == TipoDeFrame.PERSONAGEM)).all()
+        frames = sessao.scalars(select(Frame).where(Frame.capitulo_id == capitulo.id, Frame.tipo == TipoDeFrame.PERSONAGEM, Frame.apagado_em.is_(None))).all()
         for frame in frames:
             if len(frame.estados_elemento) != 1:
                 continue
@@ -286,7 +286,7 @@ def listar_midias(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Mid
         .join(Prompt, Prompt.id == Imagem.prompt_id)
         .join(Frame, Frame.id == Prompt.frame_id)
         .join(Capitulo, Capitulo.id == Frame.capitulo_id)
-        .where(Capitulo.livro_id == livro_id, Imagem.apagada_em.is_(None))
+        .where(Capitulo.livro_id == livro_id, Imagem.apagada_em.is_(None), Frame.apagado_em.is_(None))
         .order_by(Imagem.id)
     ).all()
 

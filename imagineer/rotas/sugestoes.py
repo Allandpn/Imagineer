@@ -205,7 +205,7 @@ def posicionar_elemento(
     # O frame (o retrato) com posição própria manda sobre a manual: para reposicionar de verdade, ele a segue.
     if sugestao.elemento_id is not None:
         retrato = None
-        for frame in sessao.scalars(select(Frame).where(Frame.capitulo_id == sugestao.capitulo_id).order_by(Frame.id)):
+        for frame in sessao.scalars(select(Frame).where(Frame.capitulo_id == sugestao.capitulo_id, Frame.apagado_em.is_(None)).order_by(Frame.id)):
             if frame.tipo == TipoDeFrame.PERSONAGEM and len(frame.estados_elemento) == 1 and frame.estados_elemento[0].elemento_id == sugestao.elemento_id:
                 retrato = frame  # o mais novo vence, como nos artefatos
         if retrato is not None and retrato.posicao_no_texto is not None:

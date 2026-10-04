@@ -38,6 +38,7 @@ from imagineer.modelos import (
     frames_estados_elemento,
 )
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
+from imagineer.servicos.lixeira import mover_frame_para_a_lixeira
 from imagineer.servicos.posicao_no_texto import tamanho_em_utf16
 from imagineer.rotas._comum import (
     buscar_capitulo as _buscar_capitulo,
@@ -66,7 +67,7 @@ def listar_frames(
 
     frames = list(
         sessao.scalars(
-            select(Frame).where(Frame.capitulo_id == capitulo_id).order_by(Frame.id)
+            select(Frame).where(Frame.capitulo_id == capitulo_id, Frame.apagado_em.is_(None)).order_by(Frame.id)
         )
     )
     contagens = _contar_elementos(sessao, [frame.id for frame in frames])
@@ -318,12 +319,16 @@ def definir_imagem_oculta(frame_id: int, corpo: ImagemOcultaNova, sessao: Sessio
     "/{frame_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Remove um frame"
 )
 def remover_frame(frame_id: int, sessao: Session = Depends(obter_sessao)) -> None:
-    """Apaga o frame e os prompts dele — mas **não** os estados que ele citava.
+    """Move o frame **para a lixeira** (LT3): ele some do capítulo, dos ícones e da galeria, com os prompts e as imagens dele, mas
+    **nada é apagado**. Só "apagar de vez", na lixeira, remove o frame, os prompts e as imagens (com os arquivos). Os estados que ele
+    citava nunca vão junto: um estado pertence ao elemento e à narrativa, não ao frame (item 3.4c).
 
-    Um estado pertence ao elemento e à narrativa, não ao frame que o referenciou
-    (item 3.4c).
+    A cena sugerida que ele confirmara **volta a ser pendente**. Mover de novo um frame que já está na lixeira não dá erro.
     """
-    sessao.delete(_buscar_frame(sessao, frame_id))
+    frame = sessao.get(Frame, frame_id)
+    if frame is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe frame com id {frame_id}.")
+    mover_frame_para_a_lixeira(sessao, frame)
     sessao.commit()
 
 

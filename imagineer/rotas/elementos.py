@@ -176,6 +176,8 @@ def galeria_do_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao
     cenas: dict[int, CenaDoElemento] = {}
     for estado in elemento.estados:
         for frame in estado.frames:
+            if frame.apagado_em is not None:  # na lixeira (LT3)
+                continue
             capitulo = frame.capitulo
             if frame.tipo == TipoDeFrame.PERSONAGEM and len(frame.estados_elemento) == 1:
                 for prompt in frame.prompts:
@@ -665,6 +667,7 @@ def _capas_dos_elementos(sessao: Session, elementos_ids: list[int]) -> dict[int,
             .join(Imagem, Imagem.prompt_id == Prompt.id)
             .where(
                 Imagem.apagada_em.is_(None),
+                Frame.apagado_em.is_(None),
                 Frame.tipo == TipoDeFrame.PERSONAGEM,
                 Frame.id.in_(de_um_estado_so),
                 EstadoElemento.elemento_id.in_(elementos_ids),
