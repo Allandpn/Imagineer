@@ -326,7 +326,9 @@ _DESCRICAO_DE_CATEGORIA = {
         "campo, grão de filme — não pareça uma pintura"
     ),
     CategoriaEstilo.PINTURA_A_OLEO: (
-        "pincelada visível, textura de tela, tradição da pintura clássica a óleo"
+        "técnica de impasto, pinceladas grossas e texturizadas com relevo "
+        "visível de tinta, sobre tela de linho, tradição da pintura clássica "
+        "a óleo"
     ),
     CategoriaEstilo.AQUARELA: (
         "traços soltos, transparência, bordas que sangram — nunca bordas duras "
@@ -389,6 +391,14 @@ fisicamente visível (cor, luz, textura, traço) — nunca a emoção ou o tema 
 trás disso.
 - "artista_referencia" deve combinar com a categoria escolhida (não cite um \
 pintor a óleo clássico para a categoria QUADRINHOS, por exemplo).
+- Para categorias **pictóricas** (pintura a óleo, aquarela): "iluminacao" deve \
+nomear uma convenção pictórica reconhecida (chiaroscuro, luz volumétrica, \
+contraluz dramático) além da fonte de luz — "fonte + contraste" sozinho \
+(ex.: "luz de vela, alto contraste") é suficiente para uma foto, mas não \
+sinaliza "isto é uma pintura" para um modelo de imagem que traduz o campo \
+literalmente, sem reescrever ou embelezar por conta própria (alguns modelos \
+fazem essa reescrita sozinhos nos bastidores, outros não — o campo precisa \
+já vir completo, não pode depender disso).
 
 Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 
@@ -396,7 +406,7 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
   "reconheceu_a_obra": true,
   "estilo": "técnica e tom visual dentro da categoria escolhida, ex.: 'aquarela, traços soltos, sombras marcadas'",
   "artista_referencia": "um artista ou estilo artístico coerente com a categoria, ou nulo",
-  "iluminacao": "descrição curta, ex.: 'luz de vela, alto contraste'",
+  "iluminacao": "descrição curta, ex.: 'luz de vela em chiaroscuro, sombras profundas e contraste dramático' (categoria pictórica) ou 'luz de vela, alto contraste' (categoria fotográfica/digital)",
   "paleta": "cores predominantes, ex.: 'tons terrosos e cinza'",
   "formato": "uma palavra: retrato, paisagem ou quadrado",
   "categoria_estilo": "o identificador exato da categoria escolhida, ex.: 'PINTURA_A_OLEO'"
