@@ -100,6 +100,10 @@ class LivroResumo(BaseModel):
     capitulos_ignorados: int = Field(
         description="Quantos capítulos estão marcados como fora da catalogação."
     )
+    total_de_caracteres: int = Field(
+        default=0,
+        description="Soma dos caracteres dos capítulos **ativos**: o app a transforma no tempo estimado de leitura do livro.",
+    )
     capitulos_lidos: int = Field(
         default=0,
         description="Quantos capítulos **ativos** (não arquivados) estão lidos: o progresso do livro (item 7.5b, LE6).",

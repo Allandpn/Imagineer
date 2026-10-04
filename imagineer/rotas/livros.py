@@ -128,6 +128,7 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
             func.count(Capitulo.id),
             func.coalesce(func.sum(_um_se_ignorado()), 0),
             func.coalesce(func.sum(_um_se_lido_e_ativo()), 0),
+            func.coalesce(func.sum(_caracteres_se_ativo()), 0),
         )
         .outerjoin(Capitulo, Capitulo.livro_id == Livro.id)
         .group_by(Livro.id)
@@ -140,8 +141,9 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
             total_de_capitulos=total,
             capitulos_ignorados=ignorados,
             capitulos_lidos=lidos,
+            total_de_caracteres=caracteres,
         )
-        for livro, total, ignorados, lidos in linhas
+        for livro, total, ignorados, lidos, caracteres in linhas
     ]
 
 
@@ -477,6 +479,11 @@ def _exigir_perfil(sessao: Session, perfil_id: int) -> None:
         )
 
 
+def _caracteres_se_ativo():
+    """Expressão SQL: o tamanho do texto do capítulo se ele **não** está arquivado, e 0 se está (o total do livro, para o tempo de leitura)."""
+    return case((Capitulo.ignorado.is_(False), func.length(Capitulo.texto)), else_=0).cast(Integer)
+
+
 def _um_se_lido_e_ativo():
     """Expressão SQL que vale 1 para capítulo **lido e não arquivado** (o que conta no progresso do livro, LE6) e 0 para os outros."""
     return case(((Capitulo.lido_em.is_not(None)) & (Capitulo.ignorado.is_(False)), 1), else_=0).cast(Integer)
@@ -507,11 +514,12 @@ def _campos_do_livro(livro: Livro) -> dict:
 
 def _resumo_do_livro(sessao: Session, livro: Livro) -> LivroResumo:
     """Monta o resumo de um livro, contando os capítulos no banco."""
-    total, ignorados, lidos = sessao.execute(
+    total, ignorados, lidos, caracteres = sessao.execute(
         select(
             func.count(Capitulo.id),
             func.coalesce(func.sum(_um_se_ignorado()), 0),
             func.coalesce(func.sum(_um_se_lido_e_ativo()), 0),
+            func.coalesce(func.sum(_caracteres_se_ativo()), 0),
         )
         .where(Capitulo.livro_id == livro.id)
     ).one()
@@ -521,6 +529,7 @@ def _resumo_do_livro(sessao: Session, livro: Livro) -> LivroResumo:
         total_de_capitulos=total,
         capitulos_ignorados=ignorados,
         capitulos_lidos=lidos,
+        total_de_caracteres=caracteres,
     )
 
 
@@ -600,6 +609,7 @@ def _detalhe_do_livro(sessao: Session, livro: Livro) -> LivroDetalhe:
         total_de_capitulos=len(capitulos),
         capitulos_ignorados=sum(1 for c in capitulos if c.ignorado),
         capitulos_lidos=sum(1 for c in capitulos if c.lido and not c.ignorado),
+        total_de_caracteres=sum(c.tamanho_do_texto for c in capitulos if not c.ignorado),
         capitulos=capitulos,
     )
 

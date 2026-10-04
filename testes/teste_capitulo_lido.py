@@ -86,3 +86,15 @@ def teste_marcar_lido_sobe_a_revisao_do_livro_para_o_outro_aparelho_ver(cliente:
 
 def teste_capitulo_que_nao_existe_e_404(cliente: TestClient) -> None:
     assert _marcar(cliente, 999, True).status_code == 404
+
+
+def teste_total_de_caracteres_do_livro_so_conta_os_capitulos_ativos(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    livro = _livro_com_capitulos(cliente, capitulos=3)
+    ids = [c["id"] for c in livro["capitulos"]]
+    for capitulo_id, texto in zip(ids, ["a" * 100, "b" * 250, "c" * 1000]):
+        sessao_com_tabelas.get(Capitulo, capitulo_id).texto = texto
+    sessao_com_tabelas.commit()
+    cliente.patch(f"/capitulos/{ids[2]}", json={"ignorado": True})
+
+    assert cliente.get(f"/livros/{livro['id']}").json()["total_de_caracteres"] == 350
+    assert cliente.get("/livros").json()[0]["total_de_caracteres"] == 350
