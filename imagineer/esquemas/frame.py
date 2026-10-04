@@ -1,7 +1,8 @@
 """Contratos das rotas de frames e perfis de renderização (Etapas 6.4 e 6.5)."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from imagineer.ia.blocos_tecnicos import BLOCO_TECNICO_POR_CATEGORIA
 from imagineer.modelos import CategoriaEstilo, TipoDeFrame, TipoElemento
 
 
@@ -201,6 +202,22 @@ class PerfilRenderizacao(PerfilRenderizacaoBase):
 
     id: int
     nome: str
+    de_fabrica: bool = Field(
+        default=False,
+        description="Perfil que já vem pronto com o Imagineer (PF1): não pode ser editado nem apagado.",
+    )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description=(
+            "O bloco técnico fixo da categoria, em inglês, que o servidor cola ao fim de cada prompt (PF2). Só leitura: "
+            "serve para a tela mostrar o perfil em detalhes. Nulo quando o perfil não tem categoria."
+        )
+    )
+    @property
+    def bloco_tecnico(self) -> str | None:
+        if self.categoria_estilo is None:
+            return None
+        return BLOCO_TECNICO_POR_CATEGORIA[self.categoria_estilo]
 
 
 class PerfilRenderizacaoNovo(PerfilRenderizacaoBase):

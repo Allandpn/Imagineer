@@ -26,7 +26,9 @@ Content-Type: application/json
     });
 %}
 
-### Lista os perfis
+### Lista os perfis (PF1)
+# Os 10 de fábrica vêm prontos (de_fabrica = true), com o bloco_tecnico da categoria (só leitura).
+# Para escolher o estilo basta usar o id de um deles; PATCH e DELETE neles dão 403.
 GET {{baseUrl}}/perfis-renderizacao
 
 ### Abre um perfil
@@ -36,7 +38,7 @@ GET {{baseUrl}}/perfis-renderizacao/{{perfilId}}
 # Veja os ids em GET /perfis-renderizacao acima.
 GET {{baseUrl}}/perfis-renderizacao/1
 
-### Ajusta um perfil
+### Ajusta um perfil PRÓPRIO (um perfil de fábrica responde 403)
 PATCH {{baseUrl}}/perfis-renderizacao/{{perfilId}}
 Content-Type: application/json
 
@@ -211,5 +213,5 @@ POST {{baseUrl}}/lixeira/frames/{{frameId}}/restaurar
 ### Esvazia a lixeira de cenas e retratos
 # DELETE {{baseUrl}}/lixeira/frames
 
-### Remove o perfil — não apaga livros nem prompts, só desfaz a referência
+### Remove um perfil próprio — não apaga livros nem prompts, só desfaz a referência (perfil de fábrica: 403)
 # DELETE {{baseUrl}}/perfis-renderizacao/{{perfilId}}

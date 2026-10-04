@@ -65,8 +65,8 @@ def ajustar_perfil(
     ajuste: PerfilRenderizacaoAjuste,
     sessao: Session = Depends(obter_sessao),
 ) -> EsquemaPerfil:
-    """Muda o nome ou qualquer campo de estilo. Só o que vem é aplicado."""
-    perfil = _buscar_perfil(sessao, perfil_id)
+    """Muda o nome ou qualquer campo de estilo. Só o que vem é aplicado. Perfil de fábrica não muda (PF3)."""
+    perfil = _recusar_se_de_fabrica(_buscar_perfil(sessao, perfil_id), "editar")
     campos = ajuste.model_dump(exclude_unset=True)
     for campo, valor in campos.items():
         setattr(perfil, campo, valor)
@@ -88,8 +88,22 @@ def remover_perfil(perfil_id: int, sessao: Session = Depends(obter_sessao)) -> N
     gerados com ele continuam no histórico — é o ``ON DELETE SET NULL`` do item
     3.4c. Apagar um estilo não pode apagar trabalho de catalogação.
     """
-    sessao.delete(_buscar_perfil(sessao, perfil_id))
+    sessao.delete(_recusar_se_de_fabrica(_buscar_perfil(sessao, perfil_id), "apagar"))
     sessao.commit()
+
+
+def _recusar_se_de_fabrica(perfil: PerfilRenderizacao, verbo: str) -> PerfilRenderizacao:
+    """Os 10 perfis que já vêm com o Imagineer são travados (PF3): um texto de estilo mexido à mão quebraria a coerência
+    com o bloco técnico da categoria, que é justamente o que eles garantem. Quem quer variar cria um perfil próprio."""
+    if perfil.de_fabrica:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"O perfil {perfil.nome!r} já vem com o Imagineer e não pode ser {'editado' if verbo == 'editar' else 'apagado'}. "
+                "Crie um perfil próprio a partir dele."
+            ),
+        )
+    return perfil
 
 
 def _gravar(sessao: Session, nome: str) -> None:

@@ -1,6 +1,6 @@
 """Modelo do PerfilRenderizacao — o estilo visual a aplicar (item 3.4c)."""
 
-from sqlalchemy import Enum, String, Text
+from sqlalchemy import Boolean, Enum, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
@@ -61,6 +61,10 @@ class PerfilRenderizacao(Base):
     Com ela, o prompt ganha o **bloco técnico fixo** da categoria, colado ao fim por código
     (`imagineer/ia/blocos_tecnicos.py`). Nula, o perfil funciona como antes, sem bloco.
     """
+
+    de_fabrica: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    """Verdadeiro nos 10 perfis que já vêm prontos (PF1): são **travados** — a API recusa editar e apagar (PF3).
+    Os perfis criados pela pessoa são falsos."""
 
     def __repr__(self) -> str:
         return f"<PerfilRenderizacao id={self.id} nome={self.nome!r}>"
