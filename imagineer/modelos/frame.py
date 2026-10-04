@@ -122,6 +122,10 @@ class Frame(Base):
     apagado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     """Quando o frame foi para a **lixeira** (LT3); nulo = ativo. Some do capítulo, dos artefatos e da galeria; leva os prompts e as imagens."""
 
+    apagado_com_elemento_id: Mapped[int | None] = mapped_column(index=True)
+    """Quando um **retrato** foi para a lixeira **junto com o elemento** dele (LT4): o id do elemento. Restaurar o elemento os traz de volta;
+    eles não aparecem sozinhos na lixeira de cenas. Sem chave estrangeira, de propósito."""
+
     sugestao_de_cena_antes_id: Mapped[int | None] = mapped_column()
     """De qual ``SugestaoDeCena`` este frame era a confirmação quando foi para a lixeira (sem chave estrangeira, de propósito): restaurar
     o frame a **religa**, se ela ainda existe e continua sem frame (LT3)."""

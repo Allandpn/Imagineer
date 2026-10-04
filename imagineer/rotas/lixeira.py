@@ -9,16 +9,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
-from imagineer.esquemas.lixeira import FrameNaLixeira, FramesDaLixeira, ImagemNaLixeira, LivroNaLixeira, LivrosDaLixeira, Lixeira, LixeiraEsvaziada
-from imagineer.modelos import Capitulo, Frame, Imagem, Livro, TipoDeFrame
+from imagineer.esquemas.lixeira import ElementoNaLixeira, ElementosDaLixeira, FrameNaLixeira, FramesDaLixeira, ImagemNaLixeira, LivroNaLixeira, LivrosDaLixeira, Lixeira, LixeiraEsvaziada
+from imagineer.modelos import Capitulo, Elemento, Frame, Imagem, Livro, TipoDeFrame
 from imagineer.servicos.imagens_reduzidas import orientacao_de
 from imagineer.servicos.lixeira import (
     apagar_de_vez,
+    apagar_elemento_de_vez,
     apagar_frame_de_vez,
     apagar_livro_de_vez,
+    imagens_do_elemento,
     imagens_do_frame,
     imagens_do_livro,
+    restaurar_elemento,
     restaurar_frame,
+    retratos_que_foram_com_o_elemento,
     tamanho_da_imagem,
 )
 
@@ -163,7 +167,8 @@ def esvaziar_livros(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada
 def _frame_na_lixeira(sessao: Session, frame_id: int) -> Frame:
     """O frame, desde que esteja na lixeira; senão 404 (LT1)."""
     frame = sessao.get(Frame, frame_id)
-    if frame is None or frame.apagado_em is None:
+    # Um retrato que foi junto com o elemento volta com ele (LT4): não se restaura nem se apaga sozinho.
+    if frame is None or frame.apagado_em is None or frame.apagado_com_elemento_id is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não há frame com id {frame_id} na lixeira.")
     return frame
 
@@ -198,7 +203,7 @@ def _frames_da_lixeira(sessao: Session) -> list[Frame]:
             select(Frame)
             .join(Capitulo, Capitulo.id == Frame.capitulo_id)
             .join(Livro, Livro.id == Capitulo.livro_id)
-            .where(Frame.apagado_em.is_not(None), Livro.apagado_em.is_(None))
+            .where(Frame.apagado_em.is_not(None), Frame.apagado_com_elemento_id.is_(None), Livro.apagado_em.is_(None))
             .order_by(Frame.apagado_em.desc(), Frame.id.desc())
         )
     )
@@ -235,3 +240,80 @@ def esvaziar_frames(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada
     liberados = sum(apagar_frame_de_vez(sessao, frame) for frame in frames)
     sessao.commit()
     return LixeiraEsvaziada(removidas=len(frames), liberados_em_bytes=liberados)
+
+
+# --------------------------------------------------------------------------- #
+# Elementos (LT4)
+# --------------------------------------------------------------------------- #
+
+
+def _elemento_na_lixeira(sessao: Session, elemento_id: int) -> Elemento:
+    """O elemento, desde que esteja na lixeira; senão 404 (LT1)."""
+    elemento = sessao.get(Elemento, elemento_id)
+    if elemento is None or elemento.apagado_em is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não há elemento com id {elemento_id} na lixeira.")
+    return elemento
+
+
+def _descrever_elemento(sessao: Session, elemento: Elemento) -> ElementoNaLixeira:
+    retratos = retratos_que_foram_com_o_elemento(sessao, elemento)
+    imagens = imagens_do_elemento(sessao, elemento)
+    ativas = [i for i in imagens if i.apagada_em is None]
+    return ElementoNaLixeira(
+        id=elemento.id,
+        nome=elemento.nome,
+        tipo=elemento.tipo.name,
+        livro_id=elemento.livro_id,
+        titulo_do_livro=elemento.livro.titulo,
+        apagado_em=elemento.apagado_em,
+        total_de_estados=len(elemento.estados),
+        total_de_retratos=len(retratos),
+        total_de_imagens=len(imagens),
+        tamanho_em_bytes=sum(tamanho_da_imagem(i) for i in imagens),
+        imagem_id=max((i.id for i in ativas), default=None),
+    )
+
+
+def _elementos_da_lixeira(sessao: Session) -> list[Elemento]:
+    """Os elementos na lixeira, do mais recentemente apagado ao mais antigo, **sem os de um livro que também está na lixeira**."""
+    return list(
+        sessao.scalars(
+            select(Elemento)
+            .join(Livro, Livro.id == Elemento.livro_id)
+            .where(Elemento.apagado_em.is_not(None), Livro.apagado_em.is_(None))
+            .order_by(Elemento.apagado_em.desc(), Elemento.id.desc())
+        )
+    )
+
+
+@rotas.get("/elementos", response_model=ElementosDaLixeira, summary="Os elementos da lixeira")
+def listar_elementos_da_lixeira(sessao: Session = Depends(obter_sessao)) -> ElementosDaLixeira:
+    """Do apagado mais recentemente para o mais antigo, com o livro e o que cada um leva junto (LT4)."""
+    descritos = [_descrever_elemento(sessao, elemento) for elemento in _elementos_da_lixeira(sessao)]
+    return ElementosDaLixeira(elementos=descritos, total_em_bytes=sum(d.tamanho_em_bytes for d in descritos))
+
+
+@rotas.post("/elementos/{elemento_id}/restaurar", response_model=ElementoNaLixeira, summary="Tira o elemento da lixeira")
+def restaurar_o_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao)) -> ElementoNaLixeira:
+    """O elemento volta ao livro com estados, identidade e retratos; as sugestões que o citavam são religadas, se ainda estão sem elemento."""
+    elemento = _elemento_na_lixeira(sessao, elemento_id)
+    descricao = _descrever_elemento(sessao, elemento)
+    restaurar_elemento(sessao, elemento)
+    sessao.commit()
+    return descricao
+
+
+@rotas.delete("/elementos/{elemento_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Apaga de vez um elemento da lixeira")
+def apagar_o_elemento_de_vez(elemento_id: int, sessao: Session = Depends(obter_sessao)) -> None:
+    """Remove o elemento, os estados, a identidade, os retratos que foram com ele e as imagens (com os arquivos). **Não tem volta.**"""
+    apagar_elemento_de_vez(sessao, _elemento_na_lixeira(sessao, elemento_id))
+    sessao.commit()
+
+
+@rotas.delete("/elementos", response_model=LixeiraEsvaziada, summary="Esvazia a lixeira de elementos")
+def esvaziar_elementos(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada:
+    """Apaga de vez **todos** os elementos da lixeira (os de livros na lixeira ficam, saem com o livro). Nada disso roda sozinho (LX6)."""
+    elementos = _elementos_da_lixeira(sessao)
+    liberados = sum(apagar_elemento_de_vez(sessao, elemento) for elemento in elementos)
+    sessao.commit()
+    return LixeiraEsvaziada(removidas=len(elementos), liberados_em_bytes=liberados)

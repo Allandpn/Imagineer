@@ -539,6 +539,16 @@ def _estados_do_livro(
             detail=f"Não existem estados com os ids {ausentes}.",
         )
 
+    na_lixeira = sorted(
+        sessao.scalars(
+            select(EstadoElemento.id)
+            .join(Elemento, Elemento.id == EstadoElemento.elemento_id)
+            .where(EstadoElemento.id.in_(pedidos), Elemento.apagado_em.is_not(None))
+        )
+    )
+    if na_lixeira:  # LT4: um elemento na lixeira não existe para o resto do sistema
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existem estados com os ids {na_lixeira}.")
+
     livros_por_estado = dict(
         sessao.execute(
             select(EstadoElemento.id, Elemento.livro_id)
@@ -615,7 +625,7 @@ def _detalhe(sessao: Session, frame: Frame) -> FrameDetalhe:
             frames_estados_elemento,
             frames_estados_elemento.c.estado_elemento_id == EstadoElemento.id,
         )
-        .where(frames_estados_elemento.c.frame_id == frame.id)
+        .where(frames_estados_elemento.c.frame_id == frame.id, Elemento.apagado_em.is_(None))
         .order_by(Elemento.tipo, Elemento.nome)
     ).all()
 

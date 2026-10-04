@@ -54,7 +54,7 @@ def _consulta_do_estado_vigente(livro_id: int, ordem_limite: int | None) -> Sele
         .label("posicao")
     )
 
-    filtros = [Elemento.livro_id == livro_id]
+    filtros = [Elemento.livro_id == livro_id, Elemento.apagado_em.is_(None)]
     if ordem_limite is not None:
         filtros.append(Capitulo.ordem <= ordem_limite)
 

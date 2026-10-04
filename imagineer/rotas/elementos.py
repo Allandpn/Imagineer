@@ -51,6 +51,7 @@ from imagineer.rotas._comum import (
 )
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.imagens_reduzidas import orientacao_de
+from imagineer.servicos.lixeira import mover_elemento_para_a_lixeira
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Elementos"])
 rotas = APIRouter(prefix="/elementos", tags=["Elementos"])
@@ -263,8 +264,14 @@ def ajustar_elemento(
     summary="Remove um elemento",
 )
 def remover_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao)) -> None:
-    """Apaga o elemento e todos os seus estados."""
-    sessao.delete(_buscar_elemento(sessao, elemento_id))
+    """Move o elemento **para a lixeira** (LT4), com os estados, a identidade e os retratos dele; nada é apagado. De novo, sem erro.
+
+    As sugestões que o citavam voltam a ser pendentes. Só "apagar de vez", na lixeira, remove tudo (com os arquivos das imagens).
+    """
+    elemento = sessao.get(Elemento, elemento_id)
+    if elemento is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe elemento com id {elemento_id}.")
+    mover_elemento_para_a_lixeira(sessao, elemento)
     sessao.commit()
 
 
@@ -604,7 +611,7 @@ def _montar_resumos(
     elementos, os estados vigentes e as contagens — em vez de uma consulta por
     elemento.
     """
-    filtros = [Elemento.livro_id == livro_id]
+    filtros = [Elemento.livro_id == livro_id, Elemento.apagado_em.is_(None)]
     if tipo is not None:
         filtros.append(Elemento.tipo == tipo)
 
@@ -797,6 +804,11 @@ def _conflito_de_elemento(
 
         if existente is None:
             return f"Não foi possível gravar o elemento {nome!r}."
+        if existente.apagado_em is not None:  # LT4: o nome continua ocupado enquanto ele está na lixeira
+            return (
+                f"Já existe um elemento do tipo {tipo.name} chamado {nome!r} neste livro, mas ele está na lixeira "
+                f"(id {existente.id}). Restaure-o ou apague-o de vez."
+            )
         return (
             f"Já existe um elemento do tipo {tipo.name} chamado {nome!r} neste livro "
             f"(id {existente.id})."

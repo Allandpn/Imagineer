@@ -188,8 +188,20 @@ GET {{baseUrl}}/capitulos/3/estados-vigentes
 #   "destino_id": 6
 # }
 
-### Remove o elemento e todos os seus estados
+### Move o elemento para a lixeira (LT4) - leva estados, identidade e retratos; as sugestoes que o citavam voltam a ser pendentes
 # DELETE {{baseUrl}}/elementos/{{elementoId}}
+
+### Os elementos da lixeira, com estados, retratos, imagens e espaco
+GET {{baseUrl}}/lixeira/elementos
+
+### Tira o elemento da lixeira (religa as sugestoes, traz os retratos)
+POST {{baseUrl}}/lixeira/elementos/{{elementoId}}/restaurar
+
+### Apaga de vez um elemento da lixeira (estados, retratos e arquivos das imagens). Nao tem volta
+# DELETE {{baseUrl}}/lixeira/elementos/{{elementoId}}
+
+### Esvazia a lixeira de elementos
+# DELETE {{baseUrl}}/lixeira/elementos
 
 ### As imagens e as cenas do elemento, para a ficha (item 7.5b, FI1 a FI3)
 # imagens: as dos retratos dele (mais recentes primeiro), com o capitulo e a ancora marcada.

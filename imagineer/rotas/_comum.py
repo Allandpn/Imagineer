@@ -56,11 +56,19 @@ def buscar_capitulo(sessao: Session, capitulo_id: int) -> Capitulo:
 
 
 def buscar_elemento(sessao: Session, elemento_id: int) -> Elemento:
-    return obter_ou_404(sessao, Elemento, elemento_id, "elemento")
+    """O elemento, **a não ser que esteja na lixeira** (LT4)."""
+    elemento = obter_ou_404(sessao, Elemento, elemento_id, "elemento")
+    if elemento.apagado_em is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe elemento com id {elemento_id}.")
+    return elemento
 
 
 def buscar_estado(sessao: Session, estado_id: int) -> EstadoElemento:
-    return obter_ou_404(sessao, EstadoElemento, estado_id, "estado")
+    """O estado, **a não ser que o elemento dele esteja na lixeira** (LT4)."""
+    estado = obter_ou_404(sessao, EstadoElemento, estado_id, "estado")
+    if estado.elemento.apagado_em is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe estado com id {estado_id}.")
+    return estado
 
 
 def buscar_frame(sessao: Session, frame_id: int) -> Frame:
@@ -92,4 +100,7 @@ def buscar_sugestao_de_elemento(sessao: Session, sugestao_id: int) -> SugestaoDe
 
 
 def buscar_acrescimo(sessao: Session, acrescimo_id: int) -> HistoricoIdentidadeElemento:
-    return obter_ou_404(sessao, HistoricoIdentidadeElemento, acrescimo_id, "acréscimo de identidade")
+    acrescimo = obter_ou_404(sessao, HistoricoIdentidadeElemento, acrescimo_id, "acréscimo de identidade")
+    if acrescimo.elemento.apagado_em is not None:  # LT4
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe acréscimo de identidade com id {acrescimo_id}.")
+    return acrescimo

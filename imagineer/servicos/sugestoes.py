@@ -272,7 +272,7 @@ def formatar_elementos_conhecidos(sessao: Session, capitulo: Capitulo) -> list[s
     não depende desta lista.
     """
     elementos = list(
-        sessao.scalars(select(Elemento).where(Elemento.livro_id == capitulo.livro_id))
+        sessao.scalars(select(Elemento).where(Elemento.livro_id == capitulo.livro_id, Elemento.apagado_em.is_(None)))
     )
     vigentes = estado_vigente_por_elemento(sessao, capitulo.livro_id, capitulo.ordem - 1)
 
@@ -323,7 +323,7 @@ def elementos_por_chave_normalizada(
     sessao: Session, livro_id: int
 ) -> dict[tuple[TipoElemento, str], int]:
     """Mapeia (tipo, nome normalizado) -> id, para casar sugestões da IA."""
-    elementos = sessao.scalars(select(Elemento).where(Elemento.livro_id == livro_id))
+    elementos = sessao.scalars(select(Elemento).where(Elemento.livro_id == livro_id, Elemento.apagado_em.is_(None)))
     return {
         chave_normalizada(elemento.tipo, elemento.nome): elemento.id
         for elemento in elementos

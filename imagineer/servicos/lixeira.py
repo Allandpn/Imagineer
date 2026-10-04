@@ -5,7 +5,18 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from imagineer.modelos import Capitulo, Elemento, EstadoElemento, Frame, Imagem, Livro, Prompt, SugestaoDeCena
+from imagineer.modelos import (
+    Capitulo,
+    Elemento,
+    EstadoElemento,
+    Frame,
+    Imagem,
+    Livro,
+    Prompt,
+    SugestaoDeCena,
+    SugestaoDeElemento,
+    TipoDeFrame,
+)
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
 from imagineer.servicos.imagens_reduzidas import remover_derivadas
 
@@ -114,3 +125,68 @@ def apagar_frame_de_vez(sessao: Session, frame: Frame) -> int:
     sessao.flush()
     return liberados
 
+
+# --------------------------------------------------------------------------- #
+# Elementos (LT4)
+# --------------------------------------------------------------------------- #
+
+
+def retratos_do_elemento(sessao: Session, elemento: Elemento) -> list[Frame]:
+    """Os retratos do elemento (frames ``PERSONAGEM`` com ele como **único** estado), ativos e na lixeira."""
+    ids_dos_estados = {estado.id for estado in elemento.estados}
+    if not ids_dos_estados:
+        return []
+    frames = sessao.scalars(
+        select(Frame).where(Frame.tipo == TipoDeFrame.PERSONAGEM).join(Frame.estados_elemento).where(EstadoElemento.id.in_(ids_dos_estados))
+    ).unique()
+    return [frame for frame in frames if len(frame.estados_elemento) == 1]
+
+
+def mover_elemento_para_a_lixeira(sessao: Session, elemento: Elemento) -> None:
+    """Marca o elemento como apagado (LT4). **As sugestões que o citavam voltam a ser pendentes**, lembrando de qual elemento eram, e
+    **os retratos vão junto** (marcados com este elemento, para voltarem juntos). Já estando na lixeira, não faz nada. Quem chama faz
+    o ``commit``."""
+    if elemento.apagado_em is not None:
+        return
+    elemento.apagado_em = datetime.now(timezone.utc)
+    for sugestao in sessao.scalars(select(SugestaoDeElemento).where(SugestaoDeElemento.elemento_id == elemento.id)):
+        sugestao.elemento_antes_id = elemento.id
+        sugestao.elemento_id = None
+    for frame in retratos_do_elemento(sessao, elemento):
+        if frame.apagado_em is None:
+            mover_frame_para_a_lixeira(sessao, frame)
+            frame.apagado_com_elemento_id = elemento.id
+
+
+def restaurar_elemento(sessao: Session, elemento: Elemento) -> None:
+    """Tira o elemento da lixeira, **religa** as sugestões que continuam sem elemento (e não foram descartadas) e traz de volta os
+    retratos que foram com ele."""
+    elemento.apagado_em = None
+    for sugestao in sessao.scalars(select(SugestaoDeElemento).where(SugestaoDeElemento.elemento_antes_id == elemento.id)):
+        if sugestao.elemento_id is None and not sugestao.descartada:
+            sugestao.elemento_id = elemento.id
+        sugestao.elemento_antes_id = None
+    for frame in sessao.scalars(select(Frame).where(Frame.apagado_com_elemento_id == elemento.id)):
+        restaurar_frame(sessao, frame)
+        frame.apagado_com_elemento_id = None
+
+
+def retratos_que_foram_com_o_elemento(sessao: Session, elemento: Elemento) -> list[Frame]:
+    """Os retratos que foram para a lixeira junto com o elemento."""
+    return list(sessao.scalars(select(Frame).where(Frame.apagado_com_elemento_id == elemento.id)))
+
+
+def imagens_do_elemento(sessao: Session, elemento: Elemento) -> list[Imagem]:
+    """As imagens dos retratos que foram com o elemento (o que sai do disco ao apagar de vez)."""
+    return [imagem for frame in retratos_que_foram_com_o_elemento(sessao, elemento) for imagem in imagens_do_frame(frame)]
+
+
+def apagar_elemento_de_vez(sessao: Session, elemento: Elemento) -> int:
+    """Remove o elemento, os estados, a identidade e os retratos que foram com ele, **com os arquivos das imagens**. Devolve os bytes
+    liberados. Quem chama faz o ``commit``."""
+    liberados = sum(apagar_frame_de_vez(sessao, frame) for frame in retratos_que_foram_com_o_elemento(sessao, elemento))
+    for sugestao in sessao.scalars(select(SugestaoDeElemento).where(SugestaoDeElemento.elemento_antes_id == elemento.id)):
+        sugestao.elemento_antes_id = None
+    sessao.delete(elemento)
+    sessao.flush()
+    return liberados

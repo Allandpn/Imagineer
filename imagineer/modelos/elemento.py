@@ -120,6 +120,10 @@ class Elemento(Base):
     reserva quando o Estado usado num Frame não tem âncora própria (item 4.5).
     """
 
+    apagado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    """Quando o elemento foi para a **lixeira** (LT4); nulo = ativo. Some do livro; leva estados, identidade e retratos. O nome continua
+    ocupado (a unicidade de livro, tipo e nome vale também para ele)."""
+
     livro: Mapped["Livro"] = relationship()  # noqa: F821
 
     imagem_ancora_padrao: Mapped["Imagem | None"] = relationship()  # noqa: F821

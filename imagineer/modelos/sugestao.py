@@ -95,6 +95,10 @@ class SugestaoDeElemento(Base):
     """O Elemento real a que esta sugestão corresponde — nulo até confirmar,
     automaticamente (nome normalizado casando) ou manualmente pelo usuário."""
 
+    elemento_antes_id: Mapped[int | None] = mapped_column()
+    """De qual ``Elemento`` esta sugestão era a confirmação quando ele foi para a **lixeira** (sem chave estrangeira, de propósito):
+    restaurar o elemento a **religa**, se ela continua sem elemento (LT4)."""
+
     casamento_automatico: Mapped[bool] = mapped_column(Boolean, server_default=false())
     """``True`` quando ``elemento_id`` veio só do casamento automático por
     nome (item 6.7), nunca revisado por uma pessoa. Vira ``False`` quando o

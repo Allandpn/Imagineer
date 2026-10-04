@@ -230,7 +230,8 @@ def elementos_por_capitulo(livro_id: int, sessao: Session = Depends(obter_sessao
             return elementos[elemento.id]
 
         for estado in sessao.scalars(select(EstadoElemento).where(EstadoElemento.capitulo_id == capitulo.id).order_by(EstadoElemento.id)):
-            entrada(estado.elemento)
+            if estado.elemento.apagado_em is None:  # na lixeira (LT4)
+                entrada(estado.elemento)
         frames = sessao.scalars(select(Frame).where(Frame.capitulo_id == capitulo.id, Frame.tipo == TipoDeFrame.PERSONAGEM, Frame.apagado_em.is_(None))).all()
         for frame in frames:
             if len(frame.estados_elemento) != 1:

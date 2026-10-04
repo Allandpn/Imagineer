@@ -238,7 +238,7 @@ def _candidatos_a_vincular(sessao: Session, capitulo, frame: Frame | None) -> El
     estados_do_capitulo = sessao.scalars(
         select(EstadoElemento)
         .join(Elemento, Elemento.id == EstadoElemento.elemento_id)
-        .where(EstadoElemento.capitulo_id == capitulo.id, Elemento.livro_id == livro_id)
+        .where(EstadoElemento.capitulo_id == capitulo.id, Elemento.livro_id == livro_id, Elemento.apagado_em.is_(None))
         .order_by(EstadoElemento.id)
     )
     for estado in estados_do_capitulo:
@@ -249,7 +249,7 @@ def _candidatos_a_vincular(sessao: Session, capitulo, frame: Frame | None) -> El
 
     # VM7: os demais elementos do livro (sem estado neste capítulo), com o estado vigente até aqui ou, se só aparecem depois, o primeiro.
     de_outros_capitulos: dict[int, ElementoParaVincular] = {}
-    elementos_do_livro = sessao.scalars(select(Elemento).where(Elemento.livro_id == livro_id).order_by(Elemento.id))
+    elementos_do_livro = sessao.scalars(select(Elemento).where(Elemento.livro_id == livro_id, Elemento.apagado_em.is_(None)).order_by(Elemento.id))
     for elemento in elementos_do_livro:
         if elemento.id in identificados or elemento.id in outros or not pode_aparecer(elemento):
             continue
