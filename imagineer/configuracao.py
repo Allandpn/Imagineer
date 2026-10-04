@@ -56,6 +56,10 @@ class Configuracoes(BaseSettings):
     diretorio_imagens: str = "/dados/imagens"
     """Pasta onde as imagens do catálogo são gravadas (nunca no banco — só a referência)."""
 
+    diretorio_dicionarios: str = "dictdata"
+    """Pasta com os dicionários StarDict (RL19). Ausente ou vazia não é erro: a consulta devolve vazio. No Docker, o
+    ``docker-compose.yml`` a monta somente leitura em ``/dicionarios``."""
+
 
 @lru_cache
 def obter_configuracoes() -> Configuracoes:

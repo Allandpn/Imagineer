@@ -19,6 +19,9 @@ __pycache__/
 dados/
 *.7z
 
+# Os dicionários (centenas de MB) entram por volume, não pela imagem
+dictdata/
+
 # Só serve a quem desenvolve: testes, coleção .http e documentação
 testes/
 http/

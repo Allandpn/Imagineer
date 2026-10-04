@@ -1,0 +1,12 @@
+### Os dicionarios que ha na pasta do servidor (RL19): id, nome, idioma das entradas, palavras e para quais idiomas de livro valem
+GET {{baseUrl}}/dicionario/dicionarios
+
+### Procura uma palavra. "idioma" e o do livro (pt, pt-BR, en-US...) e decide quais dicionarios valem;
+# "todos=true" consulta todos, ignorando o idioma. Sem nada achado, "resultados" vem vazio (nao e erro).
+GET {{baseUrl}}/dicionario/verbete?palavra=casa&idioma=pt
+
+### O mesmo, em todos os dicionarios
+GET {{baseUrl}}/dicionario/verbete?palavra=casa&idioma=pt&todos=true
+
+### Em ingles: se a forma flexionada nao existe, tenta a base (running -> run)
+GET {{baseUrl}}/dicionario/verbete?palavra=running&idioma=en

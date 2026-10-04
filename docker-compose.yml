@@ -17,6 +17,8 @@ services:
       # ("db"), não por localhost. Definir aqui evita depender do .env estar certo.
       URL_BANCO: postgresql+psycopg://imagineer:${SENHA_BANCO:-senha_local}@db:5432/imagineer
       DIRETORIO_IMAGENS: /dados/imagens
+      # Os dicionários StarDict (RL19) ficam numa pasta do servidor, fora do git e fora da imagem; aqui ela é montada abaixo.
+      DIRETORIO_DICIONARIOS: /dicionarios
     ports:
       # A porta de FORA é configurável (PORTA_API no .env; padrão 8000): num Raspberry Pi que já
       # roda outros sistemas, a 8000 pode estar ocupada. A de dentro do container é sempre 8000.
@@ -26,6 +28,9 @@ services:
       # banco (o banco guarda só a referência). Por ser um volume, sobrevivem
       # a rebuilds e remoções do container.
       - imagens:/dados/imagens
+      # A pasta dictdata/ (centenas de MB) entra somente leitura: o servidor só lê os dicionários. Se a pasta não existir,
+      # o Docker cria uma vazia e a consulta de dicionário apenas devolve "nada encontrado".
+      - ./dictdata:/dicionarios:ro
     depends_on:
       db:
         # Espera o banco estar realmente aceitando conexões, não apenas o
