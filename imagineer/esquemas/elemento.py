@@ -143,6 +143,22 @@ class ArtefatosDoCapitulo(BaseModel):
     artefatos: list[Artefato]
 
 
+class ArtefatosDeUmCapitulo(BaseModel):
+    """Os artefatos de **um capítulo** dentro da resposta de um livro (LY7, LY8)."""
+
+    capitulo_id: int
+    ordem: int
+    titulo: str | None = None
+    artefatos: list[Artefato]
+
+
+class ArtefatosDoLivro(BaseModel):
+    """Os artefatos de um livro inteiro, por capítulo, na ordem do livro (item 7.5b, LY7 e LY8). Só entram capítulos que têm algum."""
+
+    total: int
+    capitulos: list[ArtefatosDeUmCapitulo]
+
+
 class MarcadoresDoCapitulo(BaseModel):
     """**Obsoleto:** a resposta de ``GET /capitulos/{id}/marcadores``, o nome antigo de ``/artefatos``.
 

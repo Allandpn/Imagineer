@@ -9,6 +9,10 @@ from sqlalchemy.orm import Session
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.frame import PosicaoManualDoArtefato, PosicaoManualNova
 from imagineer.esquemas.elemento import (
+    ArtefatosDeUmCapitulo,
+    ArtefatosDoLivro,
+    SituacaoDoArtefato,
+    TipoDeArtefato,
     ArtefatosDoCapitulo,
     CenaSugerida as CenaSugeridaResposta,
     ElementoCasado,
@@ -51,6 +55,42 @@ rotas_de_sugestao_cena = APIRouter(prefix="/sugestoes-cena", tags=["Sugestões"]
 
 #: O quanto da identidade do elemento casado vai na resposta de cada sugestão.
 LIMITE_DA_IDENTIDADE_NA_SUGESTAO = 300
+
+
+def _artefatos_do_livro(sessao: Session, livro_id: int, aceita) -> ArtefatosDoLivro:
+    """Os artefatos de cada capítulo **ativo** do livro que passam em ``aceita(artefato)``, na ordem do livro (LY7, LY8)."""
+    capitulos = sessao.scalars(
+        select(Capitulo).where(Capitulo.livro_id == livro_id, Capitulo.ignorado.is_(False)).order_by(Capitulo.ordem)
+    ).all()
+    grupos = []
+    for capitulo in capitulos:
+        escolhidos = [a for a in artefatos_do_capitulo(sessao, capitulo) if aceita(a)]
+        if escolhidos:
+            grupos.append(ArtefatosDeUmCapitulo(capitulo_id=capitulo.id, ordem=capitulo.ordem, titulo=capitulo.titulo, artefatos=escolhidos))
+    sessao.commit()  # grava as dimensões de imagens antigas, calculadas agora
+    return ArtefatosDoLivro(total=sum(len(g.artefatos) for g in grupos), capitulos=grupos)
+
+
+@rotas_de_livro.get(
+    "/{livro_id}/pendencias",
+    response_model=ArtefatosDoLivro,
+    summary="Todas as sugestões ainda não confirmadas do livro, por capítulo",
+)
+def ler_pendencias_do_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> ArtefatosDoLivro:
+    """A tela de Pendências (LY7): os artefatos com situação ``SUGERIDO`` (elementos e cenas) de cada capítulo ativo. **Só lê.**"""
+    _buscar_livro(sessao, livro_id)
+    return _artefatos_do_livro(sessao, livro_id, lambda a: a.situacao == SituacaoDoArtefato.SUGERIDO)
+
+
+@rotas_de_livro.get(
+    "/{livro_id}/cenas",
+    response_model=ArtefatosDoLivro,
+    summary="Todas as cenas do livro, por capítulo, em qualquer situação",
+)
+def ler_cenas_do_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> ArtefatosDoLivro:
+    """A tela de Cenas (LY8): os artefatos de tipo ``CENA`` (sugeridas, confirmadas, com prompt, ilustradas) de cada capítulo ativo. **Só lê.**"""
+    _buscar_livro(sessao, livro_id)
+    return _artefatos_do_livro(sessao, livro_id, lambda a: a.tipo == TipoDeArtefato.CENA)
 
 
 @rotas_de_livro.get(

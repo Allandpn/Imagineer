@@ -131,3 +131,9 @@ POST {{baseUrl}}/capitulos/999999/sugestoes
 ### Custos de IA do mes (CU4): total, parte estimada, e a quebra por provedor, operacao, livro e modelo; em dolares
 # Sem `mes`, vale o mes atual. fal.ai e Replicate nao informam o custo: entra o preco estimado da tabela (estimado).
 GET {{baseUrl}}/custos?mes=2026-10
+
+### Todas as sugestoes ainda nao confirmadas do livro, por capitulo (tela Pendencias, LY7)
+GET {{baseUrl}}/livros/{{livroId}}/pendencias
+
+### Todas as cenas do livro, por capitulo, em qualquer situacao (tela Cenas, LY8)
+GET {{baseUrl}}/livros/{{livroId}}/cenas
