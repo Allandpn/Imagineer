@@ -362,6 +362,7 @@ class ProvedorIA(ABC):
         descricao_do_elemento: str | None,
         estado_atual: str | None,
         modelo: str,
+        aparencia_anterior: str | None = None,
     ) -> EstadoSugerido:
         """A leitura profunda de UM elemento num capítulo — fase 2 do item 4.4.
 
@@ -378,7 +379,11 @@ class ProvedorIA(ABC):
                 de contexto.
             estado_atual: a descrição de aparência já registrada, se houver —
                 de contexto; o texto do capítulo tem precedência sobre ela.
+                **Nulo** quando o que há é só o rascunho de identidade (FD1).
             modelo: o identificador do modelo a usar.
+            aparencia_anterior: a "Aparência fixa" do estado anterior já lido
+                do mesmo elemento (FD2): os traços que não mudam, para
+                completar o que este capítulo não repete.
         """
 
     @abstractmethod

@@ -233,6 +233,11 @@ ferimentos, sujeira, humor — muda com a cena). Preserve a identidade já \
 registrada a menos que o texto diga explicitamente que ela mudou (idade que \
 avança, um ferimento permanente); atualize a parte situacional com o que este \
 capítulo mostra.
+- O pedido pode trazer "APARÊNCIA ESTABELECIDA ATÉ AQUI": os traços fixos que este \
+elemento já tinha em capítulos anteriores. Use-os para completar na "aparencia_fixa" o \
+que ESTE capítulo não repete (a cor do cabelo dita no primeiro capítulo continua valendo), \
+mas o texto deste capítulo vence se disser que algo mudou. Dela, nunca copie roupa, pose \
+ou humor.
 - Se o elemento pedido não aparecer de forma clara neste capítulo, ou se o \
 texto não descrever sua aparência, devolva o estado já registrado (nas três \
 partes acima), sem inventar nada novo e sem deduzir a partir do gênero ou tom do \
@@ -352,9 +357,9 @@ do "Onde está:", com os detalhes concretos que ele traz (materiais, objetos, o 
 atrás do sujeito), para que a imagem tenha imersão e o fundo seja o do livro, nunca um \
 fundo genérico ou neutro.
 6. Iluminação e atmosfera: fonte de luz (candlelight, golden hour, cool \
-moonlight, harsh neon) e o que há no ar (dust motes, mist, smoke) — derive isso \
-do horário/clima informados e do estilo pedido, não invente uma fonte que \
-contradiga o que foi dito.
+moonlight, harsh neon) e o que há no ar (dust motes, mist, smoke) — a **fonte de luz vem \
+sempre da cena** (horário, clima, o lugar e o que ela descreve); o perfil de estilo não \
+escolhe a fonte. Não invente uma fonte que contradiga o que foi dito.
 
 Depois dos blocos acima (a prosa da cena/sujeito), acrescente um bloco \
 FINAL e SEPARADO — não misture com a prosa, nem reescreva os campos numa \
@@ -365,7 +370,10 @@ campo se ele não vier no perfil informado). Isso é diferente dos blocos 1-6: \
 ali você tem liberdade criativa para traduzir o texto do capítulo em \
 imagem; aqui não — o perfil já é uma escolha técnica e deliberada do \
 usuário, e sua única função é traduzir para o inglês sem interpretar, \
-embelezar ou parafrasear.
+embelezar ou parafrasear. Se o "Lighting" do perfil citar uma fonte de luz que contradiz o \
+horário ou o lugar da cena, mantenha a tradução literal, mas escreva no bloco 6 só a fonte \
+da cena: o "Lighting" do perfil vale como convenção de renderização (contraste, \
+qualidade da sombra), não como fonte.
 
 Regras:
 - PROIBIDO usar adjetivos subjetivos de qualidade ou literários ("lindo", \
@@ -414,7 +422,8 @@ acrescentado à cena contribui com a **aparência** dele, e não muda o que a ce
 descrição da cena; o "Onde está:" dos elementos só preenche o que a cena não diz, e nunca \
 a contradiz. Num retrato, o "Onde está:" é o cenário: descreva o sujeito dentro dele, em \
 primeiro plano e com o ambiente reconhecível ao redor.
-- Incorpore o estilo, a iluminação e a paleta do perfil indicado.
+- Incorpore o estilo, a paleta e a **convenção de iluminação** do perfil indicado (contraste, \
+dureza da sombra, volume); a **fonte** da luz é a da cena.
 - **Gênero de cada pessoa presente, sempre que a identidade ou a aparência \
 informada permitir concluir com segurança**: deixe isso inequívoco no prompt \
 ("man", "woman", ou o termo que a informação sustentar — "young man", "elderly \
@@ -530,6 +539,13 @@ RULES:
 """
 
 TEMPERATURA_DA_TRADUCAO = 0.2
+
+TEMPERATURA_DE_FIDELIDADE = 0.2
+"""Extração, leitura profunda (fases 2 e 2b) e fundamentação (FD5): tarefas em que o modelo deve **ler e descrever o que o texto diz**, sem
+variar. O padrão dos provedores (~1,0) deixava o mesmo capítulo render descrições diferentes a cada leitura."""
+
+TEMPERATURA_DO_PROMPT = 0.4
+"""Montagem do prompt (FD5): é um texto corrido que ainda precisa de alguma liberdade de redação, mas dentro dos fatos recebidos."""
 """Baixa de propósito: suavizar é reescrever com o mínimo de mudança, não criar."""
 
 _DESCRICAO_DE_CATEGORIA = {
@@ -620,6 +636,11 @@ fisicamente visível (cor, luz, textura, traço) — nunca a emoção ou o tema 
 trás disso.
 - "artista_referencia" deve combinar com a categoria escolhida (não cite um \
 pintor a óleo clássico para a categoria QUADRINHOS, por exemplo).
+- "iluminacao" descreve só a **convenção de renderização** da luz (contraste, \
+dureza e profundidade das sombras, como a luz modela o volume), **nunca a fonte** \
+("luz de vela", "pôr do sol", "luar"): o perfil vale para o livro inteiro, e a fonte \
+de luz de cada cena vem do horário e do lugar dela. Uma fonte no perfil contradiria \
+as cenas que não combinam com ela.
 
 Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 
@@ -627,7 +648,7 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
   "reconheceu_a_obra": true,
   "estilo": "técnica e tom visual dentro da categoria escolhida, ex.: 'aquarela, traços soltos, sombras marcadas'",
   "artista_referencia": "um artista ou estilo artístico coerente com a categoria, ou nulo",
-  "iluminacao": "descrição curta, ex.: 'luz de vela, alto contraste'",
+  "iluminacao": "só a CONVENÇÃO de renderização da luz, ex.: 'alto contraste, sombras profundas e suaves, volume modelado pela luz'",
   "paleta": "cores predominantes, ex.: 'tons terrosos e cinza'",
   "formato": "uma palavra: retrato, paisagem ou quadrado",
   "categoria_estilo": "o identificador exato da categoria escolhida, ex.: 'PINTURA_A_OLEO'"
@@ -788,7 +809,7 @@ class ProvedorOpenRouter(ProvedorIA):
                 f"é um palpite dele, não um fato):\n{orientacao}"
             )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_EXTRACAO, pedido, operacao="extracao")
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_EXTRACAO, pedido, operacao="extracao", temperatura=TEMPERATURA_DE_FIDELIDADE)
         bruto = _extrair_json(resposta)
         if bruto is None:
             raise ErroDoProvedorIA(
@@ -809,17 +830,20 @@ class ProvedorOpenRouter(ProvedorIA):
         descricao_do_elemento: str | None,
         estado_atual: str | None,
         modelo: str,
+        aparencia_anterior: str | None = None,
     ) -> EstadoSugerido:
         """Pede ao modelo a aparência de UM elemento — fase 2 (item 4.4)."""
         pedido = (
             f"ELEMENTO A DESCREVER: {nome} ({tipo.name})\n"
             f"IDENTIDADE JÁ CONHECIDA: {descricao_do_elemento or '(nenhuma)'}\n"
+            f"APARÊNCIA ESTABELECIDA ATÉ AQUI (traços fixos de capítulos anteriores): "
+            f"{aparencia_anterior or '(nenhuma ainda)'}\n"
             f"ESTADO JÁ REGISTRADO (pode estar desatualizado): "
             f"{estado_atual or '(nenhum ainda)'}\n\n"
             f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_ESTADO, pedido, operacao="estado")
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_ESTADO, pedido, operacao="estado", temperatura=TEMPERATURA_DE_FIDELIDADE)
         return EstadoSugerido(descricao=_interpretar_estado(resposta), modelo=modelo)
 
     def sugerir_identidade(
@@ -837,7 +861,7 @@ class ProvedorOpenRouter(ProvedorIA):
             f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_IDENTIDADE, pedido, operacao="identidade")
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_IDENTIDADE, pedido, operacao="identidade", temperatura=TEMPERATURA_DE_FIDELIDADE)
         return IdentidadeSugerida(descricao=_interpretar_identidade(resposta), modelo=modelo)
 
     def fundamentar_frame(
@@ -864,7 +888,9 @@ class ProvedorOpenRouter(ProvedorIA):
             f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME, pedido, operacao="fundamentacao")
+        resposta = self._conversar(
+            modelo, _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME, pedido, operacao="fundamentacao", temperatura=TEMPERATURA_DE_FIDELIDADE
+        )
         return FrameFundamentado(
             contexto=_interpretar_contexto(resposta), modelo=modelo
         )
@@ -895,7 +921,7 @@ class ProvedorOpenRouter(ProvedorIA):
         if comentario_do_usuario:
             pedido += f"\n\nCOMENTÁRIO DO USUÁRIO (prioridade máxima):\n{comentario_do_usuario}"
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido, operacao="prompt")
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido, operacao="prompt", temperatura=TEMPERATURA_DO_PROMPT)
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
 
     def traduzir_prompt(self, texto: str, para: str, modelo: str) -> PromptMontado:

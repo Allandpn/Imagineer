@@ -5,6 +5,9 @@ fábrica já vem com o ``estilo``, a ``iluminacao`` e a ``paleta`` **escritos pa
 escolhe o bloco técnico em inglês (``imagineer/ia/blocos_tecnicos.py``) que o servidor cola ao fim do prompt. Como ninguém
 digita nada, o texto do perfil nunca contradiz o bloco (o problema do teste C de 04/10/2026).
 
+**A iluminação de um perfil é só convenção (FD4).** O perfil vale para o livro inteiro; a *fonte* da luz de cada cena (vela, meio-dia,
+luar) vem do horário e do lugar dela. Por isso o campo `iluminacao` descreve contraste, dureza da sombra e volume, e nunca a fonte.
+
 **Por que a função é idempotente e usa SQL "cru".** Ela é chamada pela migração (que não pode depender dos modelos de hoje:
 eles mudam, a migração é fotografia de um momento) e pelos testes (que criam as tabelas sem migração). Cria o que falta e
 **reescreve os textos** dos perfis de fábrica, que são travados (a API recusa editá-los) e por isso nunca foram mexidos à mão.
@@ -35,49 +38,49 @@ PERFIS_DE_FABRICA: tuple[PerfilDeFabrica, ...] = (
         nome="Fotorrealista cinematográfico",
         categoria=CategoriaEstilo.FOTORREALISTA_CINEMATOGRAFICO,
         estilo="still de cinema realista: fotografia em película com grão fino, profundidade de campo rasa e textura natural de pele e tecido",
-        iluminacao="luz motivada e direcional, contraste suave, queda de luz realista e leve névoa atmosférica",
+        iluminacao="contraste suave, sombras de transição gradual e volume modelado pela luz, com queda de luz realista",
         paleta="cores naturais e contidas, com correção de cor de filme: sombras levemente frias e tons de pele quentes",
     ),
     PerfilDeFabrica(
         nome="Pintura a óleo",
         categoria=CategoriaEstilo.PINTURA_A_OLEO,
         estilo="pintura a óleo clássica sobre tela: pinceladas grossas e visíveis, empasto com relevo de tinta e modelado em claro-escuro",
-        iluminacao="claro-escuro dramático, luz lateral quente e sombras profundas e translúcidas",
+        iluminacao="claro-escuro marcado, sombras profundas e translúcidas e volume modelado pela luz",
         paleta="pigmentos terrosos e quentes: ocre, siena queimada, verde-oliva, azul-acinzentado e toques de dourado",
     ),
     PerfilDeFabrica(
         nome="Aquarela",
         categoria=CategoriaEstilo.AQUARELA,
         estilo="aquarela sobre papel de textura visível: lavagens transparentes, bordas suaves que se diluem e áreas de papel em branco como luz",
-        iluminacao="luz suave e difusa, sem sombras duras; os brilhos são o próprio branco do papel",
+        iluminacao="contraste baixo, sombras leves e transparentes, sem bordas duras; os brilhos são o próprio branco do papel",
         paleta="pigmentos translúcidos e delicados, em lavagens claras: azul-cobalto, sépia, rosa-pálido e verde-musgo",
     ),
     PerfilDeFabrica(
         nome="Arte digital conceitual",
         categoria=CategoriaEstilo.ARTE_DIGITAL_CONCEITUAL,
         estilo="arte conceitual digital para jogos e cinema: pintura digital polida, silhueta clara e foco narrativo bem definido",
-        iluminacao="luz direcional dramática com um ponto focal forte e perspectiva atmosférica em camadas",
+        iluminacao="contraste dramático com um ponto focal forte, sombras de borda controlada e profundidade em camadas",
         paleta="harmonia de cores rica e controlada, com contraste entre uma cor dominante e uma de destaque",
     ),
     PerfilDeFabrica(
         nome="Quadrinhos",
         categoria=CategoriaEstilo.QUADRINHOS,
         estilo="ilustração de história em quadrinhos e graphic novel: contornos pretos de tinta de espessura variada e composição dinâmica",
-        iluminacao="luz recortada de alto contraste, com sombras em hachura ou em preto chapado",
+        iluminacao="alto contraste, com sombras recortadas em hachura ou em preto chapado",
         paleta="cores chapadas ou em retícula, poucas e fortes, com pretos marcantes",
     ),
     PerfilDeFabrica(
         nome="Cartoon e animação 2D",
         categoria=CategoriaEstilo.CARTOON_ANIMACAO,
         estilo="desenho animado 2D: formas simples e geométricas, contornos limpos e poses e proporções expressivas e exageradas",
-        iluminacao="sombreamento chapado e limpo, com poucos brilhos e fundos pintados simples",
+        iluminacao="sombreamento chapado e limpo, com poucos brilhos e sem degradês",
         paleta="cores vivas, saturadas e bem separadas entre personagem e fundo",
     ),
     PerfilDeFabrica(
         nome="Anime",
         categoria=CategoriaEstilo.ANIME,
         estilo="ilustração de anime de alta qualidade: contornos finos, sombreamento em cel-shading, olhos grandes e expressivos e cabelo em mechas definidas",
-        iluminacao="sombras de borda dura e chapadas, céus luminosos e leve brilho difuso (bloom) nas luzes",
+        iluminacao="sombras de borda dura e chapadas, com leve brilho difuso (bloom) nas luzes",
         paleta="paleta vibrante e saturada, com fundos pintados em detalhe",
     ),
     PerfilDeFabrica(
@@ -98,7 +101,7 @@ PERFIS_DE_FABRICA: tuple[PerfilDeFabrica, ...] = (
         nome="Animação 3D",
         categoria=CategoriaEstilo.ANIMACAO_3D,
         estilo="cena de longa-metragem de animação 3D estilizada: formas esculpidas e suaves, proporções levemente exageradas, olhos grandes e pele translúcida",
-        iluminacao="iluminação global suave, sombras macias e luz de contorno (rim light), com profundidade de campo rasa",
+        iluminacao="sombras macias e suaves, volume modelado por luz de contorno (rim light) e profundidade de campo rasa",
         paleta="cores ricas e saturadas, com acabamento polido de filme familiar",
     ),
 )

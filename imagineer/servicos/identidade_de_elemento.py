@@ -20,6 +20,11 @@ from sqlalchemy.orm import Session
 from imagineer.modelos import Capitulo, Elemento, HistoricoIdentidadeElemento
 
 
+LIMITE_DA_IDENTIDADE_NO_PROMPT = 300
+"""Quanto da identidade vigente vai à IA que fundamenta a cena e monta o prompt (FD3): a identidade cresce a cada capítulo, e para o
+prompt só importam gênero, papel e natureza, que vêm no começo."""
+
+
 def identidade_vigente(sessao: Session, elemento: Elemento, ordem_limite: int) -> str | None:
     """A identidade conhecida do elemento até (e incluindo) certo capítulo.
 

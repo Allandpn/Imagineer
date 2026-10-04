@@ -153,6 +153,7 @@ class ProvedorFalso(ProvedorIA):
         descricao_do_elemento: str | None,
         estado_atual: str | None,
         modelo: str,
+        aparencia_anterior: str | None = None,
     ) -> EstadoSugerido:
         self.chamadas_de_estado.append(
             {
@@ -161,6 +162,7 @@ class ProvedorFalso(ProvedorIA):
                 "nome": nome,
                 "descricao_do_elemento": descricao_do_elemento,
                 "estado_atual": estado_atual,
+                "aparencia_anterior": aparencia_anterior,
                 "modelo": modelo,
             }
         )

@@ -70,7 +70,8 @@ from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.uso_de_ia import coletando_o_custo, gasto_do_livro
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
-from imagineer.servicos.identidade_de_elemento import identidade_vigente
+from imagineer.servicos.aparencia_de_elemento import aparencia_fixa_anterior, e_rascunho_de_identidade
+from imagineer.servicos.identidade_de_elemento import LIMITE_DA_IDENTIDADE_NO_PROMPT, identidade_vigente, resumir_texto
 from imagineer.servicos.lixeira import mover_para_a_lixeira
 from imagineer.servicos.imagens_reduzidas import (
     TamanhoDeImagem,
@@ -316,12 +317,12 @@ def criar_prompt(
         contexto_do_livro = _fundamentar_se_necessario(sessao, provedor, frame, configuracao)
         resultado = provedor.montar_prompt(
             descricao_do_frame=_descricao_do_frame(frame),
-            elementos=_elementos_do_frame(frame),
+            elementos=_elementos_do_frame(sessao, frame),
             perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
             modelo=modelo_prompt,
             contexto_do_livro=contexto_do_livro,
             comentario_do_usuario=corpo.comentario,
-            elementos_vinculados=_elementos_vinculados(frame) or None,
+            elementos_vinculados=_elementos_vinculados(sessao, frame) or None,
         )
 
     prompt = Prompt(
@@ -670,9 +671,14 @@ def _fazer_leitura_profunda(
             texto_capitulo=capitulo_de_origem.texto,
             tipo=estado.elemento.tipo,
             nome=estado.elemento.nome,
-            descricao_do_elemento=estado.elemento.descricao,
-            estado_atual=estado.descricao,
+            # FD3: a identidade que o livro já revelou até este capítulo, e não só a inicial.
+            descricao_do_elemento=identidade_vigente(sessao, estado.elemento, capitulo_de_origem.ordem),
+            # FD1: o rascunho de identidade não é aparência: sem isto, "jovem nobre exilado" voltava como aparência quando o
+            # capítulo não descrevia a pessoa.
+            estado_atual=None if e_rascunho_de_identidade(sessao, estado) else estado.descricao,
             modelo=modelo,
+            # FD2: o que o elemento já tinha de fixo num capítulo anterior já lido.
+            aparencia_anterior=aparencia_fixa_anterior(sessao, estado),
         )
         estado.descricao = sugestao.descricao
         estado.confirmado_pela_leitura_profunda = True
@@ -772,7 +778,7 @@ def _fundamentar_se_necessario(
         horario=frame.horario,
         clima=frame.clima,
         humor=frame.humor,
-        participantes=_elementos_do_frame(frame),
+        participantes=_elementos_do_frame(sessao, frame),
         modelo=modelo,
     )
     frame.contexto_do_livro = fundamentado.contexto
@@ -838,12 +844,12 @@ def _descricao_do_frame(frame: Frame) -> str:
     return "\n".join(partes)
 
 
-def _elementos_vinculados(frame: Frame) -> list[str]:
+def _elementos_vinculados(sessao: Session, frame: Frame) -> list[str]:
     """As linhas "Nome (identidade): aparência" dos elementos **vinculados** ao sujeito de um retrato (V5)."""
-    return _linhas_de_estados(frame.estados_vinculados)
+    return _linhas_de_estados(sessao, frame.estados_vinculados, frame.capitulo.ordem)
 
 
-def _elementos_do_frame(frame: Frame) -> list[str]:
+def _elementos_do_frame(sessao: Session, frame: Frame) -> list[str]:
     """"Nome (identidade): aparência", para cada elemento que aparece no frame.
 
     A identidade (``Elemento.descricao``) entra entre parênteses quando existe
@@ -852,16 +858,21 @@ def _elementos_do_frame(frame: Frame) -> list[str]:
     só a leitura profunda de UM estado (``sugerir_estado``) recebia (item 4.4).
     Omitida quando o elemento não tem identidade registrada.
     """
-    return _linhas_de_estados(frame.estados_elemento)
+    return _linhas_de_estados(sessao, frame.estados_elemento, frame.capitulo.ordem)
 
 
-def _linhas_de_estados(estados) -> list[str]:
-    """"Nome (identidade): aparência" para cada estado, por tipo e nome."""
+def _linhas_de_estados(sessao: Session, estados, ordem_do_capitulo: int) -> list[str]:
+    """"Nome (identidade): aparência" para cada estado, por tipo e nome.
+
+    A identidade é a **vigente até o capítulo do frame** (FD3), e não só a inicial: o que o livro revelou depois (idade, gênero, origem)
+    chega ao prompt. Resumida, porque ela cresce a cada capítulo.
+    """
     partes = []
     for estado in sorted(estados, key=lambda e: (e.elemento.tipo.name, e.elemento.nome)):
         nome = estado.elemento.nome
-        if estado.elemento.descricao:
-            partes.append(f"{nome} ({estado.elemento.descricao}): {estado.descricao}")
+        identidade = resumir_texto(identidade_vigente(sessao, estado.elemento, ordem_do_capitulo), LIMITE_DA_IDENTIDADE_NO_PROMPT)
+        if identidade:
+            partes.append(f"{nome} ({identidade}): {estado.descricao}")
         else:
             partes.append(f"{nome}: {estado.descricao}")
     return partes
