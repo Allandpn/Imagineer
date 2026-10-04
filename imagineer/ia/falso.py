@@ -17,6 +17,7 @@ import io
 from PIL import Image
 
 from imagineer.ia.provedor import (
+    ModeloDeImagemDisponivel,
     ReferenciasParaGerar,
     CenaSugerida,
     ConteudoRecusado,
@@ -43,6 +44,12 @@ def imagem_falsa(largura: int = 20, altura: int = 30) -> bytes:
     saida = io.BytesIO()
     Image.new("RGB", (largura, altura), (120, 80, 40)).save(saida, format="PNG")
     return saida.getvalue()
+
+MODELOS_DE_IMAGEM_FALSOS = [
+    ModeloDeImagemDisponivel(id="meta/muse-image", nome="Muse Image", preco_por_token=0.0000024, moderado=True),
+    ModeloDeImagemDisponivel(id="bytedance-seed/seedream-5-0-flash", nome="Seedream Flash", preco_por_token=0.0000043, moderado=False),
+]
+"""O catálogo de imagem do provedor falso (MI1)."""
 
 MODELOS_FALSOS = [
     ModeloDisponivel(
@@ -109,6 +116,11 @@ class ProvedorFalso(ProvedorIA):
         if self._erro is not None:
             raise self._erro
         return list(self._modelos)
+
+    def listar_modelos_de_imagem(self) -> list[ModeloDeImagemDisponivel]:
+        if self._erro is not None:
+            raise self._erro
+        return list(MODELOS_DE_IMAGEM_FALSOS)
 
     def extrair_elementos(
         self,

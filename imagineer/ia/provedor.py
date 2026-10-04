@@ -115,6 +115,20 @@ class ModeloDisponivel:
 
 
 @dataclass
+class ModeloDeImagemDisponivel:
+    """Um modelo de **imagem** oferecido pelo provedor, como o catálogo (MI1) o mostra."""
+
+    id: str
+    nome: str
+    preco_por_token: float | None = None
+    """O preço de um token de imagem, em dólares (``pricing.image_output`` ou ``image_token`` do OpenRouter). **Não é o preço por
+    imagem**: quantos tokens uma imagem tem depende da resolução (MI2). Nulo = o provedor não informou."""
+
+    moderado: bool = False
+    """``top_provider.is_moderated``: o provedor modera o que o modelo gera (MI3)."""
+
+
+@dataclass
 class ElementoSugerido:
     """Um elemento que a IA acha que aparece no capítulo — só identificação.
 
@@ -475,6 +489,10 @@ class ProvedorIA(ABC):
         Não é abstrata: um provedor que não traduz herda esta, que recusa com uma mensagem clara (nenhum quebra por falta dela).
         """
         raise ErroDoProvedorIA("Este provedor não sabe traduzir prompts.")
+
+    def listar_modelos_de_imagem(self) -> list[ModeloDeImagemDisponivel]:
+        """Os modelos de **imagem** do OpenRouter, para o catálogo (MI1). Não é abstrata: um provedor que não lista devolve vazio."""
+        return []
 
     @abstractmethod
     def gerar_imagem(

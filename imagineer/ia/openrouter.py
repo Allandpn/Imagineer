@@ -22,6 +22,7 @@ from imagineer.ia.fornecedores_de_imagem import (
     separar_fornecedor,
 )
 from imagineer.ia.provedor import (
+    ModeloDeImagemDisponivel,
     ReferenciasParaGerar,
     CenaSugerida,
     ChaveDeApiAusente,
@@ -723,6 +724,24 @@ class ProvedorOpenRouter(ProvedorIA):
 
         return sorted(modelos, key=lambda m: (not m.gratuito, m.nome.lower()))
 
+    def listar_modelos_de_imagem(self) -> list[ModeloDeImagemDisponivel]:
+        """Os modelos de **imagem** do OpenRouter (endpoint público, sem chave), com o preço **por token de imagem** (MI1)."""
+        dados = self._pedir("GET", "/models?output_modalities=image")
+        modelos = []
+        for bruto in dados.get("data", []):
+            if not bruto.get("id") or bruto["id"].startswith("openrouter/"):  # "openrouter/auto" é um roteador, não um modelo
+                continue
+            preco = bruto.get("pricing") or {}
+            modelos.append(
+                ModeloDeImagemDisponivel(
+                    id=bruto["id"],
+                    nome=bruto.get("name") or bruto["id"],
+                    preco_por_token=_numero_ou_nulo(preco.get("image_output") or preco.get("image_token")),
+                    moderado=_e_moderado(bruto),
+                )
+            )
+        return sorted(modelos, key=lambda m: m.nome.lower())
+
     # ----------------------------------------------------------------------- #
     # As três operações do item 4.2
     # ----------------------------------------------------------------------- #
@@ -1284,6 +1303,14 @@ def _custo_de_saida(bruto: dict) -> float:
         return float(preco)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _numero_ou_nulo(valor: object) -> float | None:
+    """O número em ``valor`` (que o OpenRouter manda como texto), ou ``None`` se não é número."""
+    try:
+        return float(valor)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _e_moderado(bruto: dict) -> bool:

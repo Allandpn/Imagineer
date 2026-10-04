@@ -139,3 +139,12 @@ Content-Type: application/json
     "replicate:black-forest-labs/flux-2-klein-4b": "images"
   }
 }
+
+### O catalogo dos modelos de imagem: preco por imagem (medido ou de tabela), moderacao e resolucao (MI1)
+GET {{baseUrl}}/configuracao/modelos-de-imagem
+
+### Testa um modelo de imagem: gera UMA imagem de teste e diz resolucao, custo e tempo (MI5). GASTA dinheiro (~1 centavo)
+# POST {{baseUrl}}/configuracao/modelos-de-imagem/testar
+# Content-Type: application/json
+#
+# { "modelo": "meta/muse-image" }

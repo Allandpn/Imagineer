@@ -3,6 +3,8 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from typing import Annotated
 
+from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,7 @@ from imagineer.banco.sessao import obter_sessao
 from imagineer.configuracao import obter_configuracoes
 from imagineer.ia.provedor import ProvedorIA
 from imagineer.modelos import PrioridadeIA
+from imagineer.servicos.catalogo_de_modelos_de_imagem import montar_catalogo, testar_modelo_de_imagem
 from imagineer.servicos.configuracao_ia import (
     construir_provedor,
     obter_ou_criar,
@@ -140,6 +143,49 @@ class ConfiguracaoNova(BaseModel):
     prioridade_ia: PrioridadeIA | None = None
 
 
+class ModeloDeImagemDoCatalogo(BaseModel):
+    """Um modelo de imagem do catálogo (MI1)."""
+
+    id: str = Field(description="Como a configuração o guarda: sem prefixo = OpenRouter; `fal:` ou `replicate:` nos outros.")
+    nome: str
+    fornecedor: str
+    preco_por_milhao_de_tokens: Decimal | None = Field(
+        default=None, description="Só OpenRouter: o preço de 1 milhão de tokens de imagem. **Não** é o preço por imagem."
+    )
+    preco_por_imagem: Decimal | None = Field(default=None, description="Nulo = ainda sem preço (teste para medir).")
+    origem_do_preco: str | None = Field(default=None, description="`medido` (o que as imagens do modelo já custaram), `tabela` (estimado) ou nulo.")
+    moderacao: str
+    aceita_referencia: bool
+    resolucao_tipica: str | None = Field(default=None, description="`largura×altura` da imagem mais recente do modelo; nulo = nenhuma ainda.")
+    em_uso: bool = Field(description="É o modelo de imagem padrão.")
+    disponivel: bool = Field(description="Está na lista de escolha ao gerar.")
+
+
+class CatalogoDeImagem(BaseModel):
+    modelos: list[ModeloDeImagemDoCatalogo]
+    aviso: str | None = None
+
+
+class PedidoDeTeste(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    modelo: str = Field(min_length=1, max_length=200)
+
+
+class TesteDeImagem(BaseModel):
+    """O resultado do teste de um modelo de imagem (MI5)."""
+
+    modelo: str
+    largura: int | None
+    altura: int | None
+    tamanho_em_bytes: int
+    custo: Decimal | None
+    estimado: bool
+    segundos: float
+    tipo_de_midia: str
+    previa_base64: str = Field(description="A imagem reduzida (JPEG, até 512 px) em base64.")
+
+
 class ModeloDaLista(BaseModel):
     """Um modelo na tela de escolha."""
 
@@ -226,6 +272,22 @@ def gravar_configuracao(
 
     sessao.commit()
     return ver_configuracao(sessao)
+
+
+@rotas.get("/modelos-de-imagem", response_model=CatalogoDeImagem, summary="Os modelos de imagem, com preço, moderação e resolução")
+def listar_modelos_de_imagem(
+    sessao: Session = Depends(obter_sessao), provedor: ProvedorIA = Depends(obter_provedor)
+) -> CatalogoDeImagem:
+    """O catálogo (MI1): OpenRouter (lido do endpoint público dele), fal.ai e Replicate, com o preço **por imagem** só quando se sabe
+    (medido ou de tabela; MI2), a moderação (MI3) e a resolução que o modelo já entregou aqui (MI4)."""
+    entradas, aviso = montar_catalogo(sessao, obter_ou_criar(sessao), provedor)
+    return CatalogoDeImagem(modelos=[ModeloDeImagemDoCatalogo(**vars(e)) for e in entradas], aviso=aviso)
+
+
+@rotas.post("/modelos-de-imagem/testar", response_model=TesteDeImagem, summary="Gera uma imagem de teste e mede resolução e custo")
+def testar_modelo(pedido: PedidoDeTeste, provedor: ProvedorIA = Depends(obter_provedor)) -> TesteDeImagem:
+    """Gera **uma** imagem de teste com o modelo (MI5). **Gasta dinheiro** (cerca de um centavo): o app confirma antes."""
+    return TesteDeImagem(**vars(testar_modelo_de_imagem(provedor, pedido.modelo.strip())))
 
 
 @rotas.get(
