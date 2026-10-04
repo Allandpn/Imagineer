@@ -73,3 +73,17 @@ Content-Type: application/json
 
 ### Remove o livro — apaga capítulos, elementos, frames, prompts e imagens em cascata
 # DELETE {{baseUrl}}/livros/{{livroId}}
+
+### A capa do livro (CP3): a imagem guardada (JPEG reduzido); 404 se o livro nao tem (tem_capa=false)
+GET {{baseUrl}}/livros/{{livroId}}/capa
+
+### Define a capa de um livro que ja existe (CP3): uma imagem OU o proprio EPUB (extrai a capa dele)
+POST {{baseUrl}}/livros/{{livroId}}/capa
+Content-Type: multipart/form-data; boundary=fronteira
+
+--fronteira
+Content-Disposition: form-data; name="arquivo"; filename="imagem-teste.png"
+Content-Type: image/png
+
+< ./arquivos/imagem-teste.png
+--fronteira--

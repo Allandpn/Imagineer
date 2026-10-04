@@ -2,8 +2,8 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func, true
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, func, true
+from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
 from imagineer.banco.base import Base
 
@@ -50,6 +50,13 @@ class Livro(Base):
     """
 
     nome_arquivo: Mapped[str] = mapped_column(String(500))
+
+    capa: Mapped[bytes | None] = deferred(mapped_column(LargeBinary))
+    """A capa do livro, já reduzida (JPEG, lado maior 800 px; item 7.5b, CP1/CP2). ``deferred``: **só é lida quando alguém a pede**,
+    para listar livros não arrastar uma imagem por livro. Guardada no banco (dezenas de KB) para ir junto de um ``pg_dump``."""
+
+    capa_tipo: Mapped[str | None] = mapped_column(String(50))
+    """O tipo da ``capa`` (``image/jpeg``). Nulo = o livro não tem capa; é também o que diz ``tem_capa`` sem ler a imagem."""
 
     revisao: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     """Um contador que **sobe a cada mudança no que o leitor mostra** deste livro (item 6.9).

@@ -32,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from imagineer.modelos import Capitulo, Livro
+from imagineer.servicos.capa_do_livro import capa_do_epub
 
 MINIMO_DE_CARACTERES = 100
 """Abaixo disso, o documento é descartado como página sem conteúdo.
@@ -226,6 +227,8 @@ class LivroExtraido:
     identificador_epub: str | None
     nome_arquivo: str
     capitulos: list[CapituloExtraido] = field(default_factory=list)
+    capa: tuple[bytes, str] | None = None
+    """A capa já reduzida e o tipo dela, se o EPUB tem uma que se ache (item 7.5b, CP1)."""
 
 
 def extrair_epub(conteudo: bytes, nome_arquivo: str) -> LivroExtraido:
@@ -260,7 +263,16 @@ def extrair_epub(conteudo: bytes, nome_arquivo: str) -> LivroExtraido:
         identificador_epub=_identificador_unico(epub_lido),
         nome_arquivo=nome_arquivo,
         capitulos=capitulos,
+        capa=_capa_sem_quebrar(epub_lido),
     )
+
+
+def _capa_sem_quebrar(epub_lido: epub.EpubBook) -> tuple[bytes, str] | None:
+    """A capa do EPUB, ou ``None``. **Nunca** levanta: um EPUB estranho não pode impedir a importação por causa da capa."""
+    try:
+        return capa_do_epub(epub_lido)
+    except Exception:  # noqa: BLE001 - a capa é um extra; qualquer falha vira "sem capa"
+        return None
 
 
 def _motivo_de_nao_achar_capitulo(epub_lido: epub.EpubBook, nome_arquivo: str) -> str:
@@ -308,6 +320,8 @@ def importar_epub(sessao: Session, conteudo: bytes, nome_arquivo: str) -> Livro:
         identificador_epub=extraido.identificador_epub,
         nome_arquivo=extraido.nome_arquivo,
     )
+    if extraido.capa is not None:
+        livro.capa, livro.capa_tipo = extraido.capa
     livro.capitulos = [
         Capitulo(ordem=c.ordem, titulo=c.titulo, texto=c.texto, ignorado=c.ignorado)
         for c in extraido.capitulos

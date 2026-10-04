@@ -84,6 +84,10 @@ class LivroResumo(BaseModel):
             "e só relê a lista de capítulos quando ela muda."
         ),
     )
+    tem_capa: bool = Field(
+        default=False,
+        description="Se o livro tem capa guardada: `GET /livros/{id}/capa` a devolve (item 7.5b, CP3).",
+    )
     total_de_capitulos: int
     capitulos_ignorados: int = Field(
         description="Quantos capítulos estão marcados como fora da catalogação."

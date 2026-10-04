@@ -51,6 +51,7 @@ from imagineer.rotas._comum import (
     buscar_livro as _buscar_livro,
 )
 from imagineer.rotas.configuracao import obter_provedor
+from imagineer.servicos.capa_do_livro import CapaInvalida, capa_de_um_arquivo
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.imagens_reduzidas import garantir_dimensoes
@@ -401,6 +402,46 @@ def sugerir_perfil_renderizacao(
     )
 
 
+@rotas.get(
+    "/{livro_id}/capa",
+    summary="A capa do livro (imagem)",
+    responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "O livro não existe ou não tem capa."}},
+)
+def ler_capa(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Response:
+    """Devolve a capa guardada (JPEG reduzido). O app a pede só dos livros com ``tem_capa``; a resposta pode ser guardada por um dia."""
+    livro = _buscar_livro(sessao, livro_id)
+    if livro.capa is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"O livro {livro_id} não tem capa.")
+    return Response(
+        content=livro.capa,
+        media_type=livro.capa_tipo or "image/jpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@rotas.post(
+    "/{livro_id}/capa",
+    response_model=LivroDetalhe,
+    summary="Define a capa de um livro que já existe",
+)
+async def definir_capa(
+    livro_id: int,
+    arquivo: UploadFile = File(description="Uma imagem (JPEG, PNG, WebP...) ou o próprio EPUB, de onde se tira a capa"),
+    sessao: Session = Depends(obter_sessao),
+) -> LivroDetalhe:
+    """Troca a capa. Aceita uma **imagem** ou um **EPUB** (extrai a capa dele, sem reimportar nada): os livros já importados
+    não guardaram o arquivo, então é assim que ganham capa. 422 se não é imagem nem EPUB com capa."""
+    livro = _buscar_livro(sessao, livro_id)
+    conteudo = await ler_com_limite(arquivo, TAMANHO_MAXIMO_DO_EPUB)
+    try:
+        livro.capa, livro.capa_tipo = capa_de_um_arquivo(conteudo)
+    except CapaInvalida as erro:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)) from erro
+    sessao.commit()
+    sessao.refresh(livro)
+    return _detalhe_do_livro(sessao, livro)
+
+
 @rotas.delete(
     "/{livro_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -453,6 +494,7 @@ def _campos_do_livro(livro: Livro) -> dict:
         "nome_arquivo": livro.nome_arquivo,
         "data_importacao": livro.data_importacao,
         "revisao": livro.revisao,
+        "tem_capa": livro.capa_tipo is not None,
     }
 
 
