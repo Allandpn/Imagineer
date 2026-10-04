@@ -1885,6 +1885,31 @@ O JSON do livro em `livro_local` é **de propósito**: a lista de capítulos é 
 
 **Como se testa.** A parte que conversa com o banco e com o disco fica atrás de **interfaces** (`IndiceLocal`, `ArmazemDeTextos`), com **versões em memória** para os testes de unidade: a regra de quando ir à rede, quando usar o aparelho e quando adiantar o seguinte é testada sem aparelho. O `304` é testado com o MockWebServer, que já existe no projeto. A versão Room e a de arquivos são exercitadas no **tablet** (roteiro manual).
 
+### 7.0b Padrão de botões e ações (PB1 a PB10) — especificado em 04/10/2026
+
+Pedido do Allan: o app misturava, para coisas parecidas, **ícone sozinho**, **"balão" com texto** (botão flutuante com rótulo) e **texto clicável**. A regra AJ4 (item 7.5b, 04/10) já tinha começado a arrumar isso nas áreas de IA; aqui ela vira regra do app inteiro. A forma de um botão passa a depender da **importância** da ação, não da tela em que ela está.
+
+- **PB1 — Hierarquia por importância.**
+  - **Principal** (no máximo uma por área: o que a pessoa veio fazer ali): `Button` preenchido, **com texto**. Ex.: Gerar imagem, Salvar, Analisar com IA, Restaurar, Tentar de novo.
+  - **Alternativa da principal**, ao lado dela: `OutlinedButton`, com texto. Ex.: Importar imagem, Reanalisar, Editar (perfil), Apagar de vez.
+  - **Ação de pouco peso sem um ícone óbvio**: `TextButton` (só texto). Ex.: Vincular a um existente, Ver ficha, Trocar, Voltar ao padrão.
+  - **Ação secundária com ícone universal**, quase sempre repetida por item: **ícone** (`BotaoDeIcone`). Ex.: editar, apagar, compartilhar, posicionar, restaurar, fechar.
+- **PB2 — Mesmo significado, mesma forma e mesmo ícone** em todo o app: editar = lápis (`Edit`); apagar = lixeira (`Delete`, vermelha); esvaziar = `DeleteSweep` (vermelho); posicionar = marcador de lugar (`Place`); voltar à posição automática = `LocationOff`; compartilhar = `Share`; restaurar = `Restore`; fechar = `Close`; voltar = seta; pesquisar = lupa; mais opções = ⋮; aumentar/diminuir = `Add`/`Remove` (letra: `TextIncrease`/`TextDecrease`); IA = brilho (`AutoAwesome`); adicionar/importar = `Add`.
+- **PB3 — Todo botão só com ícone mostra o nome ao segurar o dedo** (dica do Material, `PlainTooltip`), com o mesmo texto que o leitor de tela fala. É o que torna aceitável trocar texto por ícone: ninguém fica sem saber o que o desenho faz. Feito uma vez, nos componentes comuns (`BotaoDeIcone`, `BotaoFlutuante`).
+- **PB4 — Barra superior: só ícones** (voltar, pesquisar, ações da tela, ⋮). O que é raro ou não tem ícone claro vai para o menu ⋮, com texto. Consequência: **Esvaziar**, na Lixeira, deixa de ser texto e vira o ícone de esvaziar, em vermelho.
+- **PB5 — Botões flutuantes: redondos e só com ícone**, com dica (PB3). O botão de IA do capítulo perde o rótulo "IA" (fica o brilho ✦) e o de Perfis perde "Criar novo perfil" (fica o "+", como na Biblioteca). O "Continuar lendo" do livro continua **pequeno** (LY3), por ser atalho e não a ação principal.
+- **PB6 — Diálogos: `TextButton`**, confirmar à direita e cancelar/fechar à esquerda; a ação que apaga, em vermelho. É o padrão do Material e já é o que o app faz.
+- **PB7 — Chips só para filtrar ou escolher uma opção**, nunca para executar uma ação.
+- **PB8 — Contagens e estados em texto, nunca em balão numérico** (reafirma o item 7.5a, "as sugestões pendentes viram texto, não balão").
+- **PB9 — Exceção: a barra da imagem em tela cheia** mantém ícone + palavra pequena embaixo (LV1). São seis ou mais ícones lado a lado, sobre uma foto, sem outro contexto, e ali a palavra ajuda mais do que atrapalha.
+- **PB10 — Controles de ajuste** (tamanho da letra, entrelinha, velocidade da narração): **ícones** de diminuir/aumentar com o valor em texto no meio. Antes eram "A−/A+" e "−/+" escritos, misturados a ícones na mesma barra.
+
+**Cores** (mantém o AJ5): ícones de ação no conteúdo usam a **cor de destaque** escolhida pela pessoa; ícones da barra superior ficam na cor neutra da barra; apagar e esvaziar, em vermelho.
+
+**Supera** a justificativa do incremento 4 (item 7.3a), "texto em vez de ícone porque o conjunto básico de ícones não tem um apropriado": o app já usa o conjunto completo (`material-icons-extended`).
+
+**Implementado no app (04/10/2026; 1.146 testes do app passando, APK de depuração gerado).** Componentes comuns: `BotaoDeIcone` ganhou a dica (PB3) e passou a esmaecer quando desabilitado, como o `IconButton` do Material faz; `BotaoFlutuante` novo (PB5). Trocas: os cinco botões flutuantes viraram redondos e só com ícone (o "IA" e o "Criar novo perfil" perderam o texto); 44 botões de ícone que usavam o `IconButton` direto passaram a `BotaoDeIcone`, **com a mesma cor de antes** (a diferença visível é só a dica); "Esvaziar" da Lixeira virou ícone vermelho; "A−/A+" e "−/+" da folha de leitura e da narração viraram ícones; "Editar" do perfil virou botão de contorno, ao lado do principal; "Tentar de novo" do dicionário e dos prompts e "Salvar nota" do destaque viraram botões preenchidos. **Ficaram como estavam, de propósito:** os botões de diálogo (PB6), a barra da imagem em tela cheia (PB9) e sete botões de ícone com conteúdo próprio ou sem nome (selo, marca de lido, ícone de artefato, legenda da imagem), que não são um ícone simples com nome. **A conferir no tablet:** a dica ao segurar o dedo e a aparência dos botões flutuantes sem texto.
+
 ### 7.1 Mapa de navegação
 
 ```
