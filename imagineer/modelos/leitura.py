@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
@@ -61,3 +61,34 @@ class Pin(Base):
 
     def __repr__(self) -> str:
         return f"<Pin id={self.id} capitulo={self.capitulo_id} pos={self.posicao_no_texto}>"
+
+
+class Destaque(Base):
+    """Um trecho do texto marcado pela pessoa, com cor, nota e, se quiser, um elemento ligado (item RL9 a RL13)."""
+
+    __tablename__ = "destaques"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    livro_id: Mapped[int] = mapped_column(ForeignKey("livros.id", ondelete="CASCADE"), index=True)
+    capitulo_id: Mapped[int] = mapped_column(ForeignKey("capitulos.id", ondelete="CASCADE"), index=True)
+
+    inicio: Mapped[int]
+    """Onde o trecho começa: deslocamento em UTF-16 desde o início do texto do capítulo."""
+
+    fim: Mapped[int]
+    """Onde o trecho termina (exclusivo), na mesma unidade."""
+
+    trecho: Mapped[str] = mapped_column(Text)
+    """O texto do trecho, **copiado pelo servidor** do capítulo ao criar — serve de lista legível e de rede de segurança."""
+
+    cor: Mapped[str] = mapped_column(String(20), default="AMARELO")
+
+    nota: Mapped[str | None] = mapped_column(String(1000))
+
+    elemento_id: Mapped[int | None] = mapped_column(ForeignKey("elementos.id", ondelete="SET NULL"), index=True)
+
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self) -> str:
+        return f"<Destaque id={self.id} capitulo={self.capitulo_id} {self.inicio}-{self.fim}>"

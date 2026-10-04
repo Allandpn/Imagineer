@@ -1,6 +1,7 @@
 """Contratos do marcador e dos pins (item 6.10)."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
@@ -83,4 +84,47 @@ class PinResposta(BaseModel):
     capitulo_id: int
     posicao_no_texto: int
     nota: str | None
+    criado_em: datetime
+
+
+CORES_DE_DESTAQUE = ("AMARELO", "VERDE", "AZUL", "ROSA")
+LIMITE_DO_DESTAQUE = 5000
+"""O maior trecho que se destaca, em unidades UTF-16."""
+
+
+class DestaqueNovo(BaseModel):
+    """O que ``POST /livros/{id}/destaques`` recebe. O trecho em si **não** vem: o servidor o copia do capítulo."""
+
+    capitulo_id: int
+    inicio: int = Field(ge=0, description="UTF-16 desde o início do texto do capítulo.")
+    fim: int = Field(gt=0, description="UTF-16, exclusivo; maior que `inicio`.")
+    cor: Literal["AMARELO", "VERDE", "AZUL", "ROSA"] = "AMARELO"
+    nota: str | None = Field(default=None, max_length=LIMITE_DA_NOTA)
+    elemento_id: int | None = None
+
+    _limpar_nota = field_validator("nota")(_nota_limpa)
+
+
+class DestaqueAjuste(BaseModel):
+    """O que ``PATCH /destaques/{id}`` recebe: **só os campos enviados mudam** (`nota` ou `elemento_id` nulos desfazem)."""
+
+    cor: Literal["AMARELO", "VERDE", "AZUL", "ROSA"] | None = None
+    nota: str | None = Field(default=None, max_length=LIMITE_DA_NOTA)
+    elemento_id: int | None = None
+
+    _limpar_nota = field_validator("nota")(_nota_limpa)
+
+
+class DestaqueResposta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    livro_id: int
+    capitulo_id: int
+    inicio: int
+    fim: int
+    trecho: str
+    cor: str
+    nota: str | None
+    elemento_id: int | None
     criado_em: datetime

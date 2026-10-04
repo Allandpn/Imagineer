@@ -67,3 +67,34 @@ GET {{baseUrl}}/busca?q=dragao&livro_id={{livroId}}
 
 ### Só neste capítulo
 GET {{baseUrl}}/busca?q=dragao&capitulo_id={{capituloId}}
+
+### Destaca um trecho do texto (RL9). O servidor copia o "trecho" do capitulo; so se diz onde comeca e termina.
+# "inicio" e "fim" sao UTF-16 desde o inicio do texto do capitulo (fim exclusivo, no maximo 5000 unidades).
+# "cor": AMARELO (padrao), VERDE, AZUL ou ROSA. "nota" e "elemento_id" sao opcionais.
+POST {{baseUrl}}/livros/{{livroId}}/destaques
+Content-Type: application/json
+
+{
+  "capitulo_id": {{primeiroCapituloId}},
+  "inicio": 0,
+  "fim": 5,
+  "cor": "AMARELO"
+}
+
+### Lista os destaques do livro (opcional: ?capitulo_id=)
+GET {{baseUrl}}/livros/{{livroId}}/destaques
+
+### Ajusta so o que for enviado: cor, nota ou elemento_id (nota/elemento_id nulos desfazem). Troque 1 pelo id do destaque.
+PATCH {{baseUrl}}/destaques/1
+Content-Type: application/json
+
+{
+  "cor": "VERDE",
+  "nota": "Lembrar disso"
+}
+
+### Remove o destaque
+DELETE {{baseUrl}}/destaques/1
+
+### As passagens destacadas ligadas a um elemento (a ficha do elemento). Troque 1 pelo id do elemento.
+GET {{baseUrl}}/elementos/1/destaques
