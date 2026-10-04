@@ -122,3 +122,18 @@ def teste_lt2_importar_o_mesmo_epub_de_um_livro_na_lixeira_nao_avisa_de_repetido
 
     assert resposta.status_code == 201
     assert resposta.json()["livros_semelhantes"] == []  # o da lixeira não conta
+
+
+def teste_lt2_a_capa_de_um_livro_da_lixeira_ainda_sai_para_a_tela_da_lixeira(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    import io
+
+    from PIL import Image
+
+    livro = _livro_com_capitulos(cliente)
+    imagem = io.BytesIO()
+    Image.new("RGB", (60, 90), (10, 20, 30)).save(imagem, format="PNG")
+    cliente.post(f"/livros/{livro['id']}/capa", files={"arquivo": ("c.png", imagem.getvalue(), "image/png")})
+    _apagar(cliente, livro["id"])
+
+    assert cliente.get(f"/livros/{livro['id']}/capa").status_code == 200
+    assert cliente.get("/lixeira/livros").json()["livros"][0]["tem_capa"] is True

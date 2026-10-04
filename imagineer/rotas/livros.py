@@ -414,8 +414,13 @@ def sugerir_perfil_renderizacao(
     responses={200: {"content": {"image/jpeg": {}}}, 404: {"description": "O livro não existe ou não tem capa."}},
 )
 def ler_capa(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Response:
-    """Devolve a capa guardada (JPEG reduzido). O app a pede só dos livros com ``tem_capa``; a resposta pode ser guardada por um dia."""
-    livro = _buscar_livro(sessao, livro_id)
+    """Devolve a capa guardada (JPEG reduzido). O app a pede só dos livros com ``tem_capa``; a resposta pode ser guardada por um dia.
+
+    A capa de um livro **na lixeira** também sai (a tela da lixeira mostra a capa dele); por isso não usa ``_buscar_livro``.
+    """
+    livro = sessao.get(Livro, livro_id)
+    if livro is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe livro com id {livro_id}.")
     if livro.capa is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"O livro {livro_id} não tem capa.")
     return Response(
