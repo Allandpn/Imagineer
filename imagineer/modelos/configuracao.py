@@ -2,7 +2,7 @@
 
 import enum
 
-from sqlalchemy import JSON, CheckConstraint, Enum, String
+from sqlalchemy import JSON, CheckConstraint, Enum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
@@ -33,6 +33,26 @@ class PrioridadeIA(enum.Enum):
     QUALIDADE = "QUALIDADE"
     """Sempre gasta uma chamada de IA nova, mesmo que já exista um resultado
     salvo — prioriza a leitura mais recente do texto sobre o custo."""
+
+
+class MotorDeNarracao(enum.Enum):
+    """Quem fala quando a pessoa toca em "Ouvir" (RL21)."""
+
+    APARELHO = "APARELHO"
+    """A voz do Android, como sempre foi: grátis, sem internet. É o padrão."""
+
+    IA = "IA"
+    """Voz de IA gerada pelo servidor (paga e só com servidor). **Ainda não implementado**: só o campo existe."""
+
+
+class ModoDeNarracao(enum.Enum):
+    """Quantas vozes a narração usa (RL25)."""
+
+    UMA_VOZ = "UMA_VOZ"
+    """Um narrador lê tudo. É o padrão."""
+
+    POR_PERSONAGEM = "POR_PERSONAGEM"
+    """Uma voz por personagem (uma IA identifica quem fala). **Ainda não implementado**: só o campo existe."""
 
 
 class CategoriaEstilo(enum.Enum):
@@ -191,6 +211,32 @@ class Configuracao(Base):
     )
     """Custo vs. qualidade nas chamadas de IA que podem ser reaproveitadas
     (item 4.4). ``ECONOMIA`` por padrão — não gasta chamada de IA à toa."""
+
+    ordem_dos_dicionarios: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
+    """Os identificadores dos dicionários, do preferido ao último (RL29). Um dicionário que não está aqui vai para o fim."""
+
+    dicionarios_desativados: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
+    """Os dicionários que a pessoa não quer ver (RL29): nunca são consultados, nem em "todos"."""
+
+    narracao_motor: Mapped[MotorDeNarracao] = mapped_column(
+        Enum(MotorDeNarracao, native_enum=False, length=20, create_constraint=False, values_callable=lambda tipo: [m.value for m in tipo]),
+        default=MotorDeNarracao.APARELHO,
+        server_default=MotorDeNarracao.APARELHO.value,
+    )
+    """Quem narra (RL21). Hoje só ``APARELHO`` toca; ``IA`` fica guardado para quando existir (RL26)."""
+
+    narracao_modo: Mapped[ModoDeNarracao] = mapped_column(
+        Enum(ModoDeNarracao, native_enum=False, length=20, create_constraint=False, values_callable=lambda tipo: [m.value for m in tipo]),
+        default=ModoDeNarracao.UMA_VOZ,
+        server_default=ModoDeNarracao.UMA_VOZ.value,
+    )
+    """Uma voz ou uma por personagem (RL25)."""
+
+    narracao_voz: Mapped[str | None] = mapped_column(String(100))
+    """A voz do motor de IA (RL24); nula = a padrão do fornecedor."""
+
+    narracao_instrucoes: Mapped[str | None] = mapped_column(Text)
+    """As instruções de tom da narração (RL23), em texto livre; nulas = sem instrução."""
 
     def __repr__(self) -> str:
         return (

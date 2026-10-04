@@ -58,6 +58,19 @@ Content-Type: application/json
   "prioridade_ia": "QUALIDADE"
 }
 
+### Narração (RL21 a RL26) — só guarda: nada gera áudio ainda
+# narracao_motor: APARELHO (a voz do Android, padrão) ou IA. narracao_modo: UMA_VOZ (padrão) ou POR_PERSONAGEM.
+# narracao_voz e narracao_instrucoes: texto livre; vazio ou null apaga. Só o que vem no corpo muda.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "narracao_motor": "APARELHO",
+  "narracao_modo": "UMA_VOZ",
+  "narracao_voz": null,
+  "narracao_instrucoes": "voz grave e calma, com suspense nas cenas de tensão"
+}
+
 ### Chave de API própria, por chamada (item 4.3)
 # O servidor NÃO guarda chave no banco. A do servidor vem só de
 # CHAVE_API_OPENROUTER / IMAGINEER_KEY_OPEN_ROUTER no ambiente. Quem quiser usar

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from imagineer.banco.sessao import obter_sessao
 from imagineer.configuracao import obter_configuracoes
 from imagineer.ia.provedor import ProvedorIA
-from imagineer.modelos import PrioridadeIA
+from imagineer.modelos import ModoDeNarracao, MotorDeNarracao, PrioridadeIA
 from imagineer.servicos.catalogo_de_modelos_de_imagem import chave_do_modelo_de_imagem, montar_catalogo, testar_modelo_de_imagem
 from imagineer.servicos.configuracao_ia import (
     construir_provedor,
@@ -113,6 +113,12 @@ class ConfiguracaoAtual(BaseModel):
             "o capítulo toda vez que um prompt é montado (item 4.4)."
         )
     )
+    narracao_motor: MotorDeNarracao = Field(
+        description="Quem narra (RL21): `APARELHO` (a voz do Android, o padrão) ou `IA`. Hoje só `APARELHO` toca; `IA` está guardado para depois."
+    )
+    narracao_modo: ModoDeNarracao = Field(description="`UMA_VOZ` (padrão) ou `POR_PERSONAGEM` (RL25). Guardado; ainda não toca.")
+    narracao_voz: str | None = Field(description="A voz do motor de IA (RL24); nula = a padrão do fornecedor.")
+    narracao_instrucoes: str | None = Field(description="As instruções de tom da narração (RL23), em texto livre.")
 
 
 class ConfiguracaoNova(BaseModel):
@@ -141,6 +147,10 @@ class ConfiguracaoNova(BaseModel):
     modelo_suavizacao: str | None = Field(default=None, max_length=200)
     modelo_traducao: str | None = Field(default=None, max_length=200)
     prioridade_ia: PrioridadeIA | None = None
+    narracao_motor: MotorDeNarracao | None = None
+    narracao_modo: ModoDeNarracao | None = None
+    narracao_voz: str | None = Field(default=None, max_length=100)
+    narracao_instrucoes: str | None = Field(default=None, max_length=2000)
 
 
 class ModeloDeImagemDoCatalogo(BaseModel):
@@ -240,6 +250,10 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         modelo_suavizacao=configuracao.modelo_suavizacao,
         modelo_traducao=configuracao.modelo_traducao,
         prioridade_ia=configuracao.prioridade_ia,
+        narracao_motor=configuracao.narracao_motor,
+        narracao_modo=configuracao.narracao_modo,
+        narracao_voz=configuracao.narracao_voz,
+        narracao_instrucoes=configuracao.narracao_instrucoes,
     )
 
 
@@ -251,7 +265,9 @@ def gravar_configuracao(
     configuracao = obter_ou_criar(sessao)
 
     for campo, valor in nova.model_dump(exclude_unset=True).items():
-        if campo == "prioridade_ia":
+        if campo in ("narracao_motor", "narracao_modo") and valor is None:
+            continue  # enumeração: nulo não "apaga" (não há valor vazio); fica o que estava
+        if campo in ("prioridade_ia", "narracao_motor", "narracao_modo"):
             # Não é campo de texto livre — não faz sentido "apagar" com string
             # vazia, então segue direto, sem a normalização abaixo.
             setattr(configuracao, campo, valor)

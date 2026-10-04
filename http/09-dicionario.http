@@ -1,4 +1,5 @@
-### Os dicionarios que ha na pasta do servidor (RL19): id, nome, idioma das entradas, palavras e para quais idiomas de livro valem
+### Os dicionarios que ha na pasta do servidor (RL19), NA ORDEM DE PREFERENCIA (RL29): id, nome, idioma das entradas, palavras,
+# para quais idiomas de livro valem e se esta ligado (ativo)
 GET {{baseUrl}}/dicionario/dicionarios
 
 ### Procura uma palavra. "idioma" e o do livro (pt, pt-BR, en-US...) e decide quais dicionarios valem;
@@ -10,3 +11,14 @@ GET {{baseUrl}}/dicionario/verbete?palavra=casa&idioma=pt&todos=true
 
 ### Em ingles: se a forma flexionada nao existe, tenta a base (running -> run)
 GET {{baseUrl}}/dicionario/verbete?palavra=running&idioma=en
+
+### Grava a ordem de preferencia e quais dicionarios ficam desligados (RL29)
+# Substitui as duas listas. Identificador que o servidor nao conhece da 422. Troque pelos ids de GET /dicionario/dicionarios.
+# Desligado nunca e consultado, nem em "todos".
+PUT {{baseUrl}}/dicionario/preferencias
+Content-Type: application/json
+
+{
+  "ordem": ["michaelis-moderno-dicionario-da-lingua-portuguesa", "aurelio"],
+  "desativados": []
+}
