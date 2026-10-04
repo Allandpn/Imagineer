@@ -37,6 +37,10 @@ class FrameResumo(BaseModel):
     horario: str | None
     clima: str | None
     humor: str | None
+    trecho: str | None = Field(
+        default=None,
+        description="O trecho literal do capítulo em que a cena acontece (FD7); nulo = sem trecho.",
+    )
     posicao_no_texto: int | None = Field(
         default=None,
         description="Onde a pessoa pôs o frame no texto (UTF-16, item 3.4g); nulo = sem escolha.",
@@ -101,6 +105,13 @@ class FrameNovo(BaseModel):
     horario: str | None = Field(default=None, max_length=100)
     clima: str | None = Field(default=None, max_length=100)
     humor: str | None = Field(default=None, max_length=100)
+    trecho: str | None = Field(
+        default=None,
+        description=(
+            "O trecho do capítulo em que a cena acontece (FD7), copiado do texto. O servidor confere que ele **está** no capítulo "
+            "(422 se não está) e guarda o texto como está no livro. Com `sugestao_cena_id`, ausente = o da sugestão."
+        ),
+    )
     posicao_no_texto: int | None = Field(
         default=None,
         ge=0,
@@ -147,6 +158,10 @@ class FrameAjuste(BaseModel):
     horario: str | None = Field(default=None, max_length=100)
     clima: str | None = Field(default=None, max_length=100)
     humor: str | None = Field(default=None, max_length=100)
+    trecho: str | None = Field(
+        default=None,
+        description="O trecho do capítulo em que a cena acontece (FD7); conferido contra o texto (422 se não está). `null` apaga.",
+    )
     posicao_no_texto: int | None = Field(
         default=None,
         ge=0,

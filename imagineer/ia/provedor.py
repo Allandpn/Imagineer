@@ -194,6 +194,8 @@ class CenaSugerida:
     trecho_ancora: str | None = None
     """Citação literal do começo do momento, copiada do texto; o servidor a converte em
     posição (item 3.4g). Nulo quando a IA não tem certeza."""
+    trecho: str | None = None
+    """Citação literal de 1 a 3 frases que narra o momento (FD7); o servidor confere que está no capítulo e descarta se não está."""
 
 
 @dataclass
@@ -426,6 +428,7 @@ class ProvedorIA(ABC):
         humor: str | None,
         participantes: list[str],
         modelo: str,
+        trecho: str | None = None,
     ) -> FrameFundamentado:
         """A leitura profunda de um frame do tipo CENA — item 4.4.
 

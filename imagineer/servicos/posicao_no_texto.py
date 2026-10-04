@@ -137,6 +137,44 @@ def _indice_da_citacao(texto: str, citacao: str) -> int | None:
     return None
 
 
+LIMITE_DO_TRECHO_DA_IA = 600
+"""Quanto de um trecho que a IA citou o servidor guarda (FD7): 1 a 3 frases."""
+
+LIMITE_DO_TRECHO_DA_PESSOA = 2000
+"""Quanto de um trecho que a pessoa selecionou o servidor guarda (FD7): vale uns três parágrafos."""
+
+MINIMO_DO_TRECHO = 10
+"""Uma citação menor que isto não diz nada sobre a cena."""
+
+
+def trecho_literal(texto: str, citacao: str | None, limite: int) -> str | None:
+    """O trecho do capítulo que ``citacao`` cita, **como está no livro**, ou ``None`` se ela não está lá (FD7).
+
+    Existe para nunca guardar uma frase inventada: a IA devolve uma citação, e aqui ela só vale se for **achada inteira** no texto, com a
+    mesma tolerância de espaços, aspas e acentos da posição. O que se guarda é o texto **do livro** (as quebras de linha viram espaço),
+    não o da citação. Acima de ``limite`` corta na última palavra e põe "…".
+    """
+    if not citacao or not citacao.strip():
+        return None
+    citacao = citacao.strip()
+    indice = texto.find(citacao)
+    if indice != -1:
+        achado = texto[indice : indice + len(citacao)]
+    else:
+        normalizado, origem = _normalizar(texto)
+        procurada = _normalizar(citacao)[0].strip()
+        achada = normalizado.find(procurada) if procurada else -1
+        if achada == -1:
+            return None
+        achado = texto[origem[achada] : origem[achada + len(procurada) - 1] + 1]
+    limpo = " ".join(achado.split())
+    if len(limpo) < MINIMO_DO_TRECHO:
+        return None
+    if len(limpo) <= limite:
+        return limpo
+    return limpo[:limite].rsplit(" ", 1)[0].rstrip(",;:- ") + "…"
+
+
 def posicao_da_citacao(texto: str, citacao: str | None) -> int | None:
     """A posição (UTF-16) do início do parágrafo onde ``citacao`` aparece, ou ``None``.
 

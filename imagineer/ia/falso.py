@@ -201,19 +201,21 @@ class ProvedorFalso(ProvedorIA):
         humor: str | None,
         participantes: list[str],
         modelo: str,
+        trecho: str | None = None,
     ) -> FrameFundamentado:
-        self.chamadas_de_fundamentacao.append(
-            {
-                "texto_capitulo": texto_capitulo,
-                "titulo": titulo,
-                "descricao": descricao,
-                "horario": horario,
-                "clima": clima,
-                "humor": humor,
-                "participantes": participantes,
-                "modelo": modelo,
-            }
-        )
+        chamada = {
+            "texto_capitulo": texto_capitulo,
+            "titulo": titulo,
+            "descricao": descricao,
+            "horario": horario,
+            "clima": clima,
+            "humor": humor,
+            "participantes": participantes,
+            "modelo": modelo,
+        }
+        if trecho:  # só aparece quando há trecho, para os testes de antes não mudarem
+            chamada["trecho"] = trecho
+        self.chamadas_de_fundamentacao.append(chamada)
         if self._erro is not None:
             raise self._erro
         return FrameFundamentado(contexto=self._contexto, modelo=modelo)
@@ -227,6 +229,7 @@ class ProvedorFalso(ProvedorIA):
         contexto_do_livro: str | None = None,
         comentario_do_usuario: str | None = None,
         elementos_vinculados: list[str] | None = None,
+        trecho_do_livro: str | None = None,
     ) -> PromptMontado:
         chamada = {
             "descricao_do_frame": descricao_do_frame,
@@ -238,6 +241,8 @@ class ProvedorFalso(ProvedorIA):
         }
         if elementos_vinculados:  # só aparece quando há vinculados, para os testes de antes não mudarem
             chamada["elementos_vinculados"] = elementos_vinculados
+        if trecho_do_livro:
+            chamada["trecho_do_livro"] = trecho_do_livro
         self.chamadas_de_prompt.append(chamada)
         if self._erro is not None:
             raise self._erro

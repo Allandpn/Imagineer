@@ -535,6 +535,7 @@ def _resposta_de_cena(
         horario=cena.horario,
         clima=cena.clima,
         humor=cena.humor,
+        trecho=cena.trecho,
         modelo=cena.modelo,
         descartada=cena.descartada,
         frame_id=cena.frame_id,

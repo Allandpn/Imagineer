@@ -323,6 +323,7 @@ def criar_prompt(
             contexto_do_livro=contexto_do_livro,
             comentario_do_usuario=corpo.comentario,
             elementos_vinculados=_elementos_vinculados(sessao, frame) or None,
+            trecho_do_livro=frame.trecho,
         )
 
     prompt = Prompt(
@@ -780,6 +781,7 @@ def _fundamentar_se_necessario(
         humor=frame.humor,
         participantes=_elementos_do_frame(sessao, frame),
         modelo=modelo,
+        trecho=frame.trecho,
     )
     frame.contexto_do_livro = fundamentado.contexto
     frame.confirmado_pela_leitura_profunda = True

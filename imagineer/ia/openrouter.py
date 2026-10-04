@@ -104,6 +104,7 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
       "clima": "condição do ambiente, se o texto sugerir, senão nulo",
       "humor": "tom emocional da cena, se ficar claro, senão nulo",
       "trecho_ancora": "citação literal do começo desse momento, copiada do texto",
+      "trecho": "citação literal de 1 a 3 frases que narram esse momento, copiada do texto",
       "participantes": [
         {"tipo": "PERSONAGEM", "nome": "nome exatamente como em elementos"}
       ]
@@ -158,6 +159,11 @@ parágrafo do capítulo como uma cena.
 uma frase curta (até 200 caracteres) do texto do capítulo, no ponto em que o momento \
 da cena COMEÇA. Não resuma, não traduza, não corrija pontuação. Se não tiver certeza \
 de achar um trecho exato, use null.
+- "trecho" de cada cena: copie, **palavra por palavra e sem alterar nada**, de 1 a 3 frases \
+seguidas do capítulo (até 500 caracteres) que NARRAM o momento da cena — a ação, o lugar e o que \
+se vê, nas palavras do autor. Pode começar onde "trecho_ancora" começa. Não resuma, não traduza, \
+não una frases de lugares diferentes do texto. Se não tiver certeza de achar um trecho exato, use \
+null: um trecho que não esteja no capítulo é descartado.
 - Se o pedido trouxer uma "ORIENTAÇÃO DO USUÁRIO", procure com atenção o que ela \
 descreve (um elemento, uma cena) e inclua se estiver no texto. A orientação é um \
 PALPITE do usuário, não um fato: se o que ele descreve NÃO aparece neste capítulo, \
@@ -287,8 +293,10 @@ Você lê um capítulo de livro para conferir uma cena que o usuário já descre
 com as próprias palavras — você é uma segunda opinião, não a palavra final.
 
 Você recebe como o usuário descreveu a cena (título, descrição, horário, clima, \
-humor) e quem participa dela, cada um já com a aparência estabelecida. Releia o \
-capítulo e escreva um parágrafo curto (até 3 frases) confirmando, com base só \
+humor) e quem participa dela, cada um já com a aparência estabelecida. Pode vir também \
+o "TRECHO DO LIVRO EM QUE A CENA ACONTECE": as palavras do autor nesse momento. Se vier, \
+é ali que a cena está: foque nele (e no que o cerca, para o contexto) e ignore outras \
+passagens do capítulo com os mesmos personagens. Releia o capítulo e escreva um parágrafo curto (até 3 frases) confirmando, com base só \
 no texto:
 - Onde a cena acontece: o ambiente ou construção, com detalhes físicos que o \
 texto sustente.
@@ -441,6 +449,9 @@ Ordem de prioridade quando houver conflito entre as fontes abaixo:
 resultado anterior ou releu o capítulo com atenção. Vale mais que tudo.
 2. A descrição da cena escrita pelo usuário — ele já leu o capítulo; é a conta \
 oficial do que acontece.
+2b. O trecho do livro (se houver) — são as palavras do autor nesse momento: use-o para \
+confirmar e completar a ação, os objetos e a luz da cena, e **não acrescente nada que ele \
+não sustente**. Se a descrição do usuário disser algo diferente do trecho, vale a do usuário.
 3. O contexto do livro (se houver) — uma releitura automática, só para \
 preencher o que a descrição do usuário não cobriu. Nunca use isso para \
 contradizer o que o usuário escreveu.
@@ -874,6 +885,7 @@ class ProvedorOpenRouter(ProvedorIA):
         humor: str | None,
         participantes: list[str],
         modelo: str,
+        trecho: str | None = None,
     ) -> FrameFundamentado:
         """Pede ao modelo para conferir a cena contra o capítulo (item 4.4)."""
         lista = "\n".join(f"- {p}" for p in participantes) or "(nenhum)"
@@ -885,8 +897,10 @@ class ProvedorOpenRouter(ProvedorIA):
             f"Clima: {clima or '(não informado)'}\n"
             f"Humor: {humor or '(não informado)'}\n\n"
             f"PARTICIPANTES, COM A APARÊNCIA JÁ ESTABELECIDA:\n{lista}\n\n"
-            f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
         )
+        if trecho:
+            pedido += f"TRECHO DO LIVRO EM QUE A CENA ACONTECE (literal, as palavras do autor):\n{trecho}\n\n"
+        pedido += f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
 
         resposta = self._conversar(
             modelo, _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME, pedido, operacao="fundamentacao", temperatura=TEMPERATURA_DE_FIDELIDADE
@@ -904,6 +918,7 @@ class ProvedorOpenRouter(ProvedorIA):
         contexto_do_livro: str | None = None,
         comentario_do_usuario: str | None = None,
         elementos_vinculados: list[str] | None = None,
+        trecho_do_livro: str | None = None,
     ) -> PromptMontado:
         """Pede ao modelo o prompt de imagem (passo 8)."""
         lista = "\n".join(f"- {elemento}" for elemento in elementos) or "(nenhum)"
@@ -916,6 +931,8 @@ class ProvedorOpenRouter(ProvedorIA):
         if elementos_vinculados:
             vinculados = "\n".join(f"- {elemento}" for elemento in elementos_vinculados)
             pedido += f"\n\nELEMENTOS VINCULADOS AO SUJEITO (aparecem junto dele neste retrato):\n{vinculados}"
+        if trecho_do_livro:
+            pedido += f"\n\nTRECHO DO LIVRO (o que o autor escreveu neste momento; confira com ele a ação, os objetos e a luz):\n{trecho_do_livro}"
         if contexto_do_livro:
             pedido += f"\n\nCONTEXTO DO LIVRO (apoio, não substitui a cena acima):\n{contexto_do_livro}"
         if comentario_do_usuario:
@@ -1433,6 +1450,7 @@ def _interpretar_cenas_sugeridas(bruto: dict) -> list[CenaSugerida]:
                 humor=_texto_ou_nulo(entrada.get("humor")),
                 participantes=participantes,
                 trecho_ancora=_texto_ou_nulo(entrada.get("trecho_ancora")),
+                trecho=_texto_ou_nulo(entrada.get("trecho")),
             )
         )
 

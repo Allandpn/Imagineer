@@ -102,6 +102,10 @@ class Frame(Base):
     titulo: Mapped[str] = mapped_column(String(300))
     descricao: Mapped[str | None] = mapped_column(Text)
 
+    trecho: Mapped[str | None] = mapped_column(Text)
+    """O trecho **literal** do capítulo em que a cena acontece (FD7): vem da sugestão da IA ou da seleção da pessoa, e o servidor confere
+    que ele está no texto. A fundamentação foca nele e a montagem do prompt o recebe como "o que o autor escreveu neste momento"."""
+
     horario: Mapped[str | None] = mapped_column(String(100))
     clima: Mapped[str | None] = mapped_column(String(100))
     humor: Mapped[str | None] = mapped_column(String(100))

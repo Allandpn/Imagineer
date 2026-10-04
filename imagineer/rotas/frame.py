@@ -39,7 +39,7 @@ from imagineer.modelos import (
 )
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.lixeira import mover_frame_para_a_lixeira
-from imagineer.servicos.posicao_no_texto import tamanho_em_utf16
+from imagineer.servicos.posicao_no_texto import LIMITE_DO_TRECHO_DA_PESSOA, tamanho_em_utf16, trecho_literal
 from imagineer.rotas._comum import (
     buscar_capitulo as _buscar_capitulo,
     buscar_frame as _buscar_frame,
@@ -105,6 +105,8 @@ def criar_frame(
     horario = novo.horario if novo.horario is not None else (sugestao.horario if sugestao else None)
     clima = novo.clima if novo.clima is not None else (sugestao.clima if sugestao else None)
     humor = novo.humor if novo.humor is not None else (sugestao.humor if sugestao else None)
+    # FD7: o trecho vindo do pedido é conferido contra o capítulo; o da sugestão já foi conferido quando ela foi gerada.
+    trecho = _trecho_conferido(capitulo, novo.trecho) if novo.trecho is not None else (sugestao.trecho if sugestao else None)
 
     estados_ids = novo.estados_ids
     if not estados_ids and sugestao is not None:
@@ -124,6 +126,7 @@ def criar_frame(
         horario=horario,
         clima=clima,
         humor=humor,
+        trecho=trecho,
         posicao_no_texto=novo.posicao_no_texto,
     )
     frame.estados_elemento = estados
@@ -158,7 +161,13 @@ def ajustar_frame(
     frame = _buscar_frame(sessao, frame_id)
     _exigir_posicao_valida(frame.capitulo, ajuste.posicao_no_texto)
 
-    for campo, valor in ajuste.model_dump(exclude_unset=True).items():
+    campos = ajuste.model_dump(exclude_unset=True)
+    if "trecho" in campos:
+        campos["trecho"] = _trecho_conferido(frame.capitulo, campos["trecho"]) if campos["trecho"] is not None else None
+        if campos["trecho"] != frame.trecho:
+            # A fundamentação guardada foi feita sobre o trecho de antes: na próxima vez que um prompt for montado, refaz.
+            frame.confirmado_pela_leitura_profunda = False
+    for campo, valor in campos.items():
         setattr(frame, campo, valor)
 
     sessao.commit()
@@ -350,6 +359,19 @@ def _exigir_posicao_valida(capitulo: Capitulo, posicao: int | None) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"A posição {posicao} passa do fim do capítulo, que tem {tamanho} unidades UTF-16.",
         )
+
+
+def _trecho_conferido(capitulo: Capitulo, trecho: str) -> str | None:
+    """O trecho como está no livro, ou 422 se não está no capítulo (FD7). Em branco vira "sem trecho" (``None`` virou antes, no chamador)."""
+    if not trecho.strip():
+        return None
+    achado = trecho_literal(capitulo.texto, trecho, LIMITE_DO_TRECHO_DA_PESSOA)
+    if achado is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="O trecho informado não está no texto deste capítulo. Copie-o do capítulo, com até uns três parágrafos.",
+        )
+    return achado
 
 
 def _exigir_contagem_valida(tipo: TipoDeFrame, estados_ids: list[int]) -> None:
@@ -602,6 +624,7 @@ def _resumo(frame: Frame, total: int) -> FrameResumo:
         horario=frame.horario,
         clima=frame.clima,
         humor=frame.humor,
+        trecho=frame.trecho,
         posicao_no_texto=frame.posicao_no_texto,
         total_de_elementos=total,
         imagem_canonica_id=frame.imagem_canonica_id,

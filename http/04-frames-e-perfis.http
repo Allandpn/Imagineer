@@ -188,6 +188,16 @@ Content-Type: application/json
   "posicao_no_texto": 0
 }
 
+### O trecho do livro em que a cena acontece (FD7)
+# "trecho": copie do capítulo (até ~3 parágrafos). O servidor confere que ele ESTÁ no texto (422 se não está) e guarda como está no
+# livro. null apaga. Mudar o trecho refaz a fundamentação da cena no próximo prompt. Também vale em POST /capitulos/{id}/frames.
+PATCH {{baseUrl}}/frames/{{frameId}}
+Content-Type: application/json
+
+{
+  "trecho": "Ned ergueu a espada diante do portão."
+}
+
 ### Substitui a lista completa de estados do frame (o app manda o conjunto inteiro)
 PUT {{baseUrl}}/frames/{{frameId}}/estados
 Content-Type: application/json

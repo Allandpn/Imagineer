@@ -520,6 +520,10 @@ class CenaSugerida(BaseModel):
     clima: str | None
     humor: str | None
     participantes: list[ParticipanteSugerido]
+    trecho: str | None = Field(
+        default=None,
+        description="A citação literal do capítulo que narra o momento (FD7), conferida contra o texto; nulo = a IA não citou.",
+    )
     descartada: bool = Field(
         default=False,
         description="O usuário descartou esta cena (item 6.8): não conta como pendente.",

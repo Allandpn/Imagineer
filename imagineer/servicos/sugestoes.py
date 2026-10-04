@@ -21,7 +21,7 @@ from imagineer.modelos import (
 from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
-from imagineer.servicos.posicao_no_texto import posicao_da_citacao
+from imagineer.servicos.posicao_no_texto import LIMITE_DO_TRECHO_DA_IA, posicao_da_citacao, trecho_literal
 from imagineer.servicos.uso_de_ia import gasto_do_livro
 
 
@@ -177,6 +177,8 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
             humor=cena.humor,
             modelo=extracao.modelo,
             trecho_ancora=cena.trecho_ancora[:300] if cena.trecho_ancora else None,
+            # FD7: a citação da IA só vale se estiver no capítulo; o que se guarda é o texto do livro.
+            trecho=trecho_literal(capitulo.texto, cena.trecho, LIMITE_DO_TRECHO_DA_IA),
             # A posição vem da citação, calculada aqui — a IA nunca devolve número (item 3.4g).
             posicao_no_texto=posicao_da_citacao(capitulo.texto, cena.trecho_ancora),
             posicao_manual=posicoes_manuais_de_cenas.get(texto_normalizado(cena.titulo)),
