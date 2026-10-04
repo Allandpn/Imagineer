@@ -108,6 +108,15 @@ GET {{baseUrl}}/livros/1/sugestoes-elemento?nome=vis
 # {
 #   "descartada": true
 # }
+#
+# LV6: edita o título e/ou a descrição da cena (ao menos um campo; descrição vazia apaga; o frame da cena acompanha).
+# PATCH {{baseUrl}}/sugestoes-cena/2
+# Content-Type: application/json
+#
+# {
+#   "titulo": "A espada de Ned",
+#   "descricao": "Ned ergue a espada no pátio."
+# }
 
 ### Os artefatos a desenhar sobre o texto do capítulo (item 6.8)
 # Só leitura, NUNCA chama a IA. Um artefato por sugestão não descartada, de ELEMENTO ou de CENA, com a posição

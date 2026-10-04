@@ -240,7 +240,7 @@ def posicionar_cena(
 @rotas_de_sugestao_cena.patch(
     "/{sugestao_cena_id}",
     response_model=CenaSugeridaResposta,
-    summary="Descarta (ou restaura) uma sugestão de cena",
+    summary="Descarta, restaura ou edita (título e descrição) uma sugestão de cena",
 )
 def ajustar_sugestao_de_cena(
     sugestao_cena_id: int,
@@ -260,7 +260,17 @@ def ajustar_sugestao_de_cena(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Esta cena já virou o frame {cena.frame_id}; não dá para descartá-la.",
         )
-    cena.descartada = ajuste.descartada
+    if ajuste.descartada is not None:
+        cena.descartada = ajuste.descartada
+    # LV6: editar o título e a descrição; o frame da cena (se já existe) acompanha, para o modal e o prompt dizerem o mesmo.
+    if ajuste.titulo is not None:
+        cena.titulo = ajuste.titulo
+        if cena.frame is not None:
+            cena.frame.titulo = ajuste.titulo
+    if ajuste.descricao is not None:
+        cena.descricao = ajuste.descricao.strip() or None
+        if cena.frame is not None:
+            cena.frame.descricao = cena.descricao
     sessao.commit()
     sessao.refresh(cena)
 

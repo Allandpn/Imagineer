@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from imagineer.modelos import TipoElemento
 
@@ -429,9 +429,20 @@ class SugestaoDeElementoAjuste(BaseModel):
 
 
 class SugestaoDeCenaAjuste(BaseModel):
-    """O que `PATCH /sugestoes-cena/{id}` recebe (item 6.8): descartar ou restaurar."""
+    """O que `PATCH /sugestoes-cena/{id}` recebe: descartar ou restaurar (item 6.8) e/ou **editar o título e a descrição** (LV6).
 
-    descartada: bool
+    Só o que vem é aplicado, e ao menos um campo é obrigatório. Se a cena já virou frame, o frame acompanha a edição.
+    """
+
+    descartada: bool | None = None
+    titulo: str | None = Field(default=None, min_length=1, max_length=300)
+    descricao: str | None = Field(default=None, description="Vazio apaga a descrição.")
+
+    @model_validator(mode="after")
+    def _ao_menos_um_campo(self) -> "SugestaoDeCenaAjuste":
+        if self.descartada is None and self.titulo is None and self.descricao is None:
+            raise ValueError("Mande ao menos um campo: descartada, titulo ou descricao.")
+        return self
 
 
 class ParticipanteSugerido(BaseModel):
