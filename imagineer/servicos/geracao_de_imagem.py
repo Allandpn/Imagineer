@@ -123,6 +123,8 @@ def _gerar_imagem_do_prompt(
     """
     modelo_de_imagem = (modelo or "").strip() or configuracao.modelo_imagem
     texto = (texto_editado or "").strip()
+    if prompt.so_imagem and not texto:  # PI2: ele só guarda a imagem importada
+        raise PedidoDeGeracaoInvalido("Este prompt só guarda uma imagem importada; gere um prompt primeiro.")
     referencias = _preparar_referencias(sessao, configuracao, modelo_de_imagem, imagens_de_referencia or [])
 
     if sem_filtro_de_seguranca:

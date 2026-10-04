@@ -70,6 +70,10 @@ class Prompt(Base):
 
     texto: Mapped[str] = mapped_column(Text)
 
+    so_imagem: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    """O prompt existe **só para guardar uma imagem importada** (PI1): a pessoa já tinha a imagem e não gerou prompt. Não vale como prompt:
+    o botão principal o ignora e gerar imagem a partir dele é recusado (PI2)."""
+
     texto_pt: Mapped[str | None] = mapped_column(Text)
     """A versão em **português** do prompt (PT1): uma tradução para a pessoa ler e editar. O prompt de verdade, o que vai à imagem, é
     sempre o ``texto`` em inglês. Nulo = ainda sem tradução."""

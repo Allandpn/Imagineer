@@ -89,6 +89,7 @@ class PromptResumo(BaseModel):
     perfil_renderizacao_id: int | None
     modelo_ia: str | None
     texto: str
+    so_imagem: bool = Field(default=False, description="O prompt existe só para guardar uma imagem importada sem prompt (PI1); não vale como prompt.")
     texto_pt: str | None = Field(default=None, description="A versão em português (PT1); nulo = ainda sem tradução. O que vai à imagem é o `texto`.")
     avaliacao: str | None
     data_criacao: datetime

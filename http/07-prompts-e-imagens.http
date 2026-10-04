@@ -80,6 +80,18 @@ Content-Type: image/png
 < ./arquivos/imagem-teste.png
 --WebAppBoundary--
 
+### Importa uma imagem para o FRAME, mesmo sem prompt (PI1)
+# Vai para o prompt mais recente com texto; se nao ha nenhum, o servidor cria o "prompt so da imagem". Nao gasta IA.
+POST {{baseUrl}}/frames/{{frameId}}/imagens
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="arquivo"; filename="imagem-teste.png"
+Content-Type: image/png
+
+< ./arquivos/imagem-teste.png
+--WebAppBoundary--
+
 > {%
     client.global.set("imagemId", response.body.id);
     client.test("Importou a imagem", function () {

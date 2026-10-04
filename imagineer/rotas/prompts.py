@@ -431,6 +431,40 @@ async def importar_imagem(
     return ImagemResumo.model_validate(imagem)
 
 
+TEXTO_DO_PROMPT_SO_DA_IMAGEM = "Imagem importada, sem prompt."
+
+
+@rotas_de_frame.post(
+    "/{frame_id}/imagens",
+    response_model=ImagemResumo,
+    status_code=status.HTTP_201_CREATED,
+    summary="Importa uma imagem para o frame, mesmo sem prompt",
+)
+async def importar_imagem_para_o_frame(
+    frame_id: int,
+    arquivo: UploadFile = File(description="O arquivo de imagem que a pessoa já tem"),
+    sessao: Session = Depends(obter_sessao),
+) -> ImagemResumo:
+    """A imagem vai para o prompt **mais recente com texto**; sem nenhum, o servidor cria um "prompt só da imagem" (PI1). Não gasta IA."""
+    frame = _buscar_frame(sessao, frame_id)
+    prompt = sessao.scalars(
+        select(Prompt).where(Prompt.frame_id == frame.id, Prompt.so_imagem.is_(False)).order_by(Prompt.id.desc())
+    ).first()
+    if prompt is None:
+        prompt = sessao.scalars(
+            select(Prompt).where(Prompt.frame_id == frame.id, Prompt.so_imagem.is_(True)).order_by(Prompt.id.desc())
+        ).first()
+    if prompt is None:
+        prompt = Prompt(frame_id=frame.id, texto=TEXTO_DO_PROMPT_SO_DA_IMAGEM, so_imagem=True)
+        sessao.add(prompt)
+        sessao.flush()
+    try:
+        return await importar_imagem(prompt.id, arquivo, sessao)
+    except HTTPException:
+        sessao.rollback()  # arquivo recusado: o prompt só da imagem, recém-criado, não fica
+        raise
+
+
 @rotas.post(
     "/{prompt_id}/gerar-imagem",
     response_model=ResultadoDaGeracao,
@@ -917,6 +951,7 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
         modelo_ia=prompt.modelo_ia,
         texto=prompt.texto,
         texto_pt=prompt.texto_pt,
+        so_imagem=prompt.so_imagem,
         avaliacao=prompt.avaliacao,
         data_criacao=prompt.data_criacao,
         total_de_imagens=total_de_imagens,
