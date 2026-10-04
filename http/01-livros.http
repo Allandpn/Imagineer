@@ -87,3 +87,15 @@ Content-Type: image/png
 
 < ./arquivos/imagem-teste.png
 --fronteira--
+
+### Os livros da lixeira (LT2): apagar um livro so o move para la; aqui estao com capitulos, imagens e espaco
+GET {{baseUrl}}/lixeira/livros
+
+### Tira o livro da lixeira (volta inteiro)
+POST {{baseUrl}}/lixeira/livros/{{livroId}}/restaurar
+
+### Apaga de vez um livro da lixeira (capitulos, elementos, estados, frames, prompts e arquivos das imagens). Nao tem volta
+DELETE {{baseUrl}}/lixeira/livros/{{livroId}}
+
+### Esvazia a lixeira de livros
+DELETE {{baseUrl}}/lixeira/livros

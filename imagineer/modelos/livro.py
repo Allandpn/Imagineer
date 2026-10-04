@@ -51,6 +51,10 @@ class Livro(Base):
 
     nome_arquivo: Mapped[str] = mapped_column(String(500))
 
+    apagado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    """Quando o livro foi para a **lixeira** (LT2); nulo = ativo. Um livro na lixeira some da biblioteca, da busca e de todas as rotas
+    dele; só **restaurar** o traz de volta, e só **apagar de vez** o remove (com os capítulos, elementos e imagens)."""
+
     capa: Mapped[bytes | None] = deferred(mapped_column(LargeBinary))
     """A capa do livro, já reduzida (JPEG, lado maior 800 px; item 7.5b, CP1/CP2). ``deferred``: **só é lida quando alguém a pede**,
     para listar livros não arrastar uma imagem por livro. Guardada no banco (dezenas de KB) para ir junto de um ``pg_dump``."""

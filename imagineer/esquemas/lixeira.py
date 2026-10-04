@@ -41,3 +41,24 @@ class LixeiraEsvaziada(BaseModel):
 
     removidas: int
     liberados_em_bytes: int
+
+
+class LivroNaLixeira(BaseModel):
+    """Um livro movido para a lixeira, com o que ele leva junto, para a pessoa decidir (LT2)."""
+
+    id: int
+    titulo: str
+    autor: str | None = None
+    apagado_em: datetime
+    total_de_capitulos: int
+    total_de_imagens: int = Field(description="Imagens do livro (as que estão em prompts dele), ativas ou já na lixeira de imagens.")
+    tamanho_das_imagens_em_bytes: int = Field(description="O espaço em disco das imagens do livro: o que se libera ao apagar de vez.")
+    tem_capa: bool = False
+
+
+class LivrosDaLixeira(BaseModel):
+    """Os livros da lixeira, do apagado mais recentemente para o mais antigo (LT2)."""
+
+    livros: list[LivroNaLixeira]
+    total_em_bytes: int = Field(description="A soma do espaço das imagens de todos os livros da lixeira.")
+

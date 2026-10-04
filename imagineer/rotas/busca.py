@@ -32,7 +32,7 @@ def buscar(
     consulta = (
         select(Livro.id, Livro.titulo, Capitulo.id, Capitulo.ordem, Capitulo.titulo, Capitulo.texto)
         .join(Capitulo, Capitulo.livro_id == Livro.id)
-        .where(Capitulo.ignorado.is_(False))
+        .where(Capitulo.ignorado.is_(False), Livro.apagado_em.is_(None))  # o livro da lixeira não entra na pesquisa (LT2)
         .order_by(Livro.titulo, Livro.id, Capitulo.ordem)
     )
     if capitulo_id is not None:

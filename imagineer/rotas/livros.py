@@ -4,6 +4,7 @@ Cobrem os passos 1 a 4 do fluxo da Etapa 2.
 """
 
 import mimetypes
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import Integer, case, func, select
@@ -131,6 +132,7 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
             func.coalesce(func.sum(_caracteres_se_ativo()), 0),
         )
         .outerjoin(Capitulo, Capitulo.livro_id == Livro.id)
+        .where(Livro.apagado_em.is_(None))  # LT2: o da lixeira não aparece
         .group_by(Livro.id)
         .order_by(Livro.titulo)
     ).all()
@@ -452,13 +454,18 @@ async def definir_capa(
     summary="Remove um livro",
 )
 def remover_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> None:
-    """Apaga o livro e, em cascata, tudo que só existia por causa dele.
+    """Move o livro **para a lixeira** (LT2): ele some da biblioteca e de todas as rotas, mas **nada é apagado**. Só "apagar de vez",
+    na lixeira, remove o livro com os capítulos, elementos, estados, frames, prompts e imagens dele (item 3.4). Os perfis de
+    renderização não pertencem ao livro e nunca vão junto.
 
-    Capítulos, elementos, estados, frames, prompts e imagens vão junto (item 3.4).
-    Os perfis de renderização não: eles não pertencem ao livro.
+    Mover de novo um livro que já está na lixeira não dá erro.
     """
-    sessao.delete(_buscar_livro(sessao, livro_id))
-    sessao.commit()
+    livro = sessao.get(Livro, livro_id)
+    if livro is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe livro com id {livro_id}.")
+    if livro.apagado_em is None:
+        livro.apagado_em = datetime.now(timezone.utc)
+        sessao.commit()
 
 
 # --------------------------------------------------------------------------- #

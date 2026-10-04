@@ -40,11 +40,19 @@ def obter_ou_404(sessao: Session, modelo: type[T], id_: int, rotulo: str) -> T:
 
 
 def buscar_livro(sessao: Session, livro_id: int) -> Livro:
-    return obter_ou_404(sessao, Livro, livro_id, "livro")
+    """O livro, **a não ser que esteja na lixeira**: para o resto do sistema, um livro apagado não existe (LT2)."""
+    livro = obter_ou_404(sessao, Livro, livro_id, "livro")
+    if livro.apagado_em is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe livro com id {livro_id}.")
+    return livro
 
 
 def buscar_capitulo(sessao: Session, capitulo_id: int) -> Capitulo:
-    return obter_ou_404(sessao, Capitulo, capitulo_id, "capítulo")
+    """O capítulo, a não ser que o livro dele esteja na lixeira (LT2)."""
+    capitulo = obter_ou_404(sessao, Capitulo, capitulo_id, "capítulo")
+    if capitulo.livro is not None and capitulo.livro.apagado_em is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe capítulo com id {capitulo_id}.")
+    return capitulo
 
 
 def buscar_elemento(sessao: Session, elemento_id: int) -> Elemento:

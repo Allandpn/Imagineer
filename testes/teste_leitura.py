@@ -261,7 +261,11 @@ def teste_apagar_o_livro_apaga_marcador_e_pins(cliente: TestClient, sessao_com_t
     _marcar(cliente, livro["id"], c1, 10, AGORA)
     _pin(cliente, livro["id"], c1, 20)
 
-    assert cliente.delete(f"/livros/{livro['id']}").status_code == 204
+    assert cliente.delete(f"/livros/{livro['id']}").status_code == 204  # vai para a lixeira (LT2): nada é apagado ainda
+    sessao_com_tabelas.expire_all()
+    assert sessao_com_tabelas.query(Marcador).count() == 1
+
+    assert cliente.delete(f"/lixeira/livros/{livro['id']}").status_code == 204  # apagar de vez leva marcador e pins junto
 
     sessao_com_tabelas.expire_all()
     assert sessao_com_tabelas.query(Marcador).count() == 0

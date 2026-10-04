@@ -346,7 +346,7 @@ def livros_com_mesmo_identificador(
 
     return list(
         sessao.scalars(
-            select(Livro).where(Livro.identificador_epub == identificador_epub)
+            select(Livro).where(Livro.identificador_epub == identificador_epub, Livro.apagado_em.is_(None))
         ).all()
     )
 

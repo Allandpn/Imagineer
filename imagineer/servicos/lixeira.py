@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from imagineer.modelos import Elemento, EstadoElemento, Frame, Imagem
+from imagineer.modelos import Capitulo, Elemento, EstadoElemento, Frame, Imagem, Livro, Prompt
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
 from imagineer.servicos.imagens_reduzidas import remover_derivadas
 
@@ -44,3 +44,33 @@ def apagar_de_vez(sessao: Session, imagem: Imagem) -> int:
     remover_derivadas(imagem_id)
     remover_arquivo(caminho)
     return liberados
+
+
+# --------------------------------------------------------------------------- #
+# Livros (LT2)
+# --------------------------------------------------------------------------- #
+
+
+def imagens_do_livro(sessao: Session, livro_id: int) -> list[Imagem]:
+    """Todas as imagens do livro (ativas e as que já estavam na lixeira de imagens): o que ocupa disco por causa dele."""
+    return list(
+        sessao.scalars(
+            select(Imagem)
+            .join(Prompt, Prompt.id == Imagem.prompt_id)
+            .join(Frame, Frame.id == Prompt.frame_id)
+            .join(Capitulo, Capitulo.id == Frame.capitulo_id)
+            .where(Capitulo.livro_id == livro_id)
+        )
+    )
+
+
+def apagar_livro_de_vez(sessao: Session, livro: Livro) -> int:
+    """Remove o livro e **antes** os arquivos das imagens dele (o disco não guarda arquivo sem dono). Devolve os bytes liberados.
+
+    Capítulos, elementos, estados, frames e prompts saem em cascata com o livro. Quem chama faz o ``commit``.
+    """
+    liberados = sum(apagar_de_vez(sessao, imagem) for imagem in imagens_do_livro(sessao, livro.id))
+    sessao.delete(livro)
+    sessao.flush()
+    return liberados
+
