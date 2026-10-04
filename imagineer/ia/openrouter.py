@@ -364,10 +364,13 @@ está:" do elemento (se não houver esse campo, pule — não invente).
 do "Onde está:", com os detalhes concretos que ele traz (materiais, objetos, o que se vê \
 atrás do sujeito), para que a imagem tenha imersão e o fundo seja o do livro, nunca um \
 fundo genérico ou neutro.
-6. Iluminação e atmosfera: fonte de luz (candlelight, golden hour, cool \
-moonlight, harsh neon) e o que há no ar (dust motes, mist, smoke) — a **fonte de luz vem \
-sempre da cena** (horário, clima, o lugar e o que ela descreve); o perfil de estilo não \
-escolhe a fonte. Não invente uma fonte que contradiga o que foi dito.
+6. Iluminação e atmosfera: a fonte de luz (candlelight, golden hour, cool \
+moonlight, harsh neon) — a **fonte de luz vem sempre da cena** (horário, clima, o lugar e o \
+que ela descreve); o perfil de estilo não escolhe a fonte. Não invente uma fonte que \
+contradiga o que foi dito. **O que há no ar (poeira, névoa, fumaça, partículas) só entra se \
+os insumos disserem**: não acrescente "dust motes", "mist" ou "suspended particles" só para \
+dar clima. Se a descrição não fala em luz, escreva só a que o horário, o clima ou o lugar \
+sustentam.
 
 Depois dos blocos acima (a prosa da cena/sujeito), acrescente um bloco \
 FINAL e SEPARADO — não misture com a prosa, nem reescreva os campos numa \

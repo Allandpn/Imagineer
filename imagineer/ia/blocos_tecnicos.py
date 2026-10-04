@@ -9,7 +9,9 @@ parafrasear ou perder.
 **Os textos são em inglês** (é o que vai ao modelo de imagem) e são **conteúdo**, não nomes de código. Todos seguem o mesmo
 molde, validado nos testes: frases de técnica, textura e luz (nunca adjetivo vazio), o que o estilo **nunca** é e, no fim,
 ``no signature, no text`` (sem isso, o Gemini assinou um quadro). **Nenhum cita estúdio ou artista**: o nome pode viciar o
-resultado ou ser recusado; a técnica basta.
+resultado ou ser recusado; a técnica basta. **Nenhum dita a paleta** (FD10): a paleta é do perfil. Um bloco que diz "vibrant
+saturated colors" contradiz um perfil de paleta dessaturada, e o resultado é a mistura das duas (achado em 04/10/2026, com um
+perfil de anime de cores suaves). Só a técnica que *é* a cor do estilo (pixel art: poucas cores; gravura: monocromática) fica.
 """
 
 from imagineer.modelos import CategoriaEstilo
@@ -28,8 +30,8 @@ BLOCO_TECNICO_POR_CATEGORIA: dict[CategoriaEstilo, str] = {
     ),
     CategoriaEstilo.PINTURA_A_OLEO: (
         "Classical oil painting on linen canvas. Impasto technique with thick, visibly textured brushstrokes and raised "
-        "paint relief that catches the light, visible canvas weave in the thinner areas, rich layered glazes, soft "
-        "chiaroscuro modeling of form, warm earthy pigments, subtly craquelured aged varnish, traditional academic "
+        "paint relief that catches the light, visible canvas weave in the thinner areas, layered glazes, soft "
+        "chiaroscuro modeling of form, subtly craquelured aged varnish, traditional academic "
         "painting technique — never a smooth digital-painting look, never airbrushed gradients, never photographic, "
         "no signature, no text."
     ),
@@ -43,25 +45,25 @@ BLOCO_TECNICO_POR_CATEGORIA: dict[CategoriaEstilo, str] = {
     CategoriaEstilo.ARTE_DIGITAL_CONCEITUAL: (
         "Digital concept art for games and film. Polished digital painting technique with confident visible brushwork, "
         "dramatic directional lighting with a strong focal point, atmospheric perspective and depth layers, cinematic "
-        "composition with a clear silhouette read, rich color harmony, selective crisp detail against softer "
+        "composition with a clear silhouette read, selective crisp detail against softer "
         "backgrounds — no canvas texture, no film grain, no traditional media texture, no signature, no text."
     ),
     CategoriaEstilo.QUADRINHOS: (
         "Comic book / graphic novel illustration. Bold consistent black ink outlines with varied line weight, dynamic "
         "panel-like composition, flat or halftone-screened color fills, hatching for shadow, strong spotted blacks, "
-        "limited but punchy color palette, graphic novel line-art aesthetic — never photorealistic, never painterly "
+        "graphic novel line-art aesthetic — never photorealistic, never painterly "
         "blending, never soft airbrushed gradients, no signature, no text."
     ),
     CategoriaEstilo.CARTOON_ANIMACAO: (
-        "Cartoon animation style, 2D animated production. Simplified geometric shapes, bold clean outlines, bold vivid "
-        "saturated colors, clean flat shading with minimal highlight shapes, exaggerated expressive poses and "
+        "Cartoon animation style, 2D animated production. Simplified geometric shapes, bold clean outlines, "
+        "clean flat shading with minimal highlight shapes, exaggerated expressive poses and "
         "proportions, simple painted backgrounds with clear color separation from the characters — never "
         "photorealistic, never traditional painting texture, never complex rendering, no signature, no text."
     ),
     CategoriaEstilo.ANIME: (
         "Japanese anime illustration, high-quality animated film look. Thin precise ink outlines, cel-shading with "
         "hard-edged flat shadow shapes (no soft gradients), large expressive stylized eyes with detailed highlights, "
-        "simplified stylized facial features, vibrant saturated color palette, stylized hair rendered in defined "
+        "simplified stylized facial features, stylized hair rendered in defined "
         "flowing strands with sharp highlight shapes, detailed painted background with luminous skies and soft "
         "light bloom — never realistic skin texture, never photographic, never film grain, no signature, no text."
     ),
@@ -82,7 +84,7 @@ BLOCO_TECNICO_POR_CATEGORIA: dict[CategoriaEstilo, str] = {
     CategoriaEstilo.ANIMACAO_3D: (
         "3D animated feature film still, stylized CGI. Smooth sculpted shapes with slightly exaggerated proportions, "
         "large expressive eyes, soft subsurface-scattered skin, detailed fabric and hair simulation, global "
-        "illumination with soft shadows and rim light, rich saturated color, shallow depth of field, polished "
+        "illumination with soft shadows and rim light, shallow depth of field, polished "
         "family-film production design — never photographic, never flat 2D, never painterly brushwork, "
         "no signature, no text."
     ),

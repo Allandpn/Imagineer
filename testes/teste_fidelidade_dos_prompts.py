@@ -322,3 +322,29 @@ def teste_o_pedido_da_leitura_profunda_leva_a_aparencia_estabelecida() -> None:
     assert "APARÊNCIA ESTABELECIDA ATÉ AQUI (traços fixos de capítulos anteriores): cabelo escuro" in com
     assert "APARÊNCIA ESTABELECIDA ATÉ AQUI (traços fixos de capítulos anteriores): (nenhuma ainda)" in sem
     assert "APARÊNCIA ESTABELECIDA" in pedidos[0]["messages"][0]["content"]  # e a instrução explica o que fazer com ela
+
+
+# --------------------------------------------------------------------------- #
+# FD10 — achados do experimento de auditoria (04/10/2026)
+# --------------------------------------------------------------------------- #
+
+
+def teste_a_instrucao_do_prompt_nao_ensina_a_inventar_poeira_nem_nevoa() -> None:
+    instrucao = " ".join(openrouter._INSTRUCAO_DE_PROMPT.replace("\\n", "").split())
+
+    assert "só entra se os insumos disserem" in instrucao
+    # O exemplo antigo ("o que há no ar (dust motes, mist, smoke)") ensinava a pôr poeira em todo prompt: 5 de 10 prompts reais tinham.
+    assert "o que há no ar (dust motes, mist, smoke)" not in instrucao
+
+
+def teste_nenhum_bloco_tecnico_dita_a_paleta() -> None:
+    from imagineer.ia.blocos_tecnicos import BLOCO_TECNICO_POR_CATEGORIA
+    from imagineer.modelos import CategoriaEstilo
+
+    # A paleta é do perfil: um bloco "vibrant saturated" contradizia o perfil de cores suaves (o "Studio Ghibli" do Allan).
+    palavras_de_paleta = ("saturated", "vibrant", "vivid", "earthy", "color harmony", "punchy", "rich color")
+    for categoria, bloco in BLOCO_TECNICO_POR_CATEGORIA.items():
+        assert not any(p in bloco.lower() for p in palavras_de_paleta), categoria
+    # O que é a própria técnica fica: poucas cores no pixel art, monocromia na gravura.
+    assert "limited color palette" in BLOCO_TECNICO_POR_CATEGORIA[CategoriaEstilo.PIXEL_ART]
+    assert "monochrome" in BLOCO_TECNICO_POR_CATEGORIA[CategoriaEstilo.GRAVURA_CLASSICA]
