@@ -136,3 +136,16 @@ def teste_pt4_sem_texto_editado_o_portugues_nao_cria_nada(cliente: TestClient, u
 def teste_prompt_inexistente_e_404(cliente: TestClient) -> None:
     assert cliente.post("/prompts/999/traducao-pt").status_code == 404
     assert cliente.post("/prompts/999/traduzir-para-ingles", json={"texto": "oi"}).status_code == 404
+
+
+def teste_mt1_o_modelo_da_traducao_tem_prioridade_e_vazio_volta_ao_de_antes(cliente: TestClient, usar_provedor_falso) -> None:
+    prompt, provedor = _prompt(cliente, usar_provedor_falso)
+    cliente.put("/configuracao", json={"modelo_suavizacao": "barato/modelo"})
+
+    assert cliente.put("/configuracao", json={"modelo_traducao": "  so/traduz  "}).json()["modelo_traducao"] == "so/traduz"
+    cliente.post(f"/prompts/{prompt['id']}/traduzir-para-ingles", json={"texto": "oi"})
+    assert provedor.chamadas_de_traducao[-1]["modelo"] == "so/traduz"
+
+    assert cliente.put("/configuracao", json={"modelo_traducao": ""}).json()["modelo_traducao"] is None
+    cliente.post(f"/prompts/{prompt['id']}/traduzir-para-ingles", json={"texto": "oi de novo"})
+    assert provedor.chamadas_de_traducao[-1]["modelo"] == "barato/modelo"  # como antes

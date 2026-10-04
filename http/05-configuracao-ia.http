@@ -43,7 +43,8 @@ Content-Type: application/json
 
 {
   "modelo_imagem": "meta/muse-image",
-  "modelo_suavizacao": "openai/gpt-4o-mini"
+  "modelo_suavizacao": "openai/gpt-4o-mini",
+  "modelo_traducao": "google/gemini-2.5-flash-lite"
 }
 
 ### Prioridade de custo vs. qualidade na releitura do livro (item 4.4, fases 2 e 3)

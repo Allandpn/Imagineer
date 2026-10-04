@@ -154,6 +154,12 @@ class Configuracao(Base):
     chamada curta e barata, que pode usar um modelo menor que o de montar o prompt.
     """
 
+    modelo_traducao: Mapped[str | None] = mapped_column(String(200))
+    """Modelo de **texto** que traduz os prompts entre português e inglês (PT2, PT3, MT1).
+
+    Opcional: vazio significa "como antes" — ``modelo_suavizacao``, senão ``modelo_extracao``, senão ``modelo_prompt``.
+    """
+
     prioridade_ia: Mapped[PrioridadeIA] = mapped_column(
         Enum(
             PrioridadeIA,

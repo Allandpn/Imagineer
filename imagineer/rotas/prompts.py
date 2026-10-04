@@ -476,10 +476,15 @@ def gerar_imagem(
 
 
 def _traduzir(sessao: Session, provedor: ProvedorIA, prompt: Prompt, texto: str, para: str) -> Traducao:
-    """Chama o modelo barato (o da suavização, senão o de extração, senão o de prompt), anota o gasto como do livro do prompt
+    """Chama o modelo da tradução (MT1; vazio: o da suavização, senão o de extração, senão o de prompt), anota o gasto como do livro do prompt
     (operação ``traducao``) e devolve a tradução com o custo da chamada (PT5, PT6)."""
     configuracao = obter_ou_criar(sessao)
-    modelo = configuracao.modelo_suavizacao or configuracao.modelo_extracao or configuracao.modelo_prompt
+    modelo = (
+        configuracao.modelo_traducao
+        or configuracao.modelo_suavizacao
+        or configuracao.modelo_extracao
+        or configuracao.modelo_prompt
+    )
     if not modelo:
         raise ModeloNaoEscolhido("Nenhum modelo de texto foi escolhido para traduzir. Configure um em /configuracao.")
     livro_id = prompt.frame.capitulo.livro_id if prompt.frame is not None and prompt.frame.capitulo is not None else None

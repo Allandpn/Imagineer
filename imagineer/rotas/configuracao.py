@@ -98,6 +98,12 @@ class ConfiguracaoAtual(BaseModel):
             "Vazio = usa o `modelo_prompt`."
         )
     )
+    modelo_traducao: str | None = Field(
+        description=(
+            "Modelo de texto que traduz os prompts (português ↔ inglês). Vazio = usa o da suavização, "
+            "senão o de extração, senão o de prompt."
+        )
+    )
     prioridade_ia: PrioridadeIA = Field(
         description=(
             "ECONOMIA (padrão) reaproveita leituras já feitas; QUALIDADE relê "
@@ -130,6 +136,7 @@ class ConfiguracaoNova(BaseModel):
         | None
     ) = Field(default=None, max_length=20)
     modelo_suavizacao: str | None = Field(default=None, max_length=200)
+    modelo_traducao: str | None = Field(default=None, max_length=200)
     prioridade_ia: PrioridadeIA | None = None
 
 
@@ -176,6 +183,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         modelos_sem_filtro=list(configuracao.modelos_sem_filtro or []),
         modelos_com_referencia=dict(configuracao.modelos_com_referencia or {}),
         modelo_suavizacao=configuracao.modelo_suavizacao,
+        modelo_traducao=configuracao.modelo_traducao,
         prioridade_ia=configuracao.prioridade_ia,
     )
 
