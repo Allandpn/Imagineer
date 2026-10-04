@@ -20,3 +20,8 @@ dados/
 # Sistema operacional
 Thumbs.db
 .DS_Store
+
+# Backups locais do banco e das imagens (nao versionar)
+backup-banco.sql
+backup-imagens/
+backup-imagens.tgz
