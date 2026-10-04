@@ -19,6 +19,7 @@ from imagineer.rotas import (
     busca,
     capitulos,
     configuracao,
+    custos,
     elementos,
     frame,
     leitura,
@@ -72,3 +73,4 @@ aplicacao.include_router(prompts.rotas)
 aplicacao.include_router(prompts.rotas_de_imagem)
 aplicacao.include_router(lixeira.rotas)
 aplicacao.include_router(busca.rotas)
+aplicacao.include_router(custos.rotas)

@@ -29,6 +29,7 @@ from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, salvar_imagem
 from imagineer.servicos.imagens_reduzidas import ler_dimensoes, preparar_referencia
 from imagineer.servicos.sinais_de_menor import sinal_de_menor
+from imagineer.servicos.uso_de_ia import gasto_do_livro
 
 EXTENSOES_POR_TIPO = {
     "image/png": ".png",
@@ -79,6 +80,24 @@ class ResultadoDaGeracao:
 
 
 def gerar_imagem_do_prompt(
+    sessao: Session,
+    provedor: ProvedorIA,
+    prompt: Prompt,
+    configuracao: Configuracao,
+    texto_editado: str | None = None,
+    modelo: str | None = None,
+    sem_filtro_de_seguranca: bool = False,
+    imagens_de_referencia: list[int] | None = None,
+) -> ResultadoDaGeracao:
+    """Gera a imagem do prompt (ver ``_gerar_imagem_do_prompt``), anotando o gasto como **do livro** do prompt (CU3)."""
+    livro_id = prompt.frame.capitulo.livro_id if prompt.frame is not None and prompt.frame.capitulo is not None else None
+    with gasto_do_livro(livro_id):
+        return _gerar_imagem_do_prompt(
+            sessao, provedor, prompt, configuracao, texto_editado, modelo, sem_filtro_de_seguranca, imagens_de_referencia
+        )
+
+
+def _gerar_imagem_do_prompt(
     sessao: Session,
     provedor: ProvedorIA,
     prompt: Prompt,

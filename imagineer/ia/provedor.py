@@ -196,6 +196,8 @@ class UsoDaChamada:
     tokens_saida: int | None = None
     custo: Decimal | None = None
     id_da_geracao: str | None = None
+    provedor: str = "openrouter"
+    """Quem cobrou (CU1): ``openrouter``, ``fal`` ou ``replicate``."""
 
 
 @dataclass

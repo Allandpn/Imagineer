@@ -488,7 +488,7 @@ def teste_f1_modelo_com_prefixo_vai_ao_fornecedor_e_nao_ao_openrouter() -> None:
     assert imagem.modelo == "fal:fal-ai/flux/dev"  # o id completo, com o prefixo, é o que fica registrado
     assert chamadas == []
     # F7: o consumo é anotado, com custo nulo (nunca um zero inventado).
-    assert usos == [UsoDaChamada(operacao="imagem", modelo="fal:fal-ai/flux/dev")]
+    assert usos == [UsoDaChamada(operacao="imagem", modelo="fal:fal-ai/flux/dev", provedor="fal")]
     assert usos[0].custo is None
 
 

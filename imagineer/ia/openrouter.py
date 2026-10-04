@@ -948,7 +948,7 @@ class ProvedorOpenRouter(ProvedorIA):
         # F7: nenhum dos dois devolve o custo em dólares; o consumo é anotado com custo nulo, nunca um zero inventado.
         if self._ao_usar is not None:
             try:
-                self._ao_usar(UsoDaChamada(operacao="imagem", modelo=modelo_completo))
+                self._ao_usar(UsoDaChamada(operacao="imagem", modelo=modelo_completo, provedor=fornecedor))
             except Exception:  # noqa: BLE001 - métrica nunca derruba a chamada
                 logging.getLogger(__name__).exception("Não foi possível anotar o consumo da chamada à IA.")
         return imagem

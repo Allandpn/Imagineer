@@ -3,7 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
@@ -39,6 +39,15 @@ class UsoDeIA(Base):
 
     id_da_geracao: Mapped[str | None] = mapped_column(String(100))
     """O ``id`` da resposta no OpenRouter, para conferir a cobrança no painel dele."""
+
+    provedor: Mapped[str] = mapped_column(String(20), default="openrouter", server_default="openrouter")
+    """Quem cobrou: ``openrouter``, ``fal`` ou ``replicate`` (CU1)."""
+
+    livro_id: Mapped[int | None] = mapped_column(ForeignKey("livros.id", ondelete="SET NULL"), index=True)
+    """De que livro foi o gasto, quando se sabe (gerar imagem, gerar prompt, analisar); nulo = sem livro (CU3)."""
+
+    estimado: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    """O ``custo`` veio de uma **tabela de preços**, e não do fornecedor (CU2)."""
 
     def __repr__(self) -> str:
         return f"<UsoDeIA id={self.id} operacao={self.operacao!r} modelo={self.modelo!r} custo={self.custo}>"

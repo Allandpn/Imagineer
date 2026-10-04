@@ -22,6 +22,7 @@ from imagineer.servicos.configuracao_ia import obter_ou_criar
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
 from imagineer.servicos.posicao_no_texto import posicao_da_citacao
+from imagineer.servicos.uso_de_ia import gasto_do_livro
 
 
 #: Quanto da identidade de cada elemento vai para a IA, e quanto o pedido inteiro pode ter
@@ -54,6 +55,12 @@ def estado_id_no_capitulo(sessao: Session, sugestao: SugestaoDeElemento) -> int 
 
 
 def gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) -> None:
+    """Analisa o capítulo (ver ``_gerar_sugestoes``), anotando o gasto como **do livro** dele (CU3)."""
+    with gasto_do_livro(capitulo.livro_id):
+        _gerar_sugestoes(sessao, provedor, capitulo)
+
+
+def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) -> None:
     """Chama a IA e grava o resultado como linhas (item 3.4e).
 
     Só substitui as sugestões deste capítulo que ainda não foram confirmadas

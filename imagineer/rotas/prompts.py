@@ -64,6 +64,7 @@ from imagineer.servicos.catalogo_imagens import (
     tipo_da_imagem,
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.uso_de_ia import gasto_do_livro
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente
@@ -307,17 +308,18 @@ def criar_prompt(
         raise ModeloNaoEscolhido("Nenhum modelo de prompt foi escolhido. Configure um em /configuracao.")
 
     # Os erros do provedor sobem como estão: o tratador global os traduz para HTTP (imagineer/erros.py).
-    _fazer_leitura_profunda(sessao, provedor, frame, configuracao)
-    contexto_do_livro = _fundamentar_se_necessario(sessao, provedor, frame, configuracao)
-    resultado = provedor.montar_prompt(
-        descricao_do_frame=_descricao_do_frame(frame),
-        elementos=_elementos_do_frame(frame),
-        perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
-        modelo=modelo_prompt,
-        contexto_do_livro=contexto_do_livro,
-        comentario_do_usuario=corpo.comentario,
-        elementos_vinculados=_elementos_vinculados(frame) or None,
-    )
+    with gasto_do_livro(livro.id):  # CU3: as chamadas daqui valem como gasto deste livro
+        _fazer_leitura_profunda(sessao, provedor, frame, configuracao)
+        contexto_do_livro = _fundamentar_se_necessario(sessao, provedor, frame, configuracao)
+        resultado = provedor.montar_prompt(
+            descricao_do_frame=_descricao_do_frame(frame),
+            elementos=_elementos_do_frame(frame),
+            perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
+            modelo=modelo_prompt,
+            contexto_do_livro=contexto_do_livro,
+            comentario_do_usuario=corpo.comentario,
+            elementos_vinculados=_elementos_vinculados(frame) or None,
+        )
 
     prompt = Prompt(
         frame_id=frame.id,
