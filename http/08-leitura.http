@@ -98,3 +98,15 @@ DELETE {{baseUrl}}/destaques/1
 
 ### As passagens destacadas ligadas a um elemento (a ficha do elemento). Troque 1 pelo id do elemento.
 GET {{baseUrl}}/elementos/1/destaques
+
+### Soma segundos de leitura a um dia do livro (RL16). O dia e o do aparelho (AAAA-MM-DD); no maximo 3600 segundos por chamada.
+POST {{baseUrl}}/livros/{{livroId}}/leitura/tempo
+Content-Type: application/json
+
+{
+  "dia": "2026-10-04",
+  "segundos": 60
+}
+
+### As estatisticas de leitura (RL17): o tempo dos ultimos 90 dias e o resumo de cada livro
+GET {{baseUrl}}/estatisticas/leitura

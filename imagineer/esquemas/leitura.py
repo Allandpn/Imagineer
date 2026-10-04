@@ -1,6 +1,6 @@
 """Contratos do marcador e dos pins (item 6.10)."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
@@ -128,3 +128,41 @@ class DestaqueResposta(BaseModel):
     nota: str | None
     elemento_id: int | None
     criado_em: datetime
+
+
+LIMITE_DE_SEGUNDOS_POR_ENVIO = 3600
+
+
+class TempoDeLeituraNovo(BaseModel):
+    """O que ``POST /livros/{id}/leitura/tempo`` recebe: segundos a **somar** ao dia."""
+
+    dia: date = Field(description="O dia segundo o aparelho (AAAA-MM-DD).")
+    segundos: int = Field(gt=0, le=LIMITE_DE_SEGUNDOS_POR_ENVIO)
+
+
+class TempoDeLeituraResposta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    livro_id: int
+    dia: date
+    segundos: int
+
+
+class TempoDoDia(BaseModel):
+    dia: date
+    segundos: int
+
+
+class TempoDoLivro(BaseModel):
+    livro_id: int
+    titulo: str
+    segundos: int
+    dias_lidos: int
+    ultimo_dia: date
+
+
+class EstatisticasDeLeitura(BaseModel):
+    """O que ``GET /estatisticas/leitura`` devolve: o tempo dos últimos 90 dias e o resumo de cada livro."""
+
+    dias: list[TempoDoDia]
+    livros: list[TempoDoLivro]

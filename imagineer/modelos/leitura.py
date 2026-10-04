@@ -1,8 +1,8 @@
 """Onde o leitor parou: o Marcador (automático) e o Pin (manual) — item 3.4h."""
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
@@ -92,3 +92,22 @@ class Destaque(Base):
 
     def __repr__(self) -> str:
         return f"<Destaque id={self.id} capitulo={self.capitulo_id} {self.inicio}-{self.fim}>"
+
+
+class TempoDeLeitura(Base):
+    """Os segundos lidos de um livro num dia (RL16): **um registro por livro e dia**, que só soma."""
+
+    __tablename__ = "tempos_de_leitura"
+    __table_args__ = (UniqueConstraint("livro_id", "dia", name="uq_tempo_de_leitura_livro_dia"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    livro_id: Mapped[int] = mapped_column(ForeignKey("livros.id", ondelete="CASCADE"), index=True)
+
+    dia: Mapped[date] = mapped_column(Date)
+    """O dia segundo o aparelho de quem leu (não o do servidor)."""
+
+    segundos: Mapped[int] = mapped_column(default=0)
+
+    def __repr__(self) -> str:
+        return f"<TempoDeLeitura livro={self.livro_id} dia={self.dia} segundos={self.segundos}>"

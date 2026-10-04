@@ -21,6 +21,7 @@ from imagineer.rotas import (
     configuracao,
     custos,
     destaques,
+    estatisticas,
     elementos,
     estados,
     frame,
@@ -59,6 +60,8 @@ aplicacao.include_router(leitura.rotas_de_pin)
 aplicacao.include_router(destaques.rotas_de_livro)
 aplicacao.include_router(destaques.rotas_de_destaque)
 aplicacao.include_router(destaques.rotas_de_elemento)
+aplicacao.include_router(estatisticas.rotas_de_livro)
+aplicacao.include_router(estatisticas.rotas_de_estatisticas)
 aplicacao.include_router(capitulos.rotas)
 aplicacao.include_router(elementos.rotas_de_livro)
 aplicacao.include_router(estados.rotas_de_capitulo)
