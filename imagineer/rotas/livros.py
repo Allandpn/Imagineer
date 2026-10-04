@@ -127,6 +127,7 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
             Livro,
             func.count(Capitulo.id),
             func.coalesce(func.sum(_um_se_ignorado()), 0),
+            func.coalesce(func.sum(_um_se_lido_e_ativo()), 0),
         )
         .outerjoin(Capitulo, Capitulo.livro_id == Livro.id)
         .group_by(Livro.id)
@@ -138,8 +139,9 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
             **_campos_do_livro(livro),
             total_de_capitulos=total,
             capitulos_ignorados=ignorados,
+            capitulos_lidos=lidos,
         )
-        for livro, total, ignorados in linhas
+        for livro, total, ignorados, lidos in linhas
     ]
 
 
@@ -475,6 +477,11 @@ def _exigir_perfil(sessao: Session, perfil_id: int) -> None:
         )
 
 
+def _um_se_lido_e_ativo():
+    """Expressão SQL que vale 1 para capítulo **lido e não arquivado** (o que conta no progresso do livro, LE6) e 0 para os outros."""
+    return case(((Capitulo.lido_em.is_not(None)) & (Capitulo.ignorado.is_(False)), 1), else_=0).cast(Integer)
+
+
 def _um_se_ignorado():
     """Expressão SQL que vale 1 para capítulo ignorado e 0 para os outros.
 
@@ -500,8 +507,12 @@ def _campos_do_livro(livro: Livro) -> dict:
 
 def _resumo_do_livro(sessao: Session, livro: Livro) -> LivroResumo:
     """Monta o resumo de um livro, contando os capítulos no banco."""
-    total, ignorados = sessao.execute(
-        select(func.count(Capitulo.id), func.coalesce(func.sum(_um_se_ignorado()), 0))
+    total, ignorados, lidos = sessao.execute(
+        select(
+            func.count(Capitulo.id),
+            func.coalesce(func.sum(_um_se_ignorado()), 0),
+            func.coalesce(func.sum(_um_se_lido_e_ativo()), 0),
+        )
         .where(Capitulo.livro_id == livro.id)
     ).one()
 
@@ -509,6 +520,7 @@ def _resumo_do_livro(sessao: Session, livro: Livro) -> LivroResumo:
         **_campos_do_livro(livro),
         total_de_capitulos=total,
         capitulos_ignorados=ignorados,
+        capitulos_lidos=lidos,
     )
 
 
@@ -559,6 +571,7 @@ def _detalhe_do_livro(sessao: Session, livro: Livro) -> LivroDetalhe:
             Capitulo.titulo,
             Capitulo.ignorado,
             func.length(Capitulo.texto),
+            Capitulo.lido_em,
         )
         .where(Capitulo.livro_id == livro.id)
         .order_by(Capitulo.ordem)
@@ -572,10 +585,11 @@ def _detalhe_do_livro(sessao: Session, livro: Livro) -> LivroDetalhe:
             ordem=ordem,
             titulo=titulo,
             ignorado=ignorado,
+            lido=lido_em is not None,
             tamanho_do_texto=tamanho,
             sugestoes_pendentes=pendentes.get(identificador, 0),
         )
-        for identificador, ordem, titulo, ignorado, tamanho in linhas
+        for identificador, ordem, titulo, ignorado, tamanho, lido_em in linhas
     ]
 
     return LivroDetalhe(
@@ -585,6 +599,7 @@ def _detalhe_do_livro(sessao: Session, livro: Livro) -> LivroDetalhe:
         metadados_pendentes=_metadados_pendentes(livro),
         total_de_capitulos=len(capitulos),
         capitulos_ignorados=sum(1 for c in capitulos if c.ignorado),
+        capitulos_lidos=sum(1 for c in capitulos if c.lido and not c.ignorado),
         capitulos=capitulos,
     )
 

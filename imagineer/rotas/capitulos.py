@@ -4,6 +4,8 @@ O passo 5 do fluxo — o usuário escolhe um capítulo — e a confirmação da 
 de "ignorado" que a importação deixou (item 2.2).
 """
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -52,6 +54,15 @@ def ajustar_capitulo(
     capitulo = _buscar_capitulo(sessao, capitulo_id)
 
     for campo, valor in ajuste.model_dump(exclude_unset=True).items():
+        if campo == "lido":
+            # LE1: `lido` não é coluna; o que se guarda é a hora. Marcar de novo um capítulo já lido **mantém** a hora de antes.
+            if valor is None:
+                continue
+            if valor and capitulo.lido_em is None:
+                capitulo.lido_em = datetime.now(timezone.utc)
+            elif not valor:
+                capitulo.lido_em = None
+            continue
         setattr(capitulo, campo, valor)
 
     sessao.commit()
@@ -67,6 +78,7 @@ def _detalhe(capitulo: Capitulo) -> CapituloDetalhe:
         ordem=capitulo.ordem,
         titulo=capitulo.titulo,
         ignorado=capitulo.ignorado,
+        lido=capitulo.lido,
         texto=capitulo.texto,
         tamanho_do_texto=len(capitulo.texto),
     )

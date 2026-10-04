@@ -54,6 +54,14 @@ class Capitulo(Base):
     para o tamanho de um capítulo."""
 
     ignorado: Mapped[bool] = mapped_column(Boolean, server_default=false())
+
+    lido_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """Quando a pessoa chegou ao fim do capítulo (ou o marcou como lido). Nulo = não lido (item 7.5b, LE1)."""
+
+    @property
+    def lido(self) -> bool:
+        """Se o capítulo está lido: o que o app mostra como ✓."""
+        return self.lido_em is not None
     """Se este "capítulo" deve ficar de fora do trabalho de catalogação.
 
     Todo EPUB traz, misturado aos capítulos, material que não é narrativa:

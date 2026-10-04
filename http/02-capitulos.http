@@ -27,3 +27,11 @@ Content-Type: application/json
 
 ### Capítulo inexistente — confere o 404
 GET {{baseUrl}}/capitulos/999999
+
+### Marca o capitulo como lido (LE1): true grava a hora, false desmarca; o livro passa a trazer capitulos_lidos
+PATCH {{baseUrl}}/capitulos/{{capituloId}}
+Content-Type: application/json
+
+{
+  "lido": true
+}

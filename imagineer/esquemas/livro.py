@@ -26,6 +26,10 @@ class CapituloResumo(BaseModel):
     ordem: int
     titulo: str | None
     ignorado: bool
+    lido: bool = Field(
+        default=False,
+        description="A pessoa chegou ao fim do capítulo (ou o marcou como lido): o ✓ do app (item 7.5b, LE1).",
+    )
     tamanho_do_texto: int = Field(
         description="Número de caracteres do texto do capítulo."
     )
@@ -64,6 +68,10 @@ class CapituloAjuste(BaseModel):
 
     titulo: str | None = None
     ignorado: bool | None = None
+    lido: bool | None = Field(
+        default=None,
+        description="`true` marca como lido (grava a hora); `false` desmarca (LE1). Nulo = não mexe.",
+    )
 
 
 class LivroResumo(BaseModel):
@@ -91,6 +99,10 @@ class LivroResumo(BaseModel):
     total_de_capitulos: int
     capitulos_ignorados: int = Field(
         description="Quantos capítulos estão marcados como fora da catalogação."
+    )
+    capitulos_lidos: int = Field(
+        default=0,
+        description="Quantos capítulos **ativos** (não arquivados) estão lidos: o progresso do livro (item 7.5b, LE6).",
     )
 
 
