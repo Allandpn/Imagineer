@@ -21,7 +21,9 @@ from imagineer.rotas import (
     configuracao,
     custos,
     elementos,
+    estados,
     frame,
+    identidade,
     leitura,
     livros,
     lixeira,
@@ -55,14 +57,16 @@ aplicacao.include_router(leitura.rotas_de_livro)
 aplicacao.include_router(leitura.rotas_de_pin)
 aplicacao.include_router(capitulos.rotas)
 aplicacao.include_router(elementos.rotas_de_livro)
-aplicacao.include_router(elementos.rotas_de_capitulo)
+aplicacao.include_router(estados.rotas_de_capitulo)
 aplicacao.include_router(sugestoes.rotas_de_livro)
 aplicacao.include_router(sugestoes.rotas_de_capitulo)
 aplicacao.include_router(elementos.rotas)
-aplicacao.include_router(elementos.rotas_de_estado)
+aplicacao.include_router(estados.rotas)
+aplicacao.include_router(identidade.rotas)
+aplicacao.include_router(estados.rotas_de_estado)
 aplicacao.include_router(sugestoes.rotas_de_sugestao_elemento)
 aplicacao.include_router(sugestoes.rotas_de_sugestao_cena)
-aplicacao.include_router(elementos.rotas_de_identidade)
+aplicacao.include_router(identidade.rotas_de_identidade)
 aplicacao.include_router(frame.rotas_de_capitulo)
 aplicacao.include_router(frame.rotas)
 aplicacao.include_router(perfis_renderizacao.rotas)
