@@ -25,3 +25,6 @@ Thumbs.db
 backup-banco.sql
 backup-imagens/
 backup-imagens.tgz
+
+# Dicionarios StarDict do Allan (centenas de MB, nao versionar)
+dictdata/
