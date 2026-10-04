@@ -16,6 +16,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from imagineer.banco import revisao  # noqa: F401
 from imagineer.erros import registrar_tratadores
 from imagineer.rotas import (
+    busca,
     capitulos,
     configuracao,
     elementos,
@@ -69,3 +70,4 @@ aplicacao.include_router(prompts.rotas_de_frame)
 aplicacao.include_router(prompts.rotas)
 aplicacao.include_router(prompts.rotas_de_imagem)
 aplicacao.include_router(lixeira.rotas)
+aplicacao.include_router(busca.rotas)

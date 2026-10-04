@@ -56,3 +56,14 @@ Content-Type: application/json
 
 ### Remove um pin
 DELETE {{baseUrl}}/pins/{{pinId}}
+
+### Pesquisa no texto (LV5): na biblioteca inteira, num livro ou num capítulo
+# Sem acento e sem diferença de maiúsculas; q com no mínimo 2 caracteres; capítulos arquivados ficam de fora.
+# `total` conta todas as ocorrências; `ocorrencias` traz no máximo `limite` (padrão 100, máximo 500).
+GET {{baseUrl}}/busca?q=dragao&limite=50
+
+### Só neste livro
+GET {{baseUrl}}/busca?q=dragao&livro_id={{livroId}}
+
+### Só neste capítulo
+GET {{baseUrl}}/busca?q=dragao&capitulo_id={{capituloId}}
