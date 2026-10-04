@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import Literal
 
+from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao
@@ -87,6 +89,7 @@ class PromptResumo(BaseModel):
     perfil_renderizacao_id: int | None
     modelo_ia: str | None
     texto: str
+    texto_pt: str | None = Field(default=None, description="A versão em português (PT1); nulo = ainda sem tradução. O que vai à imagem é o `texto`.")
     avaliacao: str | None
     data_criacao: datetime
     total_de_imagens: int = 0
@@ -164,6 +167,21 @@ class PromptAjuste(BaseModel):
     avaliacao: str = Field(min_length=1)
 
 
+class Traducao(BaseModel):
+    """O resultado de uma tradução de prompt (PT2, PT3, PT6)."""
+
+    texto: str
+    modelo: str | None = Field(default=None, description="O modelo que traduziu; nulo quando a tradução já estava guardada.")
+    custo: Decimal | None = Field(default=None, description="Quanto a chamada custou, em dólares (o que o OpenRouter informou); nulo = sem chamada ou sem custo informado.")
+    reaproveitada: bool = Field(default=False, description="`true`: já estava guardada, **sem chamar a IA** (sem custo).")
+
+
+class PedidoDeTraducaoParaIngles(BaseModel):
+    """O corpo de ``POST /prompts/{id}/traduzir-para-ingles`` (PT3): o português que a pessoa escreveu."""
+
+    texto: str = Field(min_length=1, max_length=8000)
+
+
 class PedidoDeGeracao(BaseModel):
     """O corpo, opcional, de ``POST /prompts/{id}/gerar-imagem``."""
 
@@ -175,6 +193,11 @@ class PedidoDeGeracao(BaseModel):
             "suavização. Ausente (ou igual ao texto do prompt), vale o fluxo normal: original e, se o "
             "provedor recusar, a suavização."
         ),
+    )
+    texto_pt: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="O português que a pessoa escreveu e que deu origem ao `texto` editado (PT4); o prompt novo o guarda.",
     )
     modelo: str | None = Field(
         default=None,

@@ -82,6 +82,7 @@ class ProvedorFalso(ProvedorIA):
         self._recusas_de_imagem = recusas_de_imagem
         """Quantas das **primeiras** gerações de imagem o provedor recusa (``ConteudoRecusado``)."""
         self._prompt_suavizado = prompt_suavizado
+        self.chamadas_de_traducao: list[dict] = []
         self._elementos = elementos if elementos is not None else []
         self._cenas_sugeridas = cenas_sugeridas if cenas_sugeridas is not None else []
         self._modelos = list(MODELOS_FALSOS) if modelos is None else modelos
@@ -227,6 +228,13 @@ class ProvedorFalso(ProvedorIA):
         if self._erro is not None:
             raise self._erro
         return PromptMontado(texto=self._prompt, modelo=modelo)
+
+    def traduzir_prompt(self, texto: str, para: str, modelo: str) -> PromptMontado:
+        """A tradução de mentira: põe um rótulo na frente, e guarda o pedido para os testes."""
+        self.chamadas_de_traducao.append({"texto": texto, "para": para, "modelo": modelo})
+        if self._erro is not None:
+            raise self._erro
+        return PromptMontado(texto=f"[{para}] {texto}", modelo=modelo)
 
     def suavizar_prompt(self, texto: str, modelo: str) -> PromptMontado:
         self.chamadas_de_suavizacao.append({"texto": texto, "modelo": modelo})

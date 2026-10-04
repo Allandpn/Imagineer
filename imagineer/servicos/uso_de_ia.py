@@ -22,6 +22,21 @@ _livro_do_gasto: ContextVar[int | None] = ContextVar("livro_do_gasto", default=N
 ``gasto_do_livro``; ``gravar_uso`` lê aqui, porque o provedor não conhece livros."""
 
 
+_coletor_de_custo: ContextVar[list | None] = ContextVar("coletor_de_custo", default=None)
+
+
+@contextmanager
+def coletando_o_custo() -> Iterator[list]:
+    """Durante o bloco, o custo de cada chamada à IA anotada também vai para a lista devolvida (PT6): serve para uma rota dizer à
+    pessoa quanto a chamada que ela acabou de pedir custou. Cada item é o custo (``Decimal``) ou ``None`` (sem custo informado)."""
+    custos: list = []
+    marca = _coletor_de_custo.set(custos)
+    try:
+        yield custos
+    finally:
+        _coletor_de_custo.reset(marca)
+
+
 @contextmanager
 def gasto_do_livro(livro_id: int | None) -> Iterator[None]:
     """Durante o bloco, as chamadas à IA são anotadas como gasto do livro ``livro_id`` (CU3)."""
@@ -44,6 +59,9 @@ def gravar_uso(uso: UsoDaChamada, criador: sessionmaker = CriadorDeSessao) -> No
     if custo is None and uso.operacao == "imagem":
         custo = preco_estimado_da_imagem(uso.modelo)
         estimado = custo is not None
+    coletor = _coletor_de_custo.get()
+    if coletor is not None:
+        coletor.append(custo)
     with criador() as sessao:
         sessao.add(
             UsoDeIA(

@@ -88,12 +88,13 @@ def gerar_imagem_do_prompt(
     modelo: str | None = None,
     sem_filtro_de_seguranca: bool = False,
     imagens_de_referencia: list[int] | None = None,
+    texto_pt: str | None = None,
 ) -> ResultadoDaGeracao:
     """Gera a imagem do prompt (ver ``_gerar_imagem_do_prompt``), anotando o gasto como **do livro** do prompt (CU3)."""
     livro_id = prompt.frame.capitulo.livro_id if prompt.frame is not None and prompt.frame.capitulo is not None else None
     with gasto_do_livro(livro_id):
         return _gerar_imagem_do_prompt(
-            sessao, provedor, prompt, configuracao, texto_editado, modelo, sem_filtro_de_seguranca, imagens_de_referencia
+            sessao, provedor, prompt, configuracao, texto_editado, modelo, sem_filtro_de_seguranca, imagens_de_referencia, texto_pt
         )
 
 
@@ -106,6 +107,7 @@ def _gerar_imagem_do_prompt(
     modelo: str | None = None,
     sem_filtro_de_seguranca: bool = False,
     imagens_de_referencia: list[int] | None = None,
+    texto_pt: str | None = None,
 ) -> ResultadoDaGeracao:
     """Roda o fluxo S1 a S3 e devolve o desfecho. Erros que não são recusa de conteúdo propagam, sem suavizar (S4).
 
@@ -126,13 +128,13 @@ def _gerar_imagem_do_prompt(
     if sem_filtro_de_seguranca:
         _validar_sem_filtro(sessao, prompt, configuracao, (modelo or "").strip(), texto)
         # A edição do usuário vira prompt novo (como em S3); sem edição, é o próprio prompt recusado que se reenvia.
-        alvo = _prompt_derivado(sessao, prompt, texto, modelo_ia=None) if texto and texto != prompt.texto.strip() else prompt
+        alvo = _prompt_derivado(sessao, prompt, texto, modelo_ia=None, texto_pt=texto_pt) if texto and texto != prompt.texto.strip() else prompt
         imagem = _tentar(sessao, provedor, alvo, modelo_de_imagem, sem_filtro=True, referencias=referencias)
         return ResultadoDaGeracao(gerada=imagem is not None, suavizado=False, prompt=alvo, imagem=imagem)
 
     if texto and texto != prompt.texto.strip():
         # S3: o usuário editou à mão. Prompt novo, chamada direta, sem suavização.
-        editado = _prompt_derivado(sessao, prompt, texto, modelo_ia=None)
+        editado = _prompt_derivado(sessao, prompt, texto, modelo_ia=None, texto_pt=texto_pt)
         imagem = _tentar(sessao, provedor, editado, modelo_de_imagem, referencias=referencias)
         return ResultadoDaGeracao(gerada=imagem is not None, suavizado=False, prompt=editado, imagem=imagem)
 
@@ -236,13 +238,14 @@ def _validar_sem_filtro(sessao: Session, prompt: Prompt, configuracao: Configura
             )
 
 
-def _prompt_derivado(sessao: Session, origem: Prompt, texto: str, modelo_ia: str | None) -> Prompt:
-    """Um prompt novo, ligado ao de onde saiu (S5). O de origem não é tocado."""
+def _prompt_derivado(sessao: Session, origem: Prompt, texto: str, modelo_ia: str | None, texto_pt: str | None = None) -> Prompt:
+    """Um prompt novo, ligado ao de onde saiu (S5). O de origem não é tocado. ``texto_pt`` é o português que a pessoa escreveu (PT4)."""
     novo = Prompt(
         frame_id=origem.frame_id,
         perfil_renderizacao_id=origem.perfil_renderizacao_id,
         modelo_ia=modelo_ia,
         texto=texto,
+        texto_pt=(texto_pt or "").strip() or None,
         prompt_original_id=origem.id,
     )
     sessao.add(novo)

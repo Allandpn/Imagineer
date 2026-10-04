@@ -469,6 +469,13 @@ class ProvedorIA(ABC):
             modelo: o modelo de texto que reescreve (``modelo_suavizacao`` ou ``modelo_prompt``).
         """
 
+    def traduzir_prompt(self, texto: str, para: str, modelo: str) -> PromptMontado:
+        """Traduz um prompt entre inglês e português (PT2, PT3). ``para`` é ``"pt"`` ou ``"en"``.
+
+        Não é abstrata: um provedor que não traduz herda esta, que recusa com uma mensagem clara (nenhum quebra por falta dela).
+        """
+        raise ErroDoProvedorIA("Este provedor não sabe traduzir prompts.")
+
     @abstractmethod
     def gerar_imagem(
         self,

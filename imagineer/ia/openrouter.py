@@ -507,6 +507,28 @@ man" são adultos: não aplique esta regra a eles, e nunca vista alguém só por
 """
 
 TEMPERATURA_DA_SUAVIZACAO = 0.2
+
+_INSTRUCAO_DE_TRADUCAO_PARA_PORTUGUES = """\
+Você traduz prompts de geração de imagem do inglês para o português do Brasil, para uma pessoa ler.
+
+REGRAS:
+- Traduza TUDO, sem resumir, sem acrescentar nem tirar nenhum detalhe (personagens, roupas, cenário, luz, câmera, estilo).
+- Mantenha nomes próprios como estão.
+- Termos técnicos de fotografia, arte ou estilo sem tradução natural podem ficar em inglês.
+- Responda SÓ com a tradução, sem comentários nem aspas.
+"""
+
+_INSTRUCAO_DE_TRADUCAO_PARA_INGLES = """\
+You translate image-generation prompts from Brazilian Portuguese into English, to be sent to an image model.
+
+RULES:
+- Translate EVERYTHING, without summarizing and without adding or removing any detail (characters, clothing, setting, light, camera, style).
+- Keep proper names as they are.
+- Write natural, descriptive English, as a good image prompt reads; keep photographic/art style terms in their usual English form.
+- Reply ONLY with the translation, no comments and no quotation marks.
+"""
+
+TEMPERATURA_DA_TRADUCAO = 0.2
 """Baixa de propósito: suavizar é reescrever com o mínimo de mudança, não criar."""
 
 _DESCRICAO_DE_CATEGORIA = {
@@ -837,6 +859,19 @@ class ProvedorOpenRouter(ProvedorIA):
 
         resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido, operacao="prompt")
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
+
+    def traduzir_prompt(self, texto: str, para: str, modelo: str) -> PromptMontado:
+        """Traduz um prompt entre inglês e português com um modelo barato (PT2, PT3). Uma chamada, temperatura baixa."""
+        if not texto.strip():
+            raise ErroDoProvedorIA("O texto a traduzir está vazio.")
+        if para not in ("pt", "en"):
+            raise ErroDoProvedorIA("A tradução é só entre inglês (en) e português (pt).")
+        instrucao = _INSTRUCAO_DE_TRADUCAO_PARA_PORTUGUES if para == "pt" else _INSTRUCAO_DE_TRADUCAO_PARA_INGLES
+        resposta = self._conversar(modelo, instrucao, texto, operacao="traducao", temperatura=TEMPERATURA_DA_TRADUCAO)
+        traduzido = resposta.strip()
+        if not traduzido:
+            raise ErroDoProvedorIA(f"O modelo {modelo} devolveu uma tradução vazia.")
+        return PromptMontado(texto=traduzido, modelo=modelo)
 
     def suavizar_prompt(self, texto: str, modelo: str) -> PromptMontado:
         """Suaviza um prompt recusado trocando **só os trechos explícitos**, e deixa o resto idêntico (S7 revisada).

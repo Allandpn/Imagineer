@@ -22,10 +22,12 @@ from imagineer.esquemas.prompt import (
     PromptAjuste,
     PromptDetalhe,
     PedidoDeGeracao,
+    PedidoDeTraducaoParaIngles,
     PromptNovo,
     PromptResumo,
     ReferenciasCandidatas,
     ResultadoDaGeracao,
+    Traducao,
 )
 from imagineer.ia.provedor import (
     ModeloNaoEscolhido,
@@ -64,7 +66,7 @@ from imagineer.servicos.catalogo_imagens import (
     tipo_da_imagem,
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
-from imagineer.servicos.uso_de_ia import gasto_do_livro
+from imagineer.servicos.uso_de_ia import coletando_o_custo, gasto_do_livro
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente
@@ -456,6 +458,7 @@ def gerar_imagem(
             corpo.modelo if corpo else None,
             sem_filtro_de_seguranca=bool(corpo and corpo.sem_filtro_de_seguranca),
             imagens_de_referencia=corpo.imagens_de_referencia if corpo else None,
+            texto_pt=corpo.texto_pt if corpo else None,
         )
     except PedidoDeGeracaoInvalido as erro:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(erro)) from erro
@@ -465,6 +468,63 @@ def gerar_imagem(
         prompt=_resumo(resultado.prompt, len(resultado.prompt.imagens_ativas)),
         imagem=ImagemResumo.model_validate(resultado.imagem) if resultado.imagem else None,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Camada em português (PT1 a PT6)
+# --------------------------------------------------------------------------- #
+
+
+def _traduzir(sessao: Session, provedor: ProvedorIA, prompt: Prompt, texto: str, para: str) -> Traducao:
+    """Chama o modelo barato (o da suavização, senão o de extração, senão o de prompt), anota o gasto como do livro do prompt
+    (operação ``traducao``) e devolve a tradução com o custo da chamada (PT5, PT6)."""
+    configuracao = obter_ou_criar(sessao)
+    modelo = configuracao.modelo_suavizacao or configuracao.modelo_extracao or configuracao.modelo_prompt
+    if not modelo:
+        raise ModeloNaoEscolhido("Nenhum modelo de texto foi escolhido para traduzir. Configure um em /configuracao.")
+    livro_id = prompt.frame.capitulo.livro_id if prompt.frame is not None and prompt.frame.capitulo is not None else None
+    with gasto_do_livro(livro_id), coletando_o_custo() as custos:
+        traduzido = provedor.traduzir_prompt(texto, para, modelo)
+    custo = next((c for c in custos if c is not None), None)
+    return Traducao(texto=traduzido.texto, modelo=traduzido.modelo, custo=custo)
+
+
+@rotas.post(
+    "/{prompt_id}/traducao-pt",
+    response_model=Traducao,
+    summary="O prompt em português (traduz uma vez e guarda)",
+)
+def traduzir_para_portugues(
+    prompt_id: int,
+    sessao: Session = Depends(obter_sessao),
+    provedor: ProvedorIA = Depends(obter_provedor),
+) -> Traducao:
+    """PT2: devolve a versão em português do prompt. Se já está guardada (`texto_pt`), devolve **sem chamar a IA**; senão, traduz o
+    inglês com o modelo barato, guarda e devolve com o custo da chamada. O que vai à imagem continua sendo o inglês."""
+    prompt = _buscar_prompt(sessao, prompt_id)
+    if prompt.texto_pt:
+        return Traducao(texto=prompt.texto_pt, reaproveitada=True)
+    traducao = _traduzir(sessao, provedor, prompt, prompt.texto, "pt")
+    prompt.texto_pt = traducao.texto
+    sessao.commit()
+    return traducao
+
+
+@rotas.post(
+    "/{prompt_id}/traduzir-para-ingles",
+    response_model=Traducao,
+    summary="O português que a pessoa escreveu, em inglês (prévia, não grava)",
+)
+def traduzir_para_ingles(
+    prompt_id: int,
+    corpo: PedidoDeTraducaoParaIngles,
+    sessao: Session = Depends(obter_sessao),
+    provedor: ProvedorIA = Depends(obter_provedor),
+) -> Traducao:
+    """PT3: traduz o português editado para o inglês que iria à imagem, **sem gravar nada**: é a prévia que a pessoa confere
+    ("Inglês que será enviado") e pode ajustar. O inglês só vira prompt quando ela manda gerar a imagem (com `texto` e `texto_pt`)."""
+    prompt = _buscar_prompt(sessao, prompt_id)
+    return _traduzir(sessao, provedor, prompt, corpo.texto, "en")
 
 
 # --------------------------------------------------------------------------- #
@@ -851,6 +911,7 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
         perfil_renderizacao_id=prompt.perfil_renderizacao_id,
         modelo_ia=prompt.modelo_ia,
         texto=prompt.texto,
+        texto_pt=prompt.texto_pt,
         avaliacao=prompt.avaliacao,
         data_criacao=prompt.data_criacao,
         total_de_imagens=total_de_imagens,

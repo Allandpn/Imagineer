@@ -69,6 +69,10 @@ class Prompt(Base):
     """Identificador do modelo no OpenRouter que montou este prompt."""
 
     texto: Mapped[str] = mapped_column(Text)
+
+    texto_pt: Mapped[str | None] = mapped_column(Text)
+    """A versão em **português** do prompt (PT1): uma tradução para a pessoa ler e editar. O prompt de verdade, o que vai à imagem, é
+    sempre o ``texto`` em inglês. Nulo = ainda sem tradução."""
     """O prompt em si, exatamente como foi copiado.
 
     Guarda o texto final, e não os ingredientes para remontá-lo: assim o

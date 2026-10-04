@@ -270,3 +270,23 @@ Content-Type: application/json
 # Cada um traz "estado_id" (o estado a ligar), "no_frame", "removivel" e as imagens do retrato dele. No retrato, personagem e o sujeito ficam de fora.
 # Para gravar: retrato -> PUT /frames/{id}/vinculos; cena -> PUT /frames/{id}/estados (participantes originais + escolhidos).
 GET {{baseUrl}}/frames/{{frameId}}/elementos-para-vincular
+
+### O prompt em portugues (PT2): traduz o ingles uma vez, guarda em texto_pt e devolve (a segunda vez nao chama a IA)
+POST {{baseUrl}}/prompts/{{promptId}}/traducao-pt
+
+### O portugues que a pessoa escreveu, em ingles (PT3): so uma previa, nao grava nada
+POST {{baseUrl}}/prompts/{{promptId}}/traduzir-para-ingles
+Content-Type: application/json
+
+{
+  "texto": "um cavaleiro de capuz numa colina com nevoa"
+}
+
+### Gera a imagem com o ingles conferido e o portugues junto (PT4): o prompt novo guarda o texto_pt
+POST {{baseUrl}}/prompts/{{promptId}}/gerar-imagem
+Content-Type: application/json
+
+{
+  "texto": "a hooded knight on a foggy hill at dawn",
+  "texto_pt": "um cavaleiro de capuz numa colina com nevoa ao amanhecer"
+}
