@@ -2,6 +2,9 @@
 # Só "nome" é obrigatório — os demais aceitam nulo, porque cada ferramenta de
 # imagem entende um subconjunto diferente (item 3.4c). Exemplo com todos os
 # campos preenchidos, pra deixar claro o que existe.
+# "categoria_estilo" (BT1) escolhe o BLOCO TECNICO fixo que o servidor cola ao fim de todo prompt gerado com este perfil
+# (imagineer/ia/blocos_tecnicos.py): FOTORREALISTA_CINEMATOGRAFICO, PINTURA_A_OLEO, AQUARELA, ARTE_DIGITAL_CONCEITUAL, QUADRINHOS,
+# CARTOON_ANIMACAO, ANIME, PIXEL_ART, GRAVURA_CLASSICA ou ANIMACAO_3D. Nula = sem bloco. O texto de estilo/iluminacao/paleta deve combinar com ela.
 POST {{baseUrl}}/perfis-renderizacao
 Content-Type: application/json
 
@@ -38,7 +41,8 @@ PATCH {{baseUrl}}/perfis-renderizacao/{{perfilId}}
 Content-Type: application/json
 
 {
-  "formato": "16:9 (para cenários) ou 2:3 (para retratos)"
+  "formato": "16:9 (para cenários) ou 2:3 (para retratos)",
+  "categoria_estilo": "PINTURA_A_OLEO"
 }
 
 ### Sugere um perfil de renderização por IA (item 6.5)
@@ -58,9 +62,10 @@ Content-Type: application/json
 POST {{baseUrl}}/livros/1/perfis-renderizacao/sugestao
 
 ### Sugere um perfil de renderização, com a categoria de estilo escolhida
-# "categoria_estilo" é opcional: uma das seis famílias de estilo (item 6.5)
+# "categoria_estilo" é opcional: uma das dez famílias de estilo (item 6.5)
 # — FOTORREALISTA_CINEMATOGRAFICO, PINTURA_A_OLEO, AQUARELA,
-# ARTE_DIGITAL_CONCEITUAL, QUADRINHOS ou CARTOON_ANIMACAO. A IA detalha os
+# ARTE_DIGITAL_CONCEITUAL, QUADRINHOS, CARTOON_ANIMACAO, ANIME, PIXEL_ART,
+# GRAVURA_CLASSICA ou ANIMACAO_3D. A IA detalha os
 # atributos dentro dela, em vez de escolher livremente (o que já misturou
 # estilos incompatíveis numa sugestão sem essa restrição).
 POST {{baseUrl}}/livros/1/perfis-renderizacao/sugestao

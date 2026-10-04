@@ -185,6 +185,13 @@ class PerfilRenderizacaoBase(BaseModel):
     paleta: str | None = Field(default=None, max_length=200)
     formato: str | None = Field(default=None, max_length=50)
     modelo_alvo: str | None = Field(default=None, max_length=100)
+    categoria_estilo: CategoriaEstilo | None = Field(
+        default=None,
+        description=(
+            "A categoria de estilo do perfil (BT1): com ela, o prompt ganha o bloco técnico fixo da categoria no fim. "
+            "Nula = sem bloco, como antes. O texto de estilo, iluminação e paleta deve combinar com a categoria."
+        ),
+    )
 
 
 class PerfilRenderizacao(PerfilRenderizacaoBase):

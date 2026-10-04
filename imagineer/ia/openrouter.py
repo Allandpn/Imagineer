@@ -556,6 +556,25 @@ _DESCRICAO_DE_CATEGORIA = {
         "formas simplificadas, cores vivas e saturadas, estética de animação — "
         "nunca fotorrealista nem pintura tradicional"
     ),
+    CategoriaEstilo.ANIME: (
+        "ilustração de anime: contorno de tinta fino, cel-shading com sombras "
+        "chapadas de borda dura, olhos grandes e traços estilizados — nunca "
+        "textura de pele realista nem fotografia"
+    ),
+    CategoriaEstilo.PIXEL_ART: (
+        "pixel art de jogo retrô: grade de pixels visível, paleta limitada, "
+        "dithering no lugar de degradê — nunca suave nem em alta resolução"
+    ),
+    CategoriaEstilo.GRAVURA_CLASSICA: (
+        "gravura clássica de livro do século XIX: linhas de tinta com hachura "
+        "cruzada, monocromática ou sépia sobre papel envelhecido — nunca "
+        "colorida nem com sombreado suave"
+    ),
+    CategoriaEstilo.ANIMACAO_3D: (
+        "longa-metragem de animação 3D: formas esculpidas, proporções levemente "
+        "exageradas, olhos grandes, luz global e cor rica — nunca fotográfica "
+        "nem 2D chapada. Não cite nome de estúdio"
+    ),
 }
 
 _INSTRUCAO_DE_PERFIL = """\

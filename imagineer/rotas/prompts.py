@@ -29,6 +29,7 @@ from imagineer.esquemas.prompt import (
     ResultadoDaGeracao,
     Traducao,
 )
+from imagineer.ia.blocos_tecnicos import com_bloco_tecnico
 from imagineer.ia.provedor import (
     ModeloNaoEscolhido,
     ProvedorIA,
@@ -327,7 +328,8 @@ def criar_prompt(
         frame_id=frame.id,
         perfil_renderizacao_id=perfil.id if perfil else None,
         modelo_ia=resultado.modelo,
-        texto=resultado.texto,
+        # BT4: o bloco técnico da categoria do perfil entra aqui, por código, DEPOIS da resposta da IA (que nunca o vê).
+        texto=com_bloco_tecnico(resultado.texto, perfil.categoria_estilo if perfil else None),
     )
     sessao.add(prompt)
     sessao.commit()

@@ -1,9 +1,10 @@
 """Modelo do PerfilRenderizacao — o estilo visual a aplicar (item 3.4c)."""
 
-from sqlalchemy import String, Text
+from sqlalchemy import Enum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
+from imagineer.modelos.configuracao import CategoriaEstilo
 
 
 class PerfilRenderizacao(Base):
@@ -41,6 +42,24 @@ class PerfilRenderizacao(Base):
 
     Existe porque o mesmo estilo se escreve de um jeito numa ferramenta e de
     outro jeito noutra.
+    """
+
+    categoria_estilo: Mapped[CategoriaEstilo | None] = mapped_column(
+        Enum(
+            CategoriaEstilo,
+            native_enum=False,
+            length=40,
+            # Sem CHECK no banco: uma categoria nova (já houve quatro) não exigiria alterar a restrição. Quem valida o
+            # valor é a API (o enum do Pydantic), que é por onde ele entra.
+            create_constraint=False,
+            values_callable=lambda tipo: [membro.value for membro in tipo],
+        ),
+        default=None,
+    )
+    """A categoria de estilo do perfil, ou nulo (BT1).
+
+    Com ela, o prompt ganha o **bloco técnico fixo** da categoria, colado ao fim por código
+    (`imagineer/ia/blocos_tecnicos.py`). Nula, o perfil funciona como antes, sem bloco.
     """
 
     def __repr__(self) -> str:

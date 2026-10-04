@@ -38,9 +38,10 @@ class PrioridadeIA(enum.Enum):
 class CategoriaEstilo(enum.Enum):
     """Uma família de estilo visual coerente, para guiar a sugestão de perfil.
 
-    Não é uma coluna do banco — é um vocabulário compartilhado entre o pedido
-    de `POST /livros/{id}/perfis-renderizacao/sugestao` (item 6.5) e a
-    instrução que a IA recebe. Existe porque, sem restringir a um vocabulário
+    É um vocabulário compartilhado entre o pedido de `POST /livros/{id}/perfis-renderizacao/sugestao`
+    (item 6.5) e a instrução que a IA recebe e, desde 04/10/2026, **também fica guardada no perfil**
+    (`PerfilRenderizacao.categoria_estilo`): é ela que escolhe o bloco técnico fixo colado ao prompt
+    (`imagineer/ia/blocos_tecnicos.py`). Existe porque, sem restringir a um vocabulário
     fechado, a IA já misturou movimentos artísticos incompatíveis na mesma
     sugestão ("oil on canvas... expressionist shadows") e usou linguagem
     temática em vez de visual ("atmosfera de conspiração e revelação") —
@@ -70,6 +71,18 @@ class CategoriaEstilo(enum.Enum):
     CARTOON_ANIMACAO = "CARTOON_ANIMACAO"
     """Formas simplificadas, cores vivas, estética de animação — não
     fotorrealista nem pintura tradicional."""
+
+    ANIME = "ANIME"
+    """Contorno de tinta fino, cel-shading, olhos e traços estilizados."""
+
+    PIXEL_ART = "PIXEL_ART"
+    """Grade de pixel visível, paleta limitada, dithering, sem suavização."""
+
+    GRAVURA_CLASSICA = "GRAVURA_CLASSICA"
+    """Hachura cruzada à tinta, monocromático, frontispício de livro do século XIX."""
+
+    ANIMACAO_3D = "ANIMACAO_3D"
+    """Longa-metragem de animação 3D: formas esculpidas, olhos grandes, luz global."""
 
 
 class Configuracao(Base):
