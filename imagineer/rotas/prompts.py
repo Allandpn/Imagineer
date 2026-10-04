@@ -49,6 +49,7 @@ from imagineer.modelos import (
     TipoElemento,
 )
 from imagineer.rotas._comum import (
+    buscar_capitulo as _buscar_capitulo,
     buscar_frame as _buscar_frame,
     buscar_imagem as _buscar_imagem,
     buscar_prompt as _buscar_prompt,
@@ -76,6 +77,7 @@ from imagineer.servicos.imagens_reduzidas import (
 from imagineer.servicos.upload import ler_com_limite
 
 rotas_de_frame = APIRouter(prefix="/frames", tags=["Prompts"])
+rotas_de_capitulo = APIRouter(prefix="/capitulos", tags=["Prompts"])
 rotas = APIRouter(prefix="/prompts", tags=["Prompts"])
 rotas_de_imagem = APIRouter(prefix="/imagens", tags=["Prompts"])
 
@@ -166,17 +168,34 @@ def elementos_para_vincular(frame_id: int, sessao: Session = Depends(obter_sessa
     as duas listas vêm vazias. Numa **cena**, entram todos os tipos.
     """
     frame = _buscar_frame(sessao, frame_id)
-    capitulo = frame.capitulo
+    return _candidatos_a_vincular(sessao, frame.capitulo, frame)
+
+
+@rotas_de_capitulo.get(
+    "/{capitulo_id}/elementos-para-cena",
+    response_model=ElementosParaVincular,
+    summary="Os elementos que uma cena **ainda sem frame** pode levar (a cena de um trecho selecionado)",
+)
+def elementos_para_cena(capitulo_id: int, sessao: Session = Depends(obter_sessao)) -> ElementosParaVincular:
+    """O mesmo seletor de ``GET /frames/{id}/elementos-para-vincular``, para quando a cena ainda não existe (LV8).
+
+    ``identificados``, ``outros`` e ``de_outros_capitulos`` como lá; nenhum vem ``no_frame``, porque não há frame. Nunca chama a IA.
+    """
+    return _candidatos_a_vincular(sessao, _buscar_capitulo(sessao, capitulo_id), None)
+
+
+def _candidatos_a_vincular(sessao: Session, capitulo, frame: Frame | None) -> ElementosParaVincular:
+    """Monta as três listas do seletor para um capítulo; com ``frame``, marca quem já está nele (EV1 a EV7); sem, é uma cena nova."""
     livro_id = capitulo.livro_id
-    retrato = frame.tipo == TipoDeFrame.PERSONAGEM
+    retrato = frame is not None and frame.tipo == TipoDeFrame.PERSONAGEM
 
     sujeito = frame.estados_elemento[0].elemento if retrato and frame.estados_elemento else None
     if retrato and (sujeito is None or sujeito.tipo == TipoElemento.PERSONAGEM):
         return ElementosParaVincular(identificados=[], outros=[])
 
-    no_frame = {e.elemento_id for e in frame.estados_elemento} | {e.elemento_id for e in frame.estados_vinculados}
+    no_frame = {e.elemento_id for e in frame.estados_elemento} | {e.elemento_id for e in frame.estados_vinculados} if frame is not None else set()
     # Os participantes que vieram da sugestão da cena nunca saem por este seletor (EV5).
-    sugestao_da_cena = sessao.scalar(select(SugestaoDeCena).where(SugestaoDeCena.frame_id == frame.id))
+    sugestao_da_cena = sessao.scalar(select(SugestaoDeCena).where(SugestaoDeCena.frame_id == frame.id)) if frame is not None else None
     originais = {s.elemento_id for s in sugestao_da_cena.participantes if s.elemento_id} if sugestao_da_cena else set()
 
     def pode_aparecer(elemento: Elemento) -> bool:
@@ -237,7 +256,7 @@ def elementos_para_vincular(frame_id: int, sessao: Session = Depends(obter_sessa
 
     # Quem já está no frame entra sempre numa das listas (EV6), mesmo sem sugestão nem estado neste capítulo: o app grava o conjunto
     # inteiro (`PUT .../estados`), e um participante que sumisse da lista seria apagado da cena sem querer.
-    for estado in [*frame.estados_elemento, *frame.estados_vinculados]:
+    for estado in [*frame.estados_elemento, *frame.estados_vinculados] if frame is not None else []:
         elemento = estado.elemento
         if elemento.id not in identificados and elemento.id not in outros and pode_aparecer(elemento):
             outros[elemento.id] = montar(elemento, estado)

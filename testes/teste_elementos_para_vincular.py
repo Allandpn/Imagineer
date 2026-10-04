@@ -244,3 +244,24 @@ def teste_vm7_a_cena_aceita_participante_de_outro_capitulo(cliente: TestClient, 
     assert [x["nome"] for x in resposta.json()["elementos"]] == ["Escudo"]
     [escudo_na_cena] = [x for x in _consultar(cliente, cena["id"])["outros"] if x["nome"] == "Escudo"]  # agora está no frame
     assert escudo_na_cena["no_frame"] is True
+
+
+def teste_lv8_a_cena_ainda_sem_frame_tem_o_mesmo_seletor_pelo_capitulo(cliente: TestClient, usar_provedor_falso) -> None:
+    from testes.teste_rotas_sugestoes import _livro_com_capitulos
+
+    usar_provedor_falso(ProvedorFalso(prompt="um prompt"))
+    livro = _livro_com_capitulos(cliente)
+    primeiro, segundo = livro["capitulos"][0], livro["capitulos"][1]
+    no_capitulo = _elemento(cliente, livro["id"], segundo["id"], "Prato", "OBJETO")
+    de_antes = _elemento(cliente, livro["id"], primeiro["id"], "Escudo", "OBJETO")  # só tem estado no capítulo 1
+
+    resposta = cliente.get(f"/capitulos/{segundo['id']}/elementos-para-cena")
+
+    assert resposta.status_code == 200, resposta.text
+    corpo = resposta.json()
+    assert [(e["nome"], e["estado_id"], e["no_frame"]) for e in corpo["outros"]] == [("Prato", no_capitulo["estado_id"], False)]
+    assert [(e["nome"], e["estado_id"]) for e in corpo["de_outros_capitulos"]] == [("Escudo", de_antes["estado_id"])]
+
+
+def teste_lv8_capitulo_que_nao_existe_e_404(cliente: TestClient) -> None:
+    assert cliente.get("/capitulos/999/elementos-para-cena").status_code == 404

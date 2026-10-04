@@ -220,6 +220,10 @@ Content-Type: application/json
 # daquele capitulo. Nunca chama a IA. (Usar uma dessas imagens num retrato de outro capitulo: PUT /frames/{id}/imagem-canonica.)
 GET {{baseUrl}}/livros/{{livroId}}/elementos-por-capitulo
 
+### Os elementos que uma cena ainda sem frame pode levar (LV8: a cena de um trecho selecionado)
+# O mesmo seletor de /frames/{id}/elementos-para-vincular (identificados, outros, de_outros_capitulos), pelo capítulo; nenhum vem no_frame.
+GET {{baseUrl}}/capitulos/{{capituloId}}/elementos-para-cena
+
 ### OCULTAR a imagem do frame no capitulo, sem apagar (item 7.5b, OC1 a OC3)
 # O artefato volta a ser so o icone; a imagem continua no catalogo e na galeria. {"oculta": false} mostra de novo;
 # escolher uma canonica tambem desfaz a ocultacao.
