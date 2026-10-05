@@ -313,10 +313,11 @@ def criar_prompt(
     configuracao = obter_ou_criar(sessao)
 
     perfil = _resolver_perfil(sessao, corpo.perfil_renderizacao_id, livro)
-    modelo_prompt = corpo.modelo or configuracao.modelo_prompt
+    eh_video = corpo.tipo == TipoDePrompt.VIDEO
+    # VD11: o prompt de vídeo tem modelo próprio; vazio, vale o do prompt de imagem.
+    modelo_prompt = corpo.modelo or (configuracao.modelo_video if eh_video else None) or configuracao.modelo_prompt
     if not modelo_prompt:
         raise ModeloNaoEscolhido("Nenhum modelo de prompt foi escolhido. Configure um em /configuracao.")
-    eh_video = corpo.tipo == TipoDePrompt.VIDEO
     # VD8: a imagem de partida é conferida **antes** de gastar IA.
     partida = _resolver_imagem_de_partida(sessao, frame, corpo)
 

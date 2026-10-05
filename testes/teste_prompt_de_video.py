@@ -269,3 +269,48 @@ def teste_o_pedido_a_ia_leva_a_imagem_de_partida_ou_diz_que_nao_ha() -> None:
 def teste_os_gastos_do_video_aparecem_como_operacao_propria(cliente: TestClient) -> None:
     # A tela de Custos agrupa por operação: "prompt_de_video" é o nome que o provedor informa (o app lhe dá um rótulo).
     assert 'operacao="prompt_de_video"' in Path(openrouter.__file__).read_text(encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# O modelo do prompt de vídeo (VD11)
+# --------------------------------------------------------------------------- #
+
+
+def teste_sem_modelo_de_video_vale_o_do_prompt_de_imagem(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, _, frame = _cena(cliente, usar_provedor_falso)
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json=VIDEO)
+
+    assert provedor.chamadas_de_video[0]["modelo"] == cliente.get("/configuracao").json()["modelo_prompt"]
+    assert cliente.get("/configuracao").json()["modelo_video"] is None
+
+
+def teste_o_modelo_de_video_vale_so_para_o_video_e_o_pedido_pode_sobrepor(cliente: TestClient, usar_provedor_falso) -> None:
+    provedor, _, frame = _cena(cliente, usar_provedor_falso)
+    modelo_de_imagem = cliente.get("/configuracao").json()["modelo_prompt"]
+    assert cliente.put("/configuracao", json={"modelo_video": "anthropic/claude-sonnet-5.5"}).json()["modelo_video"] == "anthropic/claude-sonnet-5.5"
+
+    cliente.post(f"/frames/{frame['id']}/prompts", json=VIDEO)
+    cliente.post(f"/frames/{frame['id']}/prompts", json={})  # o de imagem continua com o dele
+    cliente.post(f"/frames/{frame['id']}/prompts", json=VIDEO | {"modelo": "outro/modelo"})
+
+    assert [c["modelo"] for c in provedor.chamadas_de_video] == ["anthropic/claude-sonnet-5.5", "outro/modelo"]
+    assert provedor.chamadas_de_prompt[0]["modelo"] == modelo_de_imagem
+
+
+def teste_limpar_o_modelo_de_video_volta_ao_padrao(cliente: TestClient) -> None:
+    cliente.put("/configuracao", json={"modelo_video": "x/y"})
+
+    assert cliente.put("/configuracao", json={"modelo_video": ""}).json()["modelo_video"] is None
+
+
+def teste_a_instrucao_manda_o_estilo_do_perfil_e_nao_o_da_imagem() -> None:
+    instrucao = " ".join(openrouter._INSTRUCAO_DE_PROMPT_DE_VIDEO.replace("\\n", "").split())
+
+    assert "NUNCA do texto da imagem de partida" in instrucao and "vale o ESTILO VISUAL" in instrucao
+
+
+def teste_a_migracao_do_modelo_de_video_encadeia() -> None:
+    texto = (Path(__file__).parent.parent / "migracoes" / "versions" / "c9d0e1f2a3b4_modelo_do_prompt_de_video.py").read_text(encoding="utf-8")
+
+    assert "down_revision: Union[str, Sequence[str], None] = 'b8c9d0e1f2a3'" in texto and '"modelo_video"' in texto

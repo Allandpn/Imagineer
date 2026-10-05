@@ -107,6 +107,9 @@ class ConfiguracaoAtual(BaseModel):
             "senão o de extração, senão o de prompt."
         )
     )
+    modelo_video: str | None = Field(
+        description="Modelo de texto que monta o prompt de vídeo (item 4.8). Vazio = usa o `modelo_prompt`."
+    )
     prioridade_ia: PrioridadeIA = Field(
         description=(
             "ECONOMIA (padrão) reaproveita leituras já feitas; QUALIDADE relê "
@@ -146,6 +149,7 @@ class ConfiguracaoNova(BaseModel):
     ) = Field(default=None, max_length=20)
     modelo_suavizacao: str | None = Field(default=None, max_length=200)
     modelo_traducao: str | None = Field(default=None, max_length=200)
+    modelo_video: str | None = Field(default=None, max_length=200)
     prioridade_ia: PrioridadeIA | None = None
     narracao_motor: MotorDeNarracao | None = None
     narracao_modo: ModoDeNarracao | None = None
@@ -249,6 +253,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         modelos_com_referencia=dict(configuracao.modelos_com_referencia or {}),
         modelo_suavizacao=configuracao.modelo_suavizacao,
         modelo_traducao=configuracao.modelo_traducao,
+        modelo_video=configuracao.modelo_video,
         prioridade_ia=configuracao.prioridade_ia,
         narracao_motor=configuracao.narracao_motor,
         narracao_modo=configuracao.narracao_modo,

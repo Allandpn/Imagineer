@@ -197,6 +197,14 @@ class Configuracao(Base):
     Opcional: vazio significa "como antes" — ``modelo_suavizacao``, senão ``modelo_extracao``, senão ``modelo_prompt``.
     """
 
+    modelo_video: Mapped[str | None] = mapped_column(String(200))
+    """Modelo de **texto** que monta o prompt de **vídeo** (item 4.8, VD11).
+
+    Opcional: vazio significa "usa ``modelo_prompt``". Campo próprio porque o prompt de vídeo é raro (a pessoa pede um por cena) e a
+    instrução dele tem mais regras para seguir ao mesmo tempo (uma ação, um movimento de câmera, nada inventado), o que pede um
+    modelo mais forte do que o do prompt de imagem (comparação de 05/10/2026 no item 4.8).
+    """
+
     prioridade_ia: Mapped[PrioridadeIA] = mapped_column(
         Enum(
             PrioridadeIA,

@@ -489,8 +489,10 @@ e partículas no ar NÃO se acrescentam para dar clima: só entram se os insumos
 fonte da luz vem da cena, nunca do perfil de estilo.
 6. Som: só sons do próprio ambiente que o texto sustenta ou que são consequência física direta do que se vê (a chama, o vento numa \
 janela aberta, os passos). Música NÃO, a menos que o comentário do usuário peça.
-7. Bloco final de estilo, separado da prosa: os campos do perfil de renderização traduzidos para o inglês LITERALMENTE ("Style: X. \
-Lighting: Y. Palette: Z."), seguido de "Keep this exact visual style throughout the whole motion."
+7. Bloco final de estilo, separado da prosa: os campos do ESTILO VISUAL informado (o perfil de renderização) traduzidos para o inglês \
+LITERALMENTE ("Style: X. Lighting: Y. Palette: Z."), seguido de "Keep this exact visual style throughout the whole motion." Esses \
+campos vêm do ESTILO VISUAL, NUNCA do texto da imagem de partida (que pode ter sido escrito com outro perfil): se os dois divergirem, \
+vale o ESTILO VISUAL.
 8. Termine com: "No on-screen text, no subtitles, no scene cuts, no additional people." e, se não houver música pedida, \
 "No music."
 

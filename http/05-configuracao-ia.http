@@ -58,6 +58,15 @@ Content-Type: application/json
   "prioridade_ia": "QUALIDADE"
 }
 
+### Modelo do prompt de VÍDEO (item 4.8, VD11)
+# Vazio ou null = usa o modelo_prompt. A comparação de 05/10/2026 recomenda anthropic/claude-sonnet-5.5 para o vídeo.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "modelo_video": "anthropic/claude-sonnet-5.5"
+}
+
 ### Narração (RL21 a RL26) — só guarda: nada gera áudio ainda
 # narracao_motor: APARELHO (a voz do Android, padrão) ou IA. narracao_modo: UMA_VOZ (padrão) ou POR_PERSONAGEM.
 # narracao_voz e narracao_instrucoes: texto livre; vazio ou null apaga. Só o que vem no corpo muda.
