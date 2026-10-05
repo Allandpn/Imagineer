@@ -991,6 +991,33 @@ Discussão levantada por um cenário real do Allan: ele gera o retrato de um per
 
 Migration `a92e5f1c8d3b`. 4 testes novos (311 no total). Verificado contra `ProvedorFalso`/SQLite de teste: a âncora padrão preenche `referencias_visuais` quando o Estado não tem âncora própria, a âncora do Estado vence quando as duas existem, `PATCH /elementos/{id}` responde 422 pra uma imagem inexistente, e apagar a imagem-âncora padrão não apaga o elemento (`SET NULL`).
 
+### 4.8 Prompt de vídeo (especificado em 05/10/2026, ainda não implementado)
+
+**O quê.** Gerar, a partir de um `Frame`, um prompt de vídeo curto (~8 s) para o usuário levar ao app do Gemini (Veo) junto com uma imagem já gerada da cena, usada como quadro inicial. O Imagineer gera **só o prompt**; o vídeo é gerado fora, pelo plano Gemini Pro do Allan — mesmo raciocínio da decisão do item 7.7 (sem API paga de geração dentro do app).
+
+**Por quê.** Diferencial pedido por Allan (ver `EXPERIENCIA_DE_LEITURA.md`, seção 9). Reaproveita quase todo o pipeline de fidelidade já existente (fases 2, 2b e 3 do item 4.4 e o perfil de renderização), então o custo marginal é uma chamada de IA por prompt.
+
+**Base técnica:** `PROMPT_DE_VIDEO.md` — guia completo, adaptado de um documento de orientações do Gemini e revisado contra as regras deste projeto (seção 8 daquele documento lista o que foi mantido, corrigido e descartado). Pontos centrais:
+
+- **Dois modos.** *Imagem para vídeo* (o principal): o prompt descreve movimento, câmera e som, com só uma referência curta ao sujeito, porque a imagem já define a aparência; a fonte do que está no primeiro quadro é o `Prompt.texto` que gerou aquela `Imagem`. *Texto para vídeo* (reserva, sem imagem): descrição completa, como no prompt de imagem.
+- **O inverso do prompt de imagem.** A instrução de imagem (item 4.5) exige "instante congelado"; a de vídeo exige **uma** ação contínua que caiba em 8 s, com **um** movimento de câmera.
+- **Fidelidade.** Ação, efeitos e sons só quando o livro sustenta. Sem ação descrita, o vídeo é de contemplação (sujeito quase parado, ambiente em movimento) — nunca uma ação inventada. Música fora por padrão (é invenção). Fala fora desta versão. Mesma lista de adjetivos proibidos do item 4.5. Proibições explícitas de texto na tela, legendas, cortes e pessoas a mais.
+- **Retrato (`PERSONAGEM`)** vira "retrato vivo": respiração, piscar, brisa — nenhum cenário inventado.
+- **Estilo** vem do perfil de renderização em bloco final literal (mesma regra do bloco 7 do item 4.5), com o pedido de manter o estilo durante todo o movimento — geradores de vídeo tendem a "fotorrealizar" uma pintura ao animá-la.
+- **Guardrail de crianças e adolescentes** (Etapa 8) vale integralmente.
+
+**Desenho proposto (a confirmar antes de implementar):**
+
+- `Prompt` ganha `tipo` (`IMAGEM`/`VIDEO`, padrão `IMAGEM` — os prompts existentes continuam de imagem) e `imagem_partida_id` (opcional, FK para `Imagem`, `SET NULL`, só para `VIDEO`). Migration nova. Alternativa descartada por ora: entidade separada `PromptDeVideo` — duplicaria rota, listagem, avaliação e catálogo por uma diferença de dois campos.
+- `POST /frames/{id}/prompts` ganha `tipo` e `imagem_partida_id` no corpo. Com `tipo=VIDEO`, roda a mesma leitura profunda e fundamentação (em cache conforme `prioridade_ia`) e chama uma operação nova do provedor, `montar_prompt_de_video`, com a instrução `_INSTRUCAO_DE_PROMPT_DE_VIDEO` (rascunho na seção 6 de `PROMPT_DE_VIDEO.md`). A imagem de partida precisa pertencer a um prompt do mesmo frame (422 caso contrário).
+- Respostas de prompt (`PromptResumo`/`PromptDetalhe`) passam a expor `tipo` e `imagem_partida_id`.
+- App (tela 7.7): botão "Gerar prompt de vídeo" numa cena com imagem; "Abrir no Gemini" tenta enviar texto e imagem juntos. **Precisa de teste no celular** se o Gemini aceita os dois no mesmo compartilhamento.
+
+**Pendências deste item:**
+- Confirmar o desenho acima (campo `tipo` em `Prompt` vs. entidade separada).
+- O vídeo gerado volta ao app? Se sim, o catálogo `Imagem` (item 6.6) passa a aceitar vídeo, ou entidade própria — decidir quando o fluxo de prompt estiver validado.
+- Depende, para fidelidade plena, das correções da revisão de 05/10/2026 (identidade gravada como aparência; identidade acumulada que não chega ao prompt) — elas afetam igualmente o prompt de imagem.
+
 ---
 
 ## Etapa 5 — Decisões Técnicas e Justificativas
