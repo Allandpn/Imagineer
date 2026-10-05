@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao
+from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao, TipoDePrompt
 from imagineer.servicos.imagens_reduzidas import Orientacao, orientacao_de
 
 
@@ -89,6 +89,8 @@ class PromptResumo(BaseModel):
     perfil_renderizacao_id: int | None
     modelo_ia: str | None
     texto: str
+    tipo: TipoDePrompt = Field(default=TipoDePrompt.IMAGEM, description="`IMAGEM` (padrão) ou `VIDEO` (item 4.8): um prompt de vídeo não gera imagem.")
+    imagem_partida_id: int | None = Field(default=None, description="Só no `VIDEO`: a imagem que vai de primeiro quadro; nulo = modo texto para vídeo.")
     so_imagem: bool = Field(default=False, description="O prompt existe só para guardar uma imagem importada sem prompt (PI1); não vale como prompt.")
     texto_pt: str | None = Field(default=None, description="A versão em português (PT1); nulo = ainda sem tradução. O que vai à imagem é o `texto`.")
     avaliacao: str | None
@@ -151,6 +153,18 @@ class PromptNovo(BaseModel):
 
     perfil_renderizacao_id: int | None = None
     modelo: str | None = Field(default=None, max_length=200)
+    tipo: TipoDePrompt = Field(
+        default=TipoDePrompt.IMAGEM,
+        description="`IMAGEM` (padrão) ou `VIDEO` (item 4.8): o prompt de vídeo é para o Veo, no app do Gemini.",
+    )
+    imagem_partida_id: int | None = Field(
+        default=None,
+        description=(
+            "Só com `tipo=VIDEO`: a imagem que será o primeiro quadro. Tem de ser de um prompt **deste frame** (ou a canônica dele) e "
+            "não estar na lixeira (422). Ausente: vale a canônica do frame e, sem ela, a mais recente; só um frame **sem imagem nenhuma** "
+            "gera o prompt de texto para vídeo."
+        ),
+    )
     comentario: str | None = Field(
         default=None,
         max_length=2000,

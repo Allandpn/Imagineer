@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
 from imagineer.esquemas.elemento import Artefato, SituacaoDoArtefato, TipoDeArtefato
-from imagineer.modelos import Capitulo, Frame, Imagem, SugestaoDeCena, SugestaoDeElemento, TipoDeFrame
+from imagineer.modelos import Capitulo, Frame, Imagem, SugestaoDeCena, SugestaoDeElemento, TipoDeFrame, TipoDePrompt
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
 from imagineer.servicos.imagens_reduzidas import garantir_dimensoes, orientacao_de
 from imagineer.servicos.posicao_no_texto import posicao_da_primeira_mencao
@@ -45,7 +45,7 @@ def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[Situac
     ultima = canonica or max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
     if ultima is not None:
         return SituacaoDoArtefato.ILUSTRADO, ultima
-    if frame is not None and frame.prompts:
+    if frame is not None and any(prompt.tipo == TipoDePrompt.IMAGEM for prompt in frame.prompts):  # VD7: vídeo não conta
         return SituacaoDoArtefato.PROMPT_PRONTO, None
     return SituacaoDoArtefato.CONFIRMADO, None
 

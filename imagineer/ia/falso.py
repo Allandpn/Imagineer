@@ -85,7 +85,10 @@ class ProvedorFalso(ProvedorIA):
         erro: Exception | None = None,
         recusas_de_imagem: int = 0,
         prompt_suavizado: str = "a softer version of the prompt",
+        prompt_de_video: str = "slow push-in, the subject breathes slowly. No on-screen text.",
     ):
+        self._prompt_de_video = prompt_de_video
+        self.chamadas_de_video: list[dict] = []
         self._recusas_de_imagem = recusas_de_imagem
         """Quantas das **primeiras** gerações de imagem o provedor recusa (``ConteudoRecusado``)."""
         self._prompt_suavizado = prompt_suavizado
@@ -247,6 +250,37 @@ class ProvedorFalso(ProvedorIA):
         if self._erro is not None:
             raise self._erro
         return PromptMontado(texto=self._prompt, modelo=modelo)
+
+    def montar_prompt_de_video(
+        self,
+        descricao_do_frame: str,
+        elementos: list[str],
+        perfil_renderizacao: str,
+        modelo: str,
+        contexto_do_livro: str | None = None,
+        comentario_do_usuario: str | None = None,
+        elementos_vinculados: list[str] | None = None,
+        trecho_do_livro: str | None = None,
+        prompt_da_imagem: str | None = None,
+        eh_retrato: bool = False,
+    ) -> PromptMontado:
+        self.chamadas_de_video.append(
+            {
+                "descricao_do_frame": descricao_do_frame,
+                "elementos": elementos,
+                "perfil_renderizacao": perfil_renderizacao,
+                "modelo": modelo,
+                "contexto_do_livro": contexto_do_livro,
+                "comentario_do_usuario": comentario_do_usuario,
+                "elementos_vinculados": elementos_vinculados,
+                "trecho_do_livro": trecho_do_livro,
+                "prompt_da_imagem": prompt_da_imagem,
+                "eh_retrato": eh_retrato,
+            }
+        )
+        if self._erro is not None:
+            raise self._erro
+        return PromptMontado(texto=self._prompt_de_video, modelo=modelo)
 
     def traduzir_prompt(self, texto: str, para: str, modelo: str) -> PromptMontado:
         """A tradução de mentira: põe um rótulo na frente, e guarda o pedido para os testes."""

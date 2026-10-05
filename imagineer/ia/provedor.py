@@ -451,6 +451,29 @@ class ProvedorIA(ABC):
         """
 
     @abstractmethod
+    def montar_prompt_de_video(
+        self,
+        descricao_do_frame: str,
+        elementos: list[str],
+        perfil_renderizacao: str,
+        modelo: str,
+        contexto_do_livro: str | None = None,
+        comentario_do_usuario: str | None = None,
+        elementos_vinculados: list[str] | None = None,
+        trecho_do_livro: str | None = None,
+        prompt_da_imagem: str | None = None,
+        eh_retrato: bool = False,
+    ) -> PromptMontado:
+        """Monta o prompt de **vídeo** (~8 s, item 4.8) a partir do mesmo que o de imagem recebe.
+
+        Args:
+            prompt_da_imagem: o texto do prompt que gerou a **imagem de partida** (o primeiro quadro). Com ele, o prompt de
+                vídeo só descreve movimento, câmera e som; sem ele, descreve tudo (modo texto para vídeo, VD1).
+            eh_retrato: o frame é um retrato (``PERSONAGEM``): vira "retrato vivo", sem ação narrativa (VD4).
+        Os demais argumentos são os de ``montar_prompt``.
+        """
+
+    @abstractmethod
     def montar_prompt(
         self,
         descricao_do_frame: str,

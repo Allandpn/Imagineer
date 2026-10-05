@@ -20,7 +20,7 @@ from imagineer.modelos.frame import Frame, TipoDeFrame, frames_estados_elemento,
 from imagineer.modelos.leitura import Destaque, Marcador, Pin, TempoDeLeitura
 from imagineer.modelos.livro import Livro
 from imagineer.modelos.perfil_renderizacao import PerfilRenderizacao
-from imagineer.modelos.prompt import Imagem, OrigemDaImagem, Prompt, SituacaoDaGeracao
+from imagineer.modelos.prompt import Imagem, OrigemDaImagem, Prompt, SituacaoDaGeracao, TipoDePrompt
 from imagineer.modelos.sugestao import (
     SugestaoDeCena,
     SugestaoDeElemento,
@@ -47,6 +47,7 @@ __all__ = [
     "PrioridadeIA",
     "OrigemDaImagem",
     "Prompt",
+    "TipoDePrompt",
     "SituacaoDaGeracao",
     "SugestaoDeCena",
     "SugestaoDeElemento",

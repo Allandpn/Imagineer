@@ -1137,6 +1137,34 @@ Migration `a92e5f1c8d3b`. 4 testes novos (311 no total). Verificado contra `Prov
 
 ---
 
+### 4.8 Prompt de vídeo (especificado em 05/10/2026 pelo Opus na nuvem; confirmado e implementado pelo Allan em 05/10/2026)
+
+**O quê.** Gerar, a partir de um `Frame`, um prompt de vídeo curto (~8 s) para o usuário levar ao app do Gemini (Veo) junto com uma imagem já gerada da cena, usada como quadro inicial. O Imagineer gera **só o prompt**; o vídeo é gerado fora, pelo plano Gemini Pro do Allan: mesmo raciocínio da decisão do item 7.7 (sem API paga de geração dentro do app).
+
+**Por quê.** Diferencial pedido pelo Allan (ver `EXPERIENCIA_DE_LEITURA.md`). Reaproveita quase todo o pipeline de fidelidade (fases 2, 2b e 3 do item 4.4, o perfil e o trecho do livro, FD7), então o custo marginal é **uma chamada de IA por prompt**.
+
+**Base técnica:** `PROMPT_DE_VIDEO.md` (guia completo, adaptado de um documento de orientações do Gemini e revisado contra as regras do projeto: a seção 8 dele lista o que foi mantido, corrigido e descartado). Pontos centrais:
+
+- **VD1 — dois modos.** *Imagem para vídeo* (o principal): o prompt descreve **movimento, câmera e som**, com só uma referência curta ao sujeito, porque a imagem já define a aparência; a fonte do que está no primeiro quadro é o `Prompt.texto` que gerou aquela imagem. *Texto para vídeo* (reserva, sem imagem): descrição completa, como no prompt de imagem.
+- **VD2 — o inverso do prompt de imagem.** A instrução de imagem (item 4.5) exige "instante congelado"; a de vídeo exige **uma** ação contínua que caiba em 8 s, com **um** movimento de câmera.
+- **VD3 — fidelidade.** Ação, efeitos e sons só quando o livro sustenta. Sem ação descrita, o vídeo é de **contemplação** (sujeito quase parado, ambiente em movimento), nunca uma ação inventada. **O que há no ar (poeira, névoa, fumaça) só entra se os insumos disserem** (a mesma regra do FD10: o exemplo "poeira no feixe de luz" do rascunho original ensinaria o erro que a auditoria de 04/10 achou). Música fora por padrão (é invenção). Fala fora desta versão. Mesma lista de adjetivos proibidos do item 4.5. Proibições explícitas de texto na tela, legendas, cortes e pessoas a mais. O guardrail de crianças e adolescentes (Etapa 8) vale integralmente.
+- **VD4 — retrato (`PERSONAGEM`)** vira "retrato vivo": respiração, piscar, brisa; nenhum cenário inventado.
+- **VD5 — estilo.** Vem do perfil, em bloco final literal, com o pedido de manter o estilo durante todo o movimento (geradores de vídeo tendem a "fotorrealizar" uma pintura ao animá-la). **O bloco técnico da categoria (item 4.5, BT) só é colado no modo texto para vídeo**: com imagem de partida, é a imagem que carrega o estilo, e repetir a técnica em palavras diferentes cria conflito.
+
+**Desenho (confirmado pelo Allan em 05/10/2026: campo `tipo` no `Prompt`, e não entidade separada, que duplicaria rota, listagem, avaliação e catálogo por uma diferença de dois campos):**
+
+- **VD6 — o modelo.** `Prompt` ganha **`tipo`** (`IMAGEM`/`VIDEO`; padrão `IMAGEM`, então os prompts existentes continuam de imagem) e **`imagem_partida_id`** (opcional, chave para `Imagem` com `ON DELETE SET NULL`; só em `VIDEO`). Sem CHECK no banco (como a categoria do perfil).
+- **VD7 — o vídeo não se mistura com a imagem.** Um prompt de vídeo **não** é um prompt para gerar imagem. Por isso: `GET /frames/{id}/prompts` devolve **só os de imagem** por padrão e aceita **`?tipo=VIDEO`** para os de vídeo; o "prompt mais recente" para onde vai uma imagem importada (`POST /frames/{id}/imagens`) **ignora** os de vídeo; um frame que só tem prompt de vídeo **não** conta como "prompt pronto" no artefato do capítulo; e **gerar imagem a partir de um prompt de vídeo é recusado (422)**.
+- **VD8 — a rota.** `POST /frames/{id}/prompts` ganha `tipo` e `imagem_partida_id` no corpo. Com `tipo=VIDEO`, roda a mesma leitura profunda e fundamentação (em cache conforme `prioridade_ia`) e chama a operação nova do provedor, **`montar_prompt_de_video`**, com a instrução **`_INSTRUCAO_DE_PROMPT_DE_VIDEO`** (a da seção 6 de `PROMPT_DE_VIDEO.md`, com o VD3). A **imagem de partida** precisa ser de um prompt **do mesmo frame**, ou de uma imagem que o frame tenha como canônica, e não estar na lixeira (**422** caso contrário); sem `imagem_partida_id`, vale a **canônica** do frame e, sem ela, a imagem mais recente; só **sem imagem nenhuma** é o modo texto para vídeo. `imagem_partida_id` com `tipo=IMAGEM` é 422. Mesmo `modelo_prompt`, `comentario` e `perfil` do prompt de imagem. As respostas (`PromptResumo`/`PromptDetalhe`) expõem `tipo` e `imagem_partida_id`.
+- **VD9 — o app.** Na área de imagens de um frame (cena ou retrato) com ao menos uma imagem, o botão **"Prompt de vídeo"** abre um diálogo para escolher **qual imagem será o quadro inicial** (a canônica vem marcada) e um comentário opcional, e mostra o custo (uma chamada de IA). O resultado aparece numa seção **"Vídeo"**, com o prompt, **Copiar** e **Abrir no Gemini**, que compartilha **o texto e a imagem juntos** (`ACTION_SEND` com `EXTRA_TEXT` e `EXTRA_STREAM`); se o Gemini não aceitar os dois, o fluxo é copiar o prompt e compartilhar a imagem em dois passos. **O que o Gemini faz com os dois só se sabe testando no aparelho.**
+
+**Implementado no servidor (05/10):** migração `b8c9d0e1f2a3` (`tipo` e `imagem_partida_id` em `prompts`), `montar_prompt_de_video` e `_INSTRUCAO_DE_PROMPT_DE_VIDEO`, a rota (`tipo` e `imagem_partida_id` no corpo; `?tipo=VIDEO` na listagem), as regras do VD7 (listagem, imagem importada, artefato e geração de imagem) e a operação `prompt_de_video` nos custos; 19 testes. **O app** (botão, diálogo, seção "Vídeo" e "Abrir no Gemini") vem em seguida.
+
+**Pendências:**
+- O vídeo gerado volta ao app? Se sim, o catálogo `Imagem` (item 6.6) passa a aceitar vídeo, ou entidade própria: decidir quando o fluxo do prompt estiver validado.
+- Testar no celular o compartilhamento de texto e imagem para o Gemini.
+- Evoluções fora desta versão: fala com a frase literal do livro; quadro inicial **e** final; várias imagens de referência; gerar o vídeo dentro do app por API paga.
+
 ## Etapa 5 — Decisões Técnicas e Justificativas
 
 | Decisão | Motivo |

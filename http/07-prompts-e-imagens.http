@@ -49,8 +49,24 @@ Content-Type: application/json
   "comentario": "A cicatriz no rosto dele, mencionada no capítulo seguinte, deveria aparecer."
 }
 
-### Histórico de prompts do frame
+### Prompt de VÍDEO (item 4.8): para o Veo, no app do Gemini
+# "tipo": "VIDEO". "imagem_partida_id": a imagem que vira o primeiro quadro (tem de ser deste frame, 422 se não); sem ela vale a
+# canônica do frame e, sem ela, a mais recente; só um frame SEM imagem nenhuma gera o prompt de texto para vídeo.
+# Gasta uma chamada de IA. Um prompt de vídeo NÃO gera imagem (422 em /prompts/{id}/gerar-imagem).
+POST {{baseUrl}}/frames/{{frameId}}/prompts
+Content-Type: application/json
+
+{
+  "tipo": "VIDEO",
+  "imagem_partida_id": 31,
+  "comentario": "só um movimento lento de câmera"
+}
+
+### Histórico de prompts de IMAGEM do frame (os de vídeo não entram aqui)
 GET {{baseUrl}}/frames/{{frameId}}/prompts
+
+### Os prompts de VÍDEO do frame
+GET {{baseUrl}}/frames/{{frameId}}/prompts?tipo=VIDEO
 
 ### Abre um prompt, com as imagens que saíram dele
 GET {{baseUrl}}/prompts/{{promptId}}

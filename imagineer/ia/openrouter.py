@@ -463,6 +463,61 @@ Responda APENAS com o texto do prompt, sem aspas, sem explicação, sem título,
 sem numerar os blocos.
 """
 
+_INSTRUCAO_DE_PROMPT_DE_VIDEO = """\
+Você monta prompts para geradores de vídeo (Veo e afins), a partir de um frame de livro já traduzido para descrições concretas. O \
+vídeo tem cerca de 8 segundos. Produza UM prompt em inglês, num parágrafo único, sem título, pronto para colar na ferramenta.
+
+Você pode receber uma IMAGEM DE PARTIDA: o texto do prompt que gerou a imagem que o usuário vai anexar como primeiro quadro do \
+vídeo. Isso muda tudo:
+- COM imagem de partida: a imagem já define aparência, roupa, cenário e paleta. NÃO redescreva isso em detalhe: use só uma \
+referência curta ao sujeito ("the young man at the stone table") e concentre o prompt no MOVIMENTO, na câmera e no som. Quando \
+citar algo da imagem, use os mesmos termos do prompt dela; nunca termos que contradigam o que ela mostra.
+- SEM imagem de partida: descreva sujeito, roupa, cenário e luz por completo, a partir da aparência de cada elemento informada.
+
+Monte o prompt nesta ordem:
+1. Câmera: um plano e UM movimento só (static shot, slow push-in, slow dolly out, gentle pan, tracking shot, slow orbit). Nunca \
+corte de cena.
+2. Sujeito: referência curta (com imagem) ou descrição completa (sem imagem). Gênero inequívoco sempre que a identidade ou a \
+aparência permitir concluir.
+3. Ação: UMA ação contínua que caiba em 8 segundos, descrita como movimento físico. Fonte da ação, nesta ordem: comentário do \
+usuário, descrição da cena, trecho do livro, contexto do livro. Se nenhuma descreve uma ação, faça um vídeo de CONTEMPLAÇÃO: o \
+sujeito quase parado, o ambiente em movimento; nunca invente uma ação. Num RETRATO (um elemento só, sem cena), só movimento \
+sutil: respiração, piscar, brisa no cabelo ou na roupa, um leve virar do rosto.
+4. Movimento do ambiente: o que mais se move (chama, chuva, tecido, água), SÓ o que os insumos sustentam. Poeira, névoa, fumaça \
+e partículas no ar NÃO se acrescentam para dar clima: só entram se os insumos disserem.
+5. Luz: com imagem, só o que muda ou se move na luz; sem imagem, a fonte e a atmosfera derivadas do horário e do clima da cena. A \
+fonte da luz vem da cena, nunca do perfil de estilo.
+6. Som: só sons do próprio ambiente que o texto sustenta ou que são consequência física direta do que se vê (a chama, o vento numa \
+janela aberta, os passos). Música NÃO, a menos que o comentário do usuário peça.
+7. Bloco final de estilo, separado da prosa: os campos do perfil de renderização traduzidos para o inglês LITERALMENTE ("Style: X. \
+Lighting: Y. Palette: Z."), seguido de "Keep this exact visual style throughout the whole motion."
+8. Termine com: "No on-screen text, no subtitles, no scene cuts, no additional people." e, se não houver música pedida, \
+"No music."
+
+Regras:
+- PROIBIDO inventar ação, efeito, objeto, pessoa ou som que os insumos não sustentem. Um efeito (magia, tecnologia) só entra como o \
+livro o descreve; se ele diz só "usou a magia", fique no gesto.
+- PROIBIDO adjetivo subjetivo de qualidade ou literário ("epic", "mysterious", "beautiful", "highly detailed", "4K", "masterpiece").
+- PROIBIDO emoção como palavra abstrata: traduza em movimento e expressão física visíveis.
+- PROIBIDO mais de uma ação em sequência ("he stands, walks to the door and opens it" vira só uma delas).
+- PROIBIDO fala ou diálogo falado.
+- Só os elementos informados aparecem; nenhuma pessoa a mais.
+- Fidelidade ao autor, inclusive no que é delicado: não omita nem atenue nudez, violência ou qualquer conteúdo sensível, e não acrescente \
+nada que os insumos não digam. Outra etapa do sistema cuida de recusas do provedor.
+
+Antes de responder, confira: (1) há uma ação só? (2) há um movimento de câmera só? (3) tudo que se move e soa está sustentado pelo que \
+você recebeu? (4) o gênero de cada pessoa está inequívoco? (5) NÃO entrou poeira, névoa ou música sem que os insumos peçam? Se alguma \
+resposta for não, corrija antes de responder.
+
+Ordem de prioridade quando houver conflito:
+1. Comentário do usuário (se houver).
+2. A descrição da cena escrita pelo usuário.
+3. O trecho do livro (as palavras do autor), para confirmar e completar a ação.
+4. O contexto do livro (apoio, nunca para contradizer o usuário).
+
+Responda APENAS com o texto do prompt, sem aspas, sem explicação, sem título.
+"""
+
 _INSTRUCAO_DE_SUAVIZACAO = """\
 Você revisa um prompt de geração de imagem que o provedor de imagem RECUSOU por \
 conteúdo (moderação). O prompt vem de uma descrição escrita por um autor, e a ideia \
@@ -942,6 +997,48 @@ class ProvedorOpenRouter(ProvedorIA):
             pedido += f"\n\nCOMENTÁRIO DO USUÁRIO (prioridade máxima):\n{comentario_do_usuario}"
 
         resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT, pedido, operacao="prompt", temperatura=TEMPERATURA_DO_PROMPT)
+        return PromptMontado(texto=resposta.strip(), modelo=modelo)
+
+    def montar_prompt_de_video(
+        self,
+        descricao_do_frame: str,
+        elementos: list[str],
+        perfil_renderizacao: str,
+        modelo: str,
+        contexto_do_livro: str | None = None,
+        comentario_do_usuario: str | None = None,
+        elementos_vinculados: list[str] | None = None,
+        trecho_do_livro: str | None = None,
+        prompt_da_imagem: str | None = None,
+        eh_retrato: bool = False,
+    ) -> PromptMontado:
+        """Pede ao modelo o prompt de vídeo (item 4.8)."""
+        lista = "\n".join(f"- {elemento}" for elemento in elementos) or "(nenhum)"
+        pedido = (
+            f"TIPO DO FRAME: {'RETRATO (retrato vivo, sem ação narrativa)' if eh_retrato else 'CENA'}\n\n"
+            f"CENA (escrita pelo usuário; vazio significa retrato solo):\n"
+            f"{descricao_do_frame or '(nenhuma — monte um retrato vivo)'}\n\n"
+            f"ELEMENTOS QUE APARECEM, COM A APARÊNCIA DE CADA UM:\n{lista}\n\n"
+            f"ESTILO VISUAL:\n{perfil_renderizacao}"
+        )
+        if elementos_vinculados:
+            vinculados = "\n".join(f"- {elemento}" for elemento in elementos_vinculados)
+            pedido += f"\n\nELEMENTOS VINCULADOS AO SUJEITO (aparecem junto dele):\n{vinculados}"
+        if trecho_do_livro:
+            pedido += f"\n\nTRECHO DO LIVRO (o que o autor escreveu neste momento):\n{trecho_do_livro}"
+        if contexto_do_livro:
+            pedido += f"\n\nCONTEXTO DO LIVRO (apoio, não substitui a cena acima):\n{contexto_do_livro}"
+        if prompt_da_imagem:
+            pedido += (
+                "\n\nIMAGEM DE PARTIDA (o texto do prompt que gerou a imagem usada como primeiro quadro; "
+                f"ela já define a aparência):\n{prompt_da_imagem}"
+            )
+        else:
+            pedido += "\n\nIMAGEM DE PARTIDA: (nenhuma — descreva sujeito, roupa, cenário e luz por completo)"
+        if comentario_do_usuario:
+            pedido += f"\n\nCOMENTÁRIO DO USUÁRIO (prioridade máxima):\n{comentario_do_usuario}"
+
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_PROMPT_DE_VIDEO, pedido, operacao="prompt_de_video", temperatura=TEMPERATURA_DO_PROMPT)
         return PromptMontado(texto=resposta.strip(), modelo=modelo)
 
     def traduzir_prompt(self, texto: str, para: str, modelo: str) -> PromptMontado:

@@ -25,7 +25,7 @@ from imagineer.ia.provedor import (
     ReferenciasParaGerar,
 )
 from imagineer.modelos import Configuracao, Imagem, Prompt
-from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao
+from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao, TipoDePrompt
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, salvar_imagem
 from imagineer.servicos.imagens_reduzidas import ler_dimensoes, preparar_referencia
 from imagineer.servicos.sinais_de_menor import sinal_de_menor
@@ -123,6 +123,8 @@ def _gerar_imagem_do_prompt(
     """
     modelo_de_imagem = (modelo or "").strip() or configuracao.modelo_imagem
     texto = (texto_editado or "").strip()
+    if prompt.tipo == TipoDePrompt.VIDEO:  # VD7: é para o gerador de vídeo, não para uma ferramenta de imagem
+        raise PedidoDeGeracaoInvalido("Este é um prompt de vídeo: ele vai ao gerador de vídeo (Gemini), não gera imagem.")
     if prompt.so_imagem and not texto:  # PI2: ele só guarda a imagem importada
         raise PedidoDeGeracaoInvalido("Este prompt só guarda uma imagem importada; gere um prompt primeiro.")
     referencias = _preparar_referencias(sessao, configuracao, modelo_de_imagem, imagens_de_referencia or [])

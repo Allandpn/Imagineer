@@ -49,6 +49,7 @@ from imagineer.modelos import (
     SugestaoDeCena,
     SugestaoDeElemento,
     TipoDeFrame,
+    TipoDePrompt,
     TipoElemento,
 )
 from imagineer.rotas._comum import (
@@ -97,12 +98,17 @@ rotas_de_imagem = APIRouter(prefix="/imagens", tags=["Prompts"])
     response_model=list[PromptResumo],
     summary="O histórico de prompts do frame",
 )
-def listar_prompts(frame_id: int, sessao: Session = Depends(obter_sessao)) -> list[PromptResumo]:
-    """Os prompts já montados para o frame, do mais antigo ao mais recente."""
+def listar_prompts(
+    frame_id: int,
+    tipo: TipoDePrompt = Query(default=TipoDePrompt.IMAGEM, description="`IMAGEM` (padrão) ou `VIDEO` (item 4.8, VD7)."),
+    sessao: Session = Depends(obter_sessao),
+) -> list[PromptResumo]:
+    """Os prompts já montados para o frame, do mais antigo ao mais recente. **Só os de imagem**, a menos que se peça `?tipo=VIDEO`:
+    um prompt de vídeo não é "o prompt mais recente" de quem gera imagem."""
     _buscar_frame(sessao, frame_id)
 
     prompts = list(
-        sessao.scalars(select(Prompt).where(Prompt.frame_id == frame_id).order_by(Prompt.id))
+        sessao.scalars(select(Prompt).where(Prompt.frame_id == frame_id, Prompt.tipo == tipo).order_by(Prompt.id))
     )
     contagens = _contar_imagens(sessao, [prompt.id for prompt in prompts])
     return [_resumo(prompt, contagens.get(prompt.id, 0)) for prompt in prompts]
@@ -310,28 +316,52 @@ def criar_prompt(
     modelo_prompt = corpo.modelo or configuracao.modelo_prompt
     if not modelo_prompt:
         raise ModeloNaoEscolhido("Nenhum modelo de prompt foi escolhido. Configure um em /configuracao.")
+    eh_video = corpo.tipo == TipoDePrompt.VIDEO
+    # VD8: a imagem de partida é conferida **antes** de gastar IA.
+    partida = _resolver_imagem_de_partida(sessao, frame, corpo)
 
     # Os erros do provedor sobem como estão: o tratador global os traduz para HTTP (imagineer/erros.py).
     with gasto_do_livro(livro.id):  # CU3: as chamadas daqui valem como gasto deste livro
         _fazer_leitura_profunda(sessao, provedor, frame, configuracao)
         contexto_do_livro = _fundamentar_se_necessario(sessao, provedor, frame, configuracao)
-        resultado = provedor.montar_prompt(
-            descricao_do_frame=_descricao_do_frame(frame),
-            elementos=_elementos_do_frame(sessao, frame),
-            perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
-            modelo=modelo_prompt,
-            contexto_do_livro=contexto_do_livro,
-            comentario_do_usuario=corpo.comentario,
-            elementos_vinculados=_elementos_vinculados(sessao, frame) or None,
-            trecho_do_livro=frame.trecho,
-        )
+        if eh_video:
+            resultado = provedor.montar_prompt_de_video(
+                descricao_do_frame=_descricao_do_frame(frame),
+                elementos=_elementos_do_frame(sessao, frame),
+                perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
+                modelo=modelo_prompt,
+                contexto_do_livro=contexto_do_livro,
+                comentario_do_usuario=corpo.comentario,
+                elementos_vinculados=_elementos_vinculados(sessao, frame) or None,
+                trecho_do_livro=frame.trecho,
+                prompt_da_imagem=partida.prompt.texto if partida is not None else None,
+                eh_retrato=frame.tipo == TipoDeFrame.PERSONAGEM,
+            )
+        else:
+            resultado = provedor.montar_prompt(
+                descricao_do_frame=_descricao_do_frame(frame),
+                elementos=_elementos_do_frame(sessao, frame),
+                perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
+                modelo=modelo_prompt,
+                contexto_do_livro=contexto_do_livro,
+                comentario_do_usuario=corpo.comentario,
+                elementos_vinculados=_elementos_vinculados(sessao, frame) or None,
+                trecho_do_livro=frame.trecho,
+            )
 
     prompt = Prompt(
         frame_id=frame.id,
         perfil_renderizacao_id=perfil.id if perfil else None,
         modelo_ia=resultado.modelo,
         # BT4: o bloco técnico da categoria do perfil entra aqui, por código, DEPOIS da resposta da IA (que nunca o vê).
-        texto=com_bloco_tecnico(resultado.texto, perfil.categoria_estilo if perfil else None),
+        # VD5: no vídeo, o bloco técnico só entra sem imagem de partida (com ela, é a imagem que carrega o estilo).
+        texto=(
+            resultado.texto
+            if eh_video and partida is not None
+            else com_bloco_tecnico(resultado.texto, perfil.categoria_estilo if perfil else None)
+        ),
+        tipo=corpo.tipo,
+        imagem_partida_id=partida.id if partida is not None else None,
     )
     sessao.add(prompt)
     sessao.commit()
@@ -452,11 +482,11 @@ async def importar_imagem_para_o_frame(
     """A imagem vai para o prompt **mais recente com texto**; sem nenhum, o servidor cria um "prompt só da imagem" (PI1). Não gasta IA."""
     frame = _buscar_frame(sessao, frame_id)
     prompt = sessao.scalars(
-        select(Prompt).where(Prompt.frame_id == frame.id, Prompt.so_imagem.is_(False)).order_by(Prompt.id.desc())
+        select(Prompt).where(Prompt.frame_id == frame.id, Prompt.so_imagem.is_(False), Prompt.tipo == TipoDePrompt.IMAGEM).order_by(Prompt.id.desc())
     ).first()
     if prompt is None:
         prompt = sessao.scalars(
-            select(Prompt).where(Prompt.frame_id == frame.id, Prompt.so_imagem.is_(True)).order_by(Prompt.id.desc())
+            select(Prompt).where(Prompt.frame_id == frame.id, Prompt.so_imagem.is_(True), Prompt.tipo == TipoDePrompt.IMAGEM).order_by(Prompt.id.desc())
         ).first()
     if prompt is None:
         prompt = Prompt(frame_id=frame.id, texto=TEXTO_DO_PROMPT_SO_DA_IMAGEM, so_imagem=True)
@@ -789,6 +819,44 @@ def _fundamentar_se_necessario(
     return fundamentado.contexto
 
 
+def _resolver_imagem_de_partida(sessao: Session, frame: Frame, corpo: PromptNovo) -> Imagem | None:
+    """A imagem que será o primeiro quadro do vídeo (VD8), ou ``None`` (modo texto para vídeo, ou prompt de imagem).
+
+    Pedida: tem de existir, não estar na lixeira e ser de um prompt **deste frame** (ou a canônica dele, que pode vir de outro retrato do
+    mesmo elemento, VM3): 422 caso contrário. Não pedida: a canônica do frame e, sem ela, a imagem mais recente; só um frame sem imagem
+    nenhuma gera o prompt de texto para vídeo. Só vale em ``tipo=VIDEO``: num prompt de imagem, pedir uma é 422.
+    """
+    if corpo.tipo != TipoDePrompt.VIDEO:
+        if corpo.imagem_partida_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="A imagem de partida só vale num prompt de vídeo (tipo=VIDEO).",
+            )
+        return None
+
+    do_frame = [
+        imagem
+        for prompt in sessao.scalars(select(Prompt).where(Prompt.frame_id == frame.id, Prompt.tipo == TipoDePrompt.IMAGEM))
+        for imagem in prompt.imagens_ativas
+    ]
+    if corpo.imagem_partida_id is not None:
+        imagem = sessao.get(Imagem, corpo.imagem_partida_id)
+        valida = imagem is not None and imagem.apagada_em is None and (
+            imagem in do_frame or imagem.id == frame.imagem_canonica_id
+        )
+        if not valida:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="A imagem de partida tem de ser uma imagem deste frame (que não esteja na lixeira).",
+            )
+        return imagem
+
+    canonica = sessao.get(Imagem, frame.imagem_canonica_id) if frame.imagem_canonica_id is not None else None
+    if canonica is not None and canonica.apagada_em is None:
+        return canonica
+    return max(do_frame, key=lambda i: (i.data_importacao, i.id), default=None)
+
+
 def _resolver_perfil(
     sessao: Session, perfil_id: int | None, livro: Livro
 ) -> PerfilRenderizacao | None:
@@ -966,6 +1034,8 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
         modelo_ia=prompt.modelo_ia,
         texto=prompt.texto,
         texto_pt=prompt.texto_pt,
+        tipo=prompt.tipo,
+        imagem_partida_id=prompt.imagem_partida_id,
         so_imagem=prompt.so_imagem,
         avaliacao=prompt.avaliacao,
         data_criacao=prompt.data_criacao,

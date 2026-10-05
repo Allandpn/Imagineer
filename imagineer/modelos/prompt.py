@@ -9,6 +9,16 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from imagineer.banco.base import Base
 
 
+class TipoDePrompt(enum.Enum):
+    """O que o prompt gera (item 4.8, VD6): uma imagem ou um vídeo curto."""
+
+    IMAGEM = "IMAGEM"
+    """O prompt de sempre: vai a uma ferramenta de **imagem**. O padrão de todo prompt que já existia."""
+
+    VIDEO = "VIDEO"
+    """Um prompt de **vídeo** (~8 s) para o Veo, no app do Gemini. Não gera imagem, não é "o prompt mais recente" do frame (VD7)."""
+
+
 class SituacaoDaGeracao(enum.Enum):
     """O que o provedor de imagem respondeu à última tentativa de gerar a imagem (S5).
 
@@ -69,6 +79,27 @@ class Prompt(Base):
     """Identificador do modelo no OpenRouter que montou este prompt."""
 
     texto: Mapped[str] = mapped_column(Text)
+
+    tipo: Mapped[TipoDePrompt] = mapped_column(
+        Enum(
+            TipoDePrompt,
+            native_enum=False,
+            length=10,
+            create_constraint=False,  # sem CHECK: um tipo novo depois não exige mexer em restrição; quem valida é a API
+            values_callable=lambda tipo: [membro.value for membro in tipo],
+        ),
+        default=TipoDePrompt.IMAGEM,
+        server_default=TipoDePrompt.IMAGEM.value,
+    )
+    """``IMAGEM`` (padrão: os prompts que já existiam) ou ``VIDEO`` (item 4.8, VD6)."""
+
+    imagem_partida_id: Mapped[int | None] = mapped_column(
+        # use_alter: prompts -> imagens -> prompts forma um ciclo; a chave sai por ALTER depois das tabelas.
+        # SET NULL: apagar a imagem não apaga o prompt de vídeo, só o deixa sem a referência ao quadro inicial.
+        ForeignKey("imagens.id", ondelete="SET NULL", use_alter=True, name="fk_prompts_imagem_partida_id"),
+    )
+    """Só no ``VIDEO``: a imagem que o usuário vai anexar como **primeiro quadro** (VD1). O ``texto`` do prompt que a gerou é a fonte do
+    que está nesse quadro. Nulo = prompt de vídeo sem imagem de partida (modo texto para vídeo)."""
 
     so_imagem: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     """O prompt existe **só para guardar uma imagem importada** (PI1): a pessoa já tinha a imagem e não gerou prompt. Não vale como prompt:
@@ -139,6 +170,8 @@ class Prompt(Base):
     imagens: Mapped[list["Imagem"]] = relationship(
         back_populates="prompt",
         cascade="all, delete-orphan",
+        # Há dois caminhos entre prompts e imagens: esta (a imagem nasceu do prompt) e ``imagem_partida_id`` (o quadro inicial de um vídeo).
+        foreign_keys="Imagem.prompt_id",
     )
     """**Todas** as imagens do prompt, inclusive as da lixeira (LX3): serve a quem apaga de vez. Quem **mostra** usa
     ``imagens_ativas``."""
@@ -231,7 +264,7 @@ class Imagem(Base):
     """Quando foi movida para a **lixeira** (item 7.5b, LX3); nulo = ativa. O arquivo continua no disco até o usuário apagar
     de vez."""
 
-    prompt: Mapped["Prompt"] = relationship(back_populates="imagens")
+    prompt: Mapped["Prompt"] = relationship(back_populates="imagens", foreign_keys=[prompt_id])
 
     @property
     def canonica(self) -> bool:
