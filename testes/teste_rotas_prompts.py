@@ -1396,7 +1396,7 @@ def teste_w3_gera_com_referencias_envia_junto_e_registra_os_ids(cliente: TestCli
     chamada = provedor.chamadas_de_imagem[-1]
     assert chamada["referencias"] == {"parametro": "image_input", "quantidade": 1}
     # W5: a frase de contexto vai na chamada, com o nome de quem é a imagem; o prompt guardado não muda.
-    assert chamada["prompt"].startswith("Reference images: image 1 is Ned Stark.")
+    assert chamada["prompt"].startswith('Reference images: image 1 is the scene "No pátio".')
     assert chamada["prompt"].endswith("close-up, Ned Stark")
     assert cliente.get(f"/prompts/{prompt['id']}").json()["texto"] == "close-up, Ned Stark"
 

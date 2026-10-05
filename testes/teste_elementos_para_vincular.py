@@ -123,7 +123,7 @@ def teste_ev5_retrato_de_personagem_nao_oferece_nada(cliente: TestClient, usar_p
     retrato = _retrato(cliente, capitulo, e["personagem"]).json()
     _sugerir(sessao_com_tabelas, capitulo["id"], e["objeto"], "OBJETO")
 
-    assert _consultar(cliente, retrato["id"]) == {"identificados": [], "outros": [], "de_outros_capitulos": []}
+    assert _consultar(cliente, retrato["id"]) == {"identificados": [], "outros": [], "de_outros_capitulos": [], "cenas": []}
 
 
 def teste_ev5_no_retrato_os_vinculados_aparecem_como_no_frame_e_removiveis(cliente: TestClient, usar_provedor_falso) -> None:
