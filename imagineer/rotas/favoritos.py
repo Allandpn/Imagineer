@@ -84,6 +84,7 @@ def _validar_e_procurar(sessao: Session, livro_id: int, novo: FavoritoNovo) -> t
 def _resposta(sessao: Session, favorito: Favorito) -> FavoritoResposta | None:
     """O favorito como a API o devolve, ou ``None`` se o alvo está na lixeira (ou sumiu): ele **não aparece** e volta se o alvo for restaurado."""
     capitulo: Capitulo | None = None
+    frame_da_imagem: Frame | None = None
     if favorito.tipo == TipoDeFavorito.LIVRO:
         livro = sessao.get(Livro, favorito.livro_id)
         if livro is None or livro.apagado_em is not None:
@@ -113,6 +114,7 @@ def _resposta(sessao: Session, favorito: Favorito) -> FavoritoResposta | None:
         if frame.apagado_em is not None:
             return None
         capitulo = frame.capitulo
+        frame_da_imagem = frame
         rotulo = f"Imagem de {frame.titulo}"
     return FavoritoResposta(
         id=favorito.id,
@@ -124,7 +126,8 @@ def _resposta(sessao: Session, favorito: Favorito) -> FavoritoResposta | None:
         titulo_do_capitulo=capitulo.titulo if capitulo is not None else None,
         posicao=favorito.posicao,
         elemento_id=favorito.elemento_id,
-        frame_id=favorito.frame_id,
+        # Na imagem, o frame de onde ela é (não está guardado: vem do prompt dela): é o que leva o app ao lugar certo no capítulo.
+        frame_id=favorito.frame_id or (frame_da_imagem.id if frame_da_imagem is not None else None),
         imagem_id=favorito.imagem_id,
         criado_em=favorito.criado_em,
     )

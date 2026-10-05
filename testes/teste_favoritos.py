@@ -200,6 +200,7 @@ def teste_imagem_favorita_e_some_quando_vai_para_a_lixeira(cliente: TestClient, 
     criada = _favoritar(cliente, livro["id"], tipo="IMAGEM", imagem_id=imagem["id"])
     assert criada.status_code == 201 and criada.json()["rotulo"] == f"Imagem de {cena['titulo']}"
     assert criada.json()["capitulo_id"] == cena["capitulo_id"]
+    assert criada.json()["frame_id"] == cena["id"]  # o frame de onde a imagem é, para o app levar ao lugar
 
     cliente.delete(f"/imagens/{imagem['id']}")
     assert _lista(cliente, livro["id"]) == []
