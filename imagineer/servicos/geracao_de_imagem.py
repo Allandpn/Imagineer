@@ -24,7 +24,7 @@ from imagineer.ia.provedor import (
     ProvedorIA,
     ReferenciasParaGerar,
 )
-from imagineer.modelos import Configuracao, Imagem, Prompt
+from imagineer.modelos import Configuracao, Imagem, Prompt, TipoDeFrame
 from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao, TipoDePrompt
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, salvar_imagem
 from imagineer.servicos.imagens_reduzidas import ler_dimensoes, preparar_referencia
@@ -198,6 +198,8 @@ def _nome_do_dono(imagem: Imagem) -> str | None:
     frame = imagem.prompt.frame if imagem.prompt is not None else None
     if frame is None:
         return None
+    if frame.tipo == TipoDeFrame.CENA:  # EV15: a imagem de uma cena não é "de" um personagem: é a cena, como referência de composição
+        return f'the scene "{frame.titulo}"'
     nomes = [estado.elemento.nome for estado in frame.estados_elemento]
     return " and ".join(nomes) if nomes else None
 

@@ -320,8 +320,19 @@ class ElementoParaVincular(ElementoComImagens):
     )
 
 
+class CenaComImagens(BaseModel):
+    """Uma cena do livro e as imagens dela, para usar como referência de outra cena (EV15)."""
+
+    frame_id: int
+    titulo: str
+    capitulo_id: int
+    ordem_do_capitulo: int
+    titulo_do_capitulo: str | None
+    imagens: list[ImagemCandidata] = Field(description="As imagens ativas da cena, mais recentes primeiro, até 12.")
+
+
 class ElementosParaVincular(BaseModel):
-    """O que o seletor de elementos e imagens mostra (EV2, EV6): as duas seções."""
+    """O que o seletor de elementos e imagens mostra (EV2, EV6, EV15): as seções."""
 
     identificados: list[ElementoParaVincular] = Field(description="Os elementos que a IA identificou neste capítulo (sugestões ligadas a um elemento).")
     outros: list[ElementoParaVincular] = Field(description="Os elementos com estado neste capítulo que a IA não sugeriu.")
@@ -330,5 +341,12 @@ class ElementosParaVincular(BaseModel):
         description=(
             "Os demais elementos do livro, que não têm estado neste capítulo (VM7). Cada um vem com o estado **vigente até este capítulo** "
             "ou, se só aparece depois, o primeiro que tem: é o que a cena passa a citar."
+        ),
+    )
+    cenas: list[CenaComImagens] = Field(
+        default_factory=list,
+        description=(
+            "As cenas do livro **com imagem**, por ordem do capítulo, cujas imagens podem ir como referência (EV15). "
+            "A cena em edição entra também. Vazia onde o seletor não vale (retrato de personagem)."
         ),
     )

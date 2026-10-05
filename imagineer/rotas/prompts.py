@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.prompt import (
+    CenaComImagens,
     ElementoComImagens,
     ElementoParaVincular,
     ElementosParaVincular,
@@ -281,7 +282,39 @@ def _candidatos_a_vincular(sessao: Session, capitulo, frame: Frame | None) -> El
         identificados=ordenar(identificados.values()),
         outros=ordenar(outros.values()),
         de_outros_capitulos=ordenar(de_outros_capitulos.values()),
+        cenas=_cenas_com_imagens(sessao, livro_id),
     )
+
+
+def _cenas_com_imagens(sessao: Session, livro_id: int) -> list[CenaComImagens]:
+    """As cenas do livro (``CENA``, fora da lixeira) que têm ao menos uma imagem ativa, por ordem do capítulo e do frame (EV15).
+
+    As imagens vêm do mais novo para o mais antigo, até 12. Os prompts de **vídeo** não têm imagem, então não contam.
+    """
+    frames = sessao.scalars(
+        select(Frame)
+        .join(Capitulo, Capitulo.id == Frame.capitulo_id)
+        .where(Capitulo.livro_id == livro_id, Frame.tipo == TipoDeFrame.CENA, Frame.apagado_em.is_(None))
+        .order_by(Capitulo.ordem, Frame.id)
+    )
+    cenas: list[CenaComImagens] = []
+    for frame in frames:
+        imagens = sorted((i for prompt in frame.prompts for i in prompt.imagens_ativas), key=lambda i: i.id, reverse=True)[:12]
+        if not imagens:
+            continue
+        cenas.append(
+            CenaComImagens(
+                frame_id=frame.id,
+                titulo=frame.titulo,
+                capitulo_id=frame.capitulo_id,
+                ordem_do_capitulo=frame.capitulo.ordem,
+                titulo_do_capitulo=frame.capitulo.titulo,
+                imagens=[
+                    ImagemCandidata(**ImagemResumo.model_validate(i).model_dump(exclude={"orientacao"}), ancora=False) for i in imagens
+                ],
+            )
+        )
+    return cenas
 
 
 @rotas_de_frame.post(
