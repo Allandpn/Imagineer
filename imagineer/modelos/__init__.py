@@ -16,6 +16,7 @@ from imagineer.modelos.elemento import (
     HistoricoIdentidadeElemento,
     TipoElemento,
 )
+from imagineer.modelos.favorito import Favorito, TipoDeFavorito
 from imagineer.modelos.frame import Frame, TipoDeFrame, frames_estados_elemento, frames_estados_vinculados
 from imagineer.modelos.leitura import Destaque, Marcador, Pin, TempoDeLeitura
 from imagineer.modelos.livro import Livro
@@ -46,7 +47,9 @@ __all__ = [
     "MotorDeNarracao",
     "PrioridadeIA",
     "OrigemDaImagem",
+    "Favorito",
     "Prompt",
+    "TipoDeFavorito",
     "TipoDePrompt",
     "SituacaoDaGeracao",
     "SugestaoDeCena",

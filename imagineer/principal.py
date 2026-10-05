@@ -23,6 +23,7 @@ from imagineer.rotas import (
     destaques,
     dicionario,
     estatisticas,
+    favoritos,
     elementos,
     estados,
     frame,
@@ -64,6 +65,8 @@ aplicacao.include_router(destaques.rotas_de_elemento)
 aplicacao.include_router(estatisticas.rotas_de_livro)
 aplicacao.include_router(estatisticas.rotas_de_estatisticas)
 aplicacao.include_router(dicionario.rotas)
+aplicacao.include_router(favoritos.rotas_de_livro)
+aplicacao.include_router(favoritos.rotas)
 aplicacao.include_router(capitulos.rotas)
 aplicacao.include_router(elementos.rotas_de_livro)
 aplicacao.include_router(estados.rotas_de_capitulo)

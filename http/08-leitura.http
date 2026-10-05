@@ -110,3 +110,17 @@ Content-Type: application/json
 
 ### As estatisticas de leitura (RL17): o tempo dos ultimos 90 dias e o resumo de cada livro
 GET {{baseUrl}}/estatisticas/leitura
+
+### Favoritos (RL31 a RL38): o livro, um paragrafo, um elemento, uma cena ou uma imagem
+# Favoritar de novo o que ja e favorito devolve o que existe (200, sem 409). O alvo tem de ser deste livro (422).
+# LIVRO nao leva alvo; PARAGRAFO pede capitulo_id e posicao (UTF-16, onde o paragrafo COMECA); ELEMENTO, elemento_id; CENA, frame_id; IMAGEM, imagem_id.
+POST {{baseUrl}}/livros/{{livroId}}/favoritos
+Content-Type: application/json
+
+{ "tipo": "PARAGRAFO", "capitulo_id": {{capituloId}}, "posicao": 0 }
+
+### Os favoritos do livro, do mais novo ao mais antigo (so os que ainda existem); ?tipo=LIVRO|PARAGRAFO|ELEMENTO|CENA|IMAGEM filtra
+GET {{baseUrl}}/livros/{{livroId}}/favoritos
+
+### Desfavorita (o id vem da lista; o do proprio livro vem em "favorito_id" de GET /livros/{id})
+# DELETE {{baseUrl}}/favoritos/{{favoritoId}}

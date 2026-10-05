@@ -96,6 +96,10 @@ class LivroResumo(BaseModel):
         default=False,
         description="Se o livro tem capa guardada: `GET /livros/{id}/capa` a devolve (item 7.5b, CP3).",
     )
+    favorito_id: int | None = Field(
+        default=None,
+        description="O id do favorito deste livro (RL34); nulo = o livro não é favorito. `DELETE /favoritos/{id}` desfavorita.",
+    )
     total_de_capitulos: int
     capitulos_ignorados: int = Field(
         description="Quantos capítulos estão marcados como fora da catalogação."

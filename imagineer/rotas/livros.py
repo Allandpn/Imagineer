@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import Integer, case, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.frame import (
@@ -38,6 +38,8 @@ from imagineer.ia.provedor import (
 )
 from imagineer.modelos.frame import TipoDeFrame
 from imagineer.modelos import (
+    Favorito,
+    TipoDeFavorito,
     Capitulo,
     EstadoElemento,
     Frame,
@@ -522,7 +524,16 @@ def _campos_do_livro(livro: Livro) -> dict:
         "data_importacao": livro.data_importacao,
         "revisao": livro.revisao,
         "tem_capa": livro.capa_tipo is not None,
+        "favorito_id": _favorito_do_livro(livro),
     }
+
+
+def _favorito_do_livro(livro: Livro) -> int | None:
+    """O id do favorito do livro (RL34), ou ``None``. Uma consulta por livro: a biblioteca é pequena."""
+    sessao = object_session(livro)
+    if sessao is None:
+        return None
+    return sessao.scalar(select(Favorito.id).where(Favorito.livro_id == livro.id, Favorito.tipo == TipoDeFavorito.LIVRO))
 
 
 def _resumo_do_livro(sessao: Session, livro: Livro) -> LivroResumo:
