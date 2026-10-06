@@ -653,3 +653,87 @@ def teste_w4_fal_recusa_referencias_e_nao_chama_a_rede() -> None:
         )
 
     assert rede.pedidos == []
+
+
+# --------------------------------------------------------------------------- #
+# F20: modelo da comunidade no Replicate (a rota do modelo dá 404)
+# --------------------------------------------------------------------------- #
+
+URL_DO_MODELO = "https://api.replicate.com/v1/models/prunaai/hidream-l1-dev/predictions"
+URL_DA_PREDICAO = "https://api.replicate.com/v1/predictions"
+URL_DO_CADASTRO = "https://api.replicate.com/v1/models/prunaai/hidream-l1-dev"
+URL_DA_SAIDA = "https://replicate.delivery/xyz/saida.png"
+
+
+def teste_f20_modelo_da_comunidade_cai_na_predicao_por_versao() -> None:
+    rede = Rede(
+        {
+            ("POST", URL_DO_MODELO): _json({"detail": "The requested resource could not be found."}, 404),
+            ("GET", URL_DO_CADASTRO): _json({"latest_version": {"id": "abc123versao"}}),
+            ("POST", URL_DA_PREDICAO): _json({"status": "succeeded", "output": [URL_DA_SAIDA]}),
+            ("GET", URL_DA_SAIDA): _imagem(),
+        }
+    )
+    gerador = GeradorReplicate("chave", cliente=rede.cliente())
+
+    imagem = gerador.gerar("um gato", "prunaai/hidream-l1-dev")
+
+    assert imagem.conteudo == PNG
+    pedido_final = next(p for p in rede.pedidos if str(p.url) == URL_DA_PREDICAO)
+    assert json.loads(pedido_final.content) == {"version": "abc123versao", "input": {"prompt": "um gato"}}  # só o prompt: F3 vale aqui também
+    assert pedido_final.headers["Prefer"] == "wait=60"
+
+
+def teste_f20_modelo_oficial_continua_pela_rota_do_modelo_sem_ler_o_cadastro() -> None:
+    url = "https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions"
+    rede = Rede({("POST", url): _json({"status": "succeeded", "output": [URL_DA_SAIDA]}), ("GET", URL_DA_SAIDA): _imagem()})
+
+    GeradorReplicate("chave", cliente=rede.cliente()).gerar("um gato", "black-forest-labs/flux-schnell")
+
+    assert [str(p.url) for p in rede.pedidos] == [url, URL_DA_SAIDA]
+
+
+def teste_f20_modelo_que_nao_existe_diz_o_nome_e_o_que_conferir() -> None:
+    rede = Rede(
+        {
+            ("POST", URL_DO_MODELO): _json({"detail": "not found"}, 404),
+            ("GET", URL_DO_CADASTRO): _json({"detail": "not found"}, 404),
+        }
+    )
+
+    with pytest.raises(ErroDoProvedorIA) as erro:
+        GeradorReplicate("chave", cliente=rede.cliente()).gerar("um gato", "prunaai/hidream-l1-dev")
+
+    assert "prunaai/hidream-l1-dev" in str(erro.value) and "Confira o nome" in str(erro.value)
+
+
+def teste_f20_modelo_sem_versao_publicada_e_erro_claro() -> None:
+    rede = Rede({("POST", URL_DO_MODELO): _json({}, 404), ("GET", URL_DO_CADASTRO): _json({"latest_version": None})})
+
+    with pytest.raises(ErroDoProvedorIA) as erro:
+        GeradorReplicate("chave", cliente=rede.cliente()).gerar("um gato", "prunaai/hidream-l1-dev")
+
+    assert "não tem uma versão publicada" in str(erro.value)
+
+
+def teste_f20_a_versao_leva_as_referencias_e_o_pedido_sem_filtro_como_na_rota_do_modelo() -> None:
+    rede = Rede(
+        {
+            ("POST", URL_DO_MODELO): _json({}, 404),
+            ("GET", URL_DO_CADASTRO): _json({"latest_version": {"id": "v1"}}),
+            ("POST", URL_DA_PREDICAO): _json({"status": "succeeded", "output": URL_DA_SAIDA}),
+            ("GET", URL_DA_SAIDA): _imagem(),
+        }
+    )
+
+    GeradorReplicate("chave", cliente=rede.cliente()).gerar("um gato", "prunaai/hidream-l1-dev", sem_filtro_de_seguranca=True)
+
+    corpo = json.loads(next(p for p in rede.pedidos if str(p.url) == URL_DA_PREDICAO).content)
+    assert corpo["input"] == {"prompt": "um gato", "disable_safety_checker": True}
+
+
+def teste_f20_a_chave_recusada_no_cadastro_continua_dizendo_qual_variavel_conferir() -> None:
+    rede = Rede({("POST", URL_DO_MODELO): _json({}, 404), ("GET", URL_DO_CADASTRO): _json({}, 401)})
+
+    with pytest.raises(ChaveDeApiAusente):
+        GeradorReplicate("chave", cliente=rede.cliente()).gerar("um gato", "prunaai/hidream-l1-dev")

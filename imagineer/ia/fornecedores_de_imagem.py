@@ -204,13 +204,45 @@ class GeradorFal(GeradorDeImagemExterno):
         return self._baixar(str(imagens[0]["url"]), imagens[0].get("content_type"))
 
 
+class _ModeloNaoEncontrado(ErroDoProvedorIA):
+    """O Replicate respondeu 404: o modelo não tem essa rota (não é oficial) ou não existe. Só o ``gerar`` do Replicate decide o que fazer."""
+
+
 class GeradorReplicate(GeradorDeImagemExterno):
-    """Replicate (F6): predição de um modelo oficial, esperando na própria chamada e, se preciso, consultando."""
+    """Replicate (F6): predição de um modelo, esperando na própria chamada e, se preciso, consultando.
+
+    **Oficial ou da comunidade (F20).** ``POST /v1/models/{dono}/{modelo}/predictions`` só existe para os modelos **oficiais**; num modelo
+    **da comunidade** (``prunaai/hidream-l1-dev``, por exemplo) o Replicate responde **404**. Nesse caso o gerador lê o modelo
+    (``GET /v1/models/{dono}/{modelo}``), pega a **última versão** e pede a predição por ``POST /v1/predictions`` com ``version``. Se o
+    modelo não existe, diz isso, com o nome."""
 
     nome = "Replicate"
 
+    def _ao_receber_erro(self, resposta: httpx.Response) -> None:
+        if resposta.status_code == 404:
+            raise _ModeloNaoEncontrado(f"O Replicate respondeu 404: {_resumir(resposta.text)}")
+
     def _fornecedor(self) -> str:
         return "replicate"
+
+    def _pedir_pela_versao(self, id_do_modelo: str, entrada: dict[str, object]) -> dict:
+        """F20: o modelo não é oficial (404 na rota do modelo): busca a **última versão** dele e pede a predição pela versão."""
+        try:
+            modelo = self._pedir("GET", f"https://api.replicate.com/v1/models/{id_do_modelo}")
+        except _ModeloNaoEncontrado as erro:
+            raise ErroDoProvedorIA(
+                f"O Replicate não encontrou o modelo \"{id_do_modelo}\". Confira o nome (dono/modelo) em replicate.com: o app guarda "
+                "o que foi escolhido, e o modelo pode ter sido renomeado ou apagado."
+            ) from erro
+        versao = (modelo.get("latest_version") or {}).get("id")
+        if not isinstance(versao, str) or not versao:
+            raise ErroDoProvedorIA(f"O modelo \"{id_do_modelo}\" não tem uma versão publicada no Replicate; escolha outro modelo.")
+        return self._pedir(
+            "POST",
+            "https://api.replicate.com/v1/predictions",
+            json={"version": versao, "input": entrada},
+            cabecalhos={"Prefer": "wait=60"},
+        )
 
     def _cabecalho_de_autorizacao(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._chave_api}"}
@@ -231,12 +263,15 @@ class GeradorReplicate(GeradorDeImagemExterno):
             entrada["disable_safety_checker"] = True
         # F3: fora disso, só o prompt.
         inicio = self._relogio()  # conta desde o pedido, inclusive o `Prefer: wait` do Replicate
-        predicao = self._pedir(
-            "POST",
-            f"https://api.replicate.com/v1/models/{id_do_modelo}/predictions",
-            json={"input": entrada},
-            cabecalhos={"Prefer": "wait=60"},
-        )
+        try:
+            predicao = self._pedir(
+                "POST",
+                f"https://api.replicate.com/v1/models/{id_do_modelo}/predictions",
+                json={"input": entrada},
+                cabecalhos={"Prefer": "wait=60"},
+            )
+        except _ModeloNaoEncontrado:
+            predicao = self._pedir_pela_versao(id_do_modelo, entrada)
         while predicao.get("status") in ("starting", "processing"):
             url_da_consulta = (predicao.get("urls") or {}).get("get")
             if not isinstance(url_da_consulta, str):
