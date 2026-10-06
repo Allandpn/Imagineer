@@ -67,7 +67,8 @@ Content-Type: application/json
   "modelo_video": "anthropic/claude-sonnet-5.5"
 }
 
-### Narração (RL21 a RL26) — só guarda: nada gera áudio ainda
+### Narração (RL21 a RL26; NA1 a NA10) — a voz e o tom que o POST /capitulos/{id}/audio usa
+# `GET /configuracao` traz `narracao_ia_disponivel` (o servidor tem a chave da OpenAI). Só `UMA_VOZ` gera áudio por enquanto.
 # narracao_motor: APARELHO (a voz do Android, padrão) ou IA. narracao_modo: UMA_VOZ (padrão) ou POR_PERSONAGEM.
 # narracao_voz e narracao_instrucoes: texto livre; vazio ou null apaga. Só o que vem no corpo muda.
 PUT {{baseUrl}}/configuracao
@@ -76,7 +77,7 @@ Content-Type: application/json
 {
   "narracao_motor": "APARELHO",
   "narracao_modo": "UMA_VOZ",
-  "narracao_voz": null,
+  "narracao_voz": "nova",
   "narracao_instrucoes": "voz grave e calma, com suspense nas cenas de tensão"
 }
 

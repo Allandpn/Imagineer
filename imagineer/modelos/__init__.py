@@ -28,6 +28,7 @@ from imagineer.modelos.sugestao import (
     sugestoes_participante,
 )
 from imagineer.modelos.uso_ia import UsoDeIA
+from imagineer.modelos.audio_de_capitulo import AudioDeCapitulo, SituacaoDoAudio
 from imagineer.modelos.video import Video
 
 __all__ = [
@@ -59,6 +60,8 @@ __all__ = [
     "TipoDeFrame",
     "TipoElemento",
     "UsoDeIA",
+    "AudioDeCapitulo",
+    "SituacaoDoAudio",
     "Video",
     "frames_estados_elemento",
     "frames_estados_vinculados",

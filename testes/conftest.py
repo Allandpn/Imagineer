@@ -31,6 +31,9 @@ os.environ.setdefault("URL_BANCO", "postgresql+psycopg://teste:teste@localhost:5
 # explicitamente via `monkeypatch`.
 os.environ["CHAVE_API_OPENROUTER"] = ""
 os.environ["IMAGINEER_KEY_OPEN_ROUTER"] = ""
+# E a da OpenAI (a narração, NA1): nenhum teste fala com a OpenAI de verdade.
+for _variavel in ("OPENAI_API_KEY", "CHAVE_API_OPENAI"):
+    os.environ[_variavel] = ""
 # Mesmo isolamento para os outros fornecedores de imagem (a conta do Allan tem essas variáveis).
 for _variavel in ("FAL_KEY", "CHAVE_API_FAL", "IMAGINEER_KEY_FAL_AI", "REPLICATE_API_TOKEN", "CHAVE_API_REPLICATE", "IMAGINEER_KEY_REPLICATE"):
     os.environ[_variavel] = ""
@@ -142,6 +145,26 @@ def usar_provedor_falso():
         yield trocar
     finally:
         aplicacao.dependency_overrides.pop(obter_provedor, None)
+
+
+@pytest.fixture
+def usar_narrador_falso(sessao_com_tabelas: Session):
+    """Substitui o narrador (NA1) por um falso e o criador de sessões do segundo plano por um ligado ao **mesmo** banco de teste.
+
+    Sem a segunda troca, a geração em segundo plano abriria uma sessão no banco de verdade. Devolve ``trocar(narrador)``.
+    """
+    from imagineer.rotas.audio import obter_criador_de_sessao, obter_narrador
+
+    def trocar(narrador):
+        aplicacao.dependency_overrides[obter_narrador] = lambda: narrador
+        aplicacao.dependency_overrides[obter_criador_de_sessao] = lambda: sessionmaker(bind=sessao_com_tabelas.get_bind())
+        return narrador
+
+    try:
+        yield trocar
+    finally:
+        aplicacao.dependency_overrides.pop(obter_narrador, None)
+        aplicacao.dependency_overrides.pop(obter_criador_de_sessao, None)
 
 
 @pytest.fixture

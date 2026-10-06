@@ -21,6 +21,7 @@ from imagineer.modelos import (
 from imagineer.servicos.catalogo_de_videos import remover_video_do_disco
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
 from imagineer.servicos.imagens_reduzidas import remover_derivadas
+from imagineer.servicos.narracao import apagar_audios_do_livro
 
 
 def mover_para_a_lixeira(sessao: Session, imagem: Imagem) -> None:
@@ -85,6 +86,7 @@ def apagar_livro_de_vez(sessao: Session, livro: Livro) -> int:
     liberados = sum(apagar_de_vez(sessao, imagem) for imagem in imagens_do_livro(sessao, livro.id))
     for frame in sessao.scalars(select(Frame).join(Capitulo, Capitulo.id == Frame.capitulo_id).where(Capitulo.livro_id == livro.id)):
         liberados += _apagar_videos_do_frame(sessao, frame)  # os arquivos de vídeo também (VD16)
+    liberados += apagar_audios_do_livro(sessao, livro.id)  # e os de narração (NA5)
     sessao.delete(livro)
     sessao.flush()
     return liberados

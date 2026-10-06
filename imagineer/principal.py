@@ -17,6 +17,7 @@ from imagineer.banco import revisao  # noqa: F401
 from imagineer.erros import registrar_tratadores
 from imagineer.rotas import (
     busca,
+    audio,
     capitulos,
     configuracao,
     custos,
@@ -69,6 +70,7 @@ aplicacao.include_router(dicionario.rotas)
 aplicacao.include_router(favoritos.rotas_de_livro)
 aplicacao.include_router(favoritos.rotas)
 aplicacao.include_router(capitulos.rotas)
+aplicacao.include_router(audio.rotas)
 aplicacao.include_router(elementos.rotas_de_livro)
 aplicacao.include_router(estados.rotas_de_capitulo)
 aplicacao.include_router(sugestoes.rotas_de_livro)

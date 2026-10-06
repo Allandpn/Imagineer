@@ -35,3 +35,26 @@ Content-Type: application/json
 {
   "lido": true
 }
+
+### NARRAÇÃO POR VOZ DE IA (NA1 a NA10) — a voz e o tom vêm de PUT /configuracao (narracao_voz, narracao_instrucoes).
+### Precisa de OPENAI_API_KEY no .env do servidor (GET /configuracao: narracao_ia_disponivel).
+
+### Quanto custa narrar o capítulo, ANTES de gerar: caracteres, minutos e custo estimado em dólares (NA3). Não gasta nada
+GET {{baseUrl}}/capitulos/{{capituloId}}/audio/estimativa
+
+### Gera a narração em segundo plano (202). GASTA dinheiro (~US$ 0,015 por minuto de áudio). Se já há um PRONTO com a voz e o tom de agora, devolve 200 sem gastar
+POST {{baseUrl}}/capitulos/{{capituloId}}/audio
+Content-Type: application/json
+
+{
+  "refazer": false
+}
+
+### A situação da narração com a voz e o tom de agora: NAO_GERADO, GERANDO, PRONTO ou FALHOU (com o motivo)
+GET {{baseUrl}}/capitulos/{{capituloId}}/audio/estado
+
+### O MP3 (aceita Range: bytes=0-1023 para avançar e voltar). 404 se não há PRONTO com a voz e o tom de agora
+GET {{baseUrl}}/capitulos/{{capituloId}}/audio
+
+### Apaga todas as narrações do capítulo (de qualquer voz ou tom) e os arquivos
+DELETE {{baseUrl}}/capitulos/{{capituloId}}/audio

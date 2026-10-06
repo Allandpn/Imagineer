@@ -53,6 +53,10 @@ class Configuracoes(BaseSettings):
     """Chave do Replicate (F2). ``REPLICATE_API_TOKEN`` é o nome que o próprio Replicate usa;
     ``IMAGINEER_KEY_REPLICATE`` é a variável de conta do Allan (mesmo padrão do OpenRouter e do fal.ai)."""
 
+    chave_api_openai: str = Field(default="", validation_alias=AliasChoices("OPENAI_API_KEY", "CHAVE_API_OPENAI"))
+    """Chave da OpenAI (NA1), usada **só** para a narração por voz de IA. ``OPENAI_API_KEY`` é o nome que a própria OpenAI usa;
+    ``CHAVE_API_OPENAI`` é o nome do projeto. Nunca vai para o app."""
+
     diretorio_imagens: str = "/dados/imagens"
     """Pasta onde as imagens do catálogo são gravadas (nunca no banco — só a referência)."""
 

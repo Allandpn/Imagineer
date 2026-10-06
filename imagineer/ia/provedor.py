@@ -213,7 +213,9 @@ class UsoDaChamada:
     custo: Decimal | None = None
     id_da_geracao: str | None = None
     provedor: str = "openrouter"
-    """Quem cobrou (CU1): ``openrouter``, ``fal`` ou ``replicate``."""
+    """Quem cobrou (CU1): ``openrouter``, ``fal``, ``replicate`` ou ``openai`` (a narração, NA6)."""
+    estimado: bool = False
+    """O ``custo`` já vem como **estimativa** de quem chamou (a narração: a OpenAI não informa o custo), e não do fornecedor (CU2)."""
 
 
 @dataclass

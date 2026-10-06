@@ -56,7 +56,7 @@ def gravar_uso(uso: UsoDaChamada, criador: sessionmaker = CriadorDeSessao) -> No
         criador: de onde sai a sessão; os testes passam um ligado ao banco de teste.
     """
     # CU2: o fornecedor não informou o custo de uma imagem: estima (marcado como estimado), sem tabela fixa (PD3).
-    custo, estimado = uso.custo, False
+    custo, estimado = uso.custo, uso.estimado
     with criador() as sessao:
         if custo is None and uso.operacao == "imagem":
             # PD3: o preço informado pela pessoa; senão o que o fal.ai publica; senão nenhum (nunca um valor inventado).

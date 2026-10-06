@@ -117,9 +117,12 @@ class ConfiguracaoAtual(BaseModel):
         )
     )
     narracao_motor: MotorDeNarracao = Field(
-        description="Quem narra (RL21): `APARELHO` (a voz do Android, o padrão) ou `IA`. Hoje só `APARELHO` toca; `IA` está guardado para depois."
+        description="Quem narra (RL21): `APARELHO` (a voz do Android, o padrão) ou `IA` (o servidor gera o MP3 do capítulo, NA1; só vale se `narracao_ia_disponivel`)."
     )
-    narracao_modo: ModoDeNarracao = Field(description="`UMA_VOZ` (padrão) ou `POR_PERSONAGEM` (RL25). Guardado; ainda não toca.")
+    narracao_ia_disponivel: bool = Field(
+        description="O servidor tem a chave da OpenAI (`OPENAI_API_KEY`), então `POST /capitulos/{id}/audio` funciona (NA8). O app só oferece o motor `IA` quando é `true`."
+    )
+    narracao_modo: ModoDeNarracao = Field(description="`UMA_VOZ` (padrão) ou `POR_PERSONAGEM` (RL25). Guardado; só `UMA_VOZ` gera áudio por enquanto (NA10).")
     narracao_voz: str | None = Field(description="A voz do motor de IA (RL24); nula = a padrão do fornecedor.")
     narracao_instrucoes: str | None = Field(description="As instruções de tom da narração (RL23), em texto livre.")
 
@@ -256,6 +259,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         modelo_video=configuracao.modelo_video,
         prioridade_ia=configuracao.prioridade_ia,
         narracao_motor=configuracao.narracao_motor,
+        narracao_ia_disponivel=bool(obter_configuracoes().chave_api_openai.strip()),
         narracao_modo=configuracao.narracao_modo,
         narracao_voz=configuracao.narracao_voz,
         narracao_instrucoes=configuracao.narracao_instrucoes,
