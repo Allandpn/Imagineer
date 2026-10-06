@@ -176,3 +176,13 @@ GET {{baseUrl}}/configuracao/modelos-de-imagem
 
 ### Os modelos de VOZ do OpenRouter: vozes e preço por caractere (NA1). Os gratuitos vêm primeiro. Não gasta nada
 GET {{baseUrl}}/configuracao/modelos-de-narracao
+
+
+### Os provedores de IA (lista fixa) e o header em que o app manda a chave de cada um (CT24). Nunca devolve chave.
+GET {{baseUrl}}/configuracao/provedores
+
+### Exemplo: uma chamada de IA com as chaves da própria pessoa, uma por provedor. O servidor não as grava.
+GET {{baseUrl}}/configuracao/modelos
+X-Chave-API-OpenRouter: sk-or-...
+X-Chave-API-Fal: ...
+X-Chave-API-Replicate: r8_...

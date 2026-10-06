@@ -509,9 +509,9 @@ def teste_f1_a_recusa_do_fornecedor_chega_como_conteudo_recusado() -> None:
 def teste_f2_fornecedor_sem_chave_da_422_e_diz_qual_variavel_definir() -> None:
     provedor, chamadas = _provedor_com_fornecedores(None)
 
-    with pytest.raises(ChaveDeApiAusente, match="Defina FAL_KEY no .env do servidor"):
+    with pytest.raises(ChaveDeApiAusente, match="Cadastre a sua em Configurações.*defina FAL_KEY no .env"):
         provedor.gerar_imagem("x", "fal:fal-ai/flux/dev")
-    with pytest.raises(ChaveDeApiAusente, match="Defina REPLICATE_API_TOKEN no .env do servidor"):
+    with pytest.raises(ChaveDeApiAusente, match="defina REPLICATE_API_TOKEN no .env"):
         provedor.gerar_imagem("x", "replicate:black-forest-labs/flux-schnell")
 
     assert chamadas == []

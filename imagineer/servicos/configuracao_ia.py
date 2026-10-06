@@ -75,7 +75,20 @@ def resolver_chave(cabecalho: str | None = None, usuario: Usuario | None = None)
     return ChaveResolvida(valor=None, origem="ausente")
 
 
-def construir_provedor(cabecalho: str | None = None, usuario: Usuario | None = None) -> ProvedorIA:
+def _chave_de_imagem(do_cabecalho: str | None, do_servidor: str, usuario: Usuario | None) -> str | None:
+    """A chave do fal.ai ou do Replicate: a do header (CT24); sem ela, a do servidor, **só** para quem pode usá-la (CT9)."""
+    propria = (do_cabecalho or "").strip()
+    if propria:
+        return propria
+    return do_servidor if usuario is None or usuario.usa_chaves_do_servidor else None
+
+
+def construir_provedor(
+    cabecalho: str | None = None,
+    usuario: Usuario | None = None,
+    chave_fal: str | None = None,
+    chave_replicate: str | None = None,
+) -> ProvedorIA:
     """Monta o provedor de IA com a chave que vale para esta chamada.
 
     As rotas dependem desta função (via ``obter_provedor``), e não de uma
@@ -83,15 +96,15 @@ def construir_provedor(cabecalho: str | None = None, usuario: Usuario | None = N
     por um falso, e o que faz uma troca de chave valer no pedido seguinte sem
     reiniciar o serviço.
 
-    Com ``usuario``: o gasto de cada chamada é gravado **no nome dele** (CT10), e fal.ai/Replicate só entram se ele usa as chaves do servidor (CT9) —
-    essas duas chaves são do dono e a pessoa convidada não tem como informar a dela por enquanto.
+    ``cabecalho``, ``chave_fal`` e ``chave_replicate`` são as chaves que o app mandou, uma por provedor (CT24); cada uma tem precedência sobre a do
+    servidor. Com ``usuario``: o gasto de cada chamada é gravado **no nome dele** (CT10), e a chave do servidor só entra se ele a pode usar (CT9).
     """
     configuracoes = obter_configuracoes()
-    pode_usar_o_servidor = usuario is None or usuario.usa_chaves_do_servidor
     return ProvedorOpenRouter(
         chave_api=resolver_chave(cabecalho, usuario).valor,
         ao_usar=gravar_uso if usuario is None else partial(gravar_uso, usuario_id=usuario.id),
-        geradores_de_imagem=(
-            montar_geradores(configuracoes.chave_api_fal, configuracoes.chave_api_replicate) if pode_usar_o_servidor else {}
+        geradores_de_imagem=montar_geradores(
+            _chave_de_imagem(chave_fal, configuracoes.chave_api_fal, usuario),
+            _chave_de_imagem(chave_replicate, configuracoes.chave_api_replicate, usuario),
         ),
     )

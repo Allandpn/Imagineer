@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from imagineer.banco.sessao import obter_sessao, obter_usuario
 from imagineer.configuracao import obter_configuracoes
 from imagineer.ia.provedor import ProvedorIA
+from imagineer.ia.provedores import PROVEDORES, Provedor
 from imagineer.modelos import ModoDeNarracao, MotorDeNarracao, PrioridadeIA, Usuario
 from imagineer.servicos.catalogo_de_modelos_de_imagem import chave_do_modelo_de_imagem, montar_catalogo, testar_modelo_de_imagem
 from imagineer.servicos.configuracao_ia import (
@@ -31,6 +32,10 @@ def obter_provedor(
             "a chave do servidor e nunca é gravada (item 4.3)."
         ),
     ),
+    chave_api_fal: str | None = Header(default=None, alias="X-Chave-API-Fal", description="Chave pessoal do fal.ai (CT24). Nunca é gravada."),
+    chave_api_replicate: str | None = Header(
+        default=None, alias="X-Chave-API-Replicate", description="Chave pessoal do Replicate (CT24). Nunca é gravada."
+    ),
     usuario: Usuario = Depends(obter_usuario),
 ) -> ProvedorIA:
     """Dependência que entrega o provedor de IA já configurado.
@@ -39,7 +44,7 @@ def obter_provedor(
     poderem substituí-la por um provedor falso — e para uma troca de chave valer
     no pedido seguinte, sem reiniciar o serviço.
     """
-    return construir_provedor(chave_api_openrouter, usuario)
+    return construir_provedor(chave_api_openrouter, usuario, chave_api_fal, chave_api_replicate)
 
 
 class ConfiguracaoAtual(BaseModel):
@@ -268,6 +273,40 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao), usuario: Usuario =
         narracao_voz=configuracao.narracao_voz,
         narracao_instrucoes=configuracao.narracao_instrucoes,
     )
+
+
+class ProvedorDaLista(BaseModel):
+    """Um provedor da lista fixa (CT24): o que o app precisa para montar o campo de chave dele."""
+
+    id: Provedor
+    nome: str
+    cabecalho: str = Field(description="O header em que o app manda a chave deste provedor, a cada chamada.")
+    usado_para: str
+    servidor_fornece: bool = Field(
+        description="Esta pessoa pode usar a chave **do servidor** para este provedor (só quem tem `usa_chaves_do_servidor`, e se o servidor a tem). "
+        "Se sim, ela não precisa cadastrar a dela."
+    )
+
+
+@rotas.get("/provedores", response_model=list[ProvedorDaLista], summary="Os provedores de IA e o header de chave de cada um")
+def listar_provedores(usuario: Usuario = Depends(obter_usuario)) -> list[ProvedorDaLista]:
+    """A lista **fixa** de provedores (CT24). A tela de Configurações mostra um campo de chave por provedor, guarda a chave no aparelho e a manda
+    no header indicado. **Nunca devolve chave.**"""
+    chaves_do_servidor = {
+        Provedor.OPENROUTER: obter_configuracoes().chave_api_openrouter,
+        Provedor.FAL: obter_configuracoes().chave_api_fal,
+        Provedor.REPLICATE: obter_configuracoes().chave_api_replicate,
+    }
+    return [
+        ProvedorDaLista(
+            id=provedor,
+            nome=dados.nome,
+            cabecalho=dados.cabecalho,
+            usado_para=dados.usado_para,
+            servidor_fornece=usuario.usa_chaves_do_servidor and bool((chaves_do_servidor[provedor] or "").strip()),
+        )
+        for provedor, dados in PROVEDORES.items()
+    ]
 
 
 @rotas.put("", response_model=ConfiguracaoAtual, summary="Grava a configuração")

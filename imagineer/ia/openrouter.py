@@ -1236,8 +1236,8 @@ class ProvedorOpenRouter(ProvedorIA):
         gerador = self._geradores_de_imagem.get(fornecedor)
         if gerador is None:
             raise ChaveDeApiAusente(
-                f"Não há chave do {NOMES_DOS_FORNECEDORES[fornecedor]} configurada. "
-                f"Defina {VARIAVEIS_DA_CHAVE[fornecedor]} no .env do servidor."
+                f"Não há chave do {NOMES_DOS_FORNECEDORES[fornecedor]}. Cadastre a sua em Configurações (o app a envia a cada chamada) "
+                f"ou, no servidor do dono, defina {VARIAVEIS_DA_CHAVE[fornecedor]} no .env."
             )
         imagem = gerador.gerar(prompt, id_do_modelo, sem_filtro_de_seguranca, referencias)
         imagem.modelo = modelo_completo
