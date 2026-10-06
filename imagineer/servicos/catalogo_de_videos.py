@@ -13,9 +13,6 @@ from fastapi import HTTPException, UploadFile, status
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
 from imagineer.servicos.upload import TAMANHO_DO_BLOCO
 
-TAMANHO_MAXIMO_DO_VIDEO = 200 * 1024 * 1024
-"""Limite de upload por vídeo, em bytes. Um vídeo de ~8 s do Veo tem de 5 a 30 MB; o resto é folga."""
-
 TIPOS_POR_EXTENSAO = {
     ".mp4": "video/mp4",
     ".m4v": "video/mp4",
@@ -47,10 +44,10 @@ def conteudo_confere_com_a_extensao(extensao: str, inicio: bytes) -> bool:
     return len(inicio) >= 8 and inicio[4:8] in _CAIXAS_DO_MP4_E_MOV
 
 
-async def gravar_video(frame_id: int, nome_original: str, arquivo: UploadFile) -> tuple[str, int]:
+async def gravar_video(frame_id: int, nome_original: str, arquivo: UploadFile, limite_em_bytes: int) -> tuple[str, int]:
     """Grava o vídeo em disco, aos pedaços, e devolve ``(caminho relativo, tamanho em bytes)``.
 
-    422 para extensão não aceita, conteúdo que não é do tipo da extensão ou arquivo vazio; 413 se passar do limite. Em qualquer
+    422 para extensão não aceita, conteúdo que não é do tipo da extensão ou arquivo vazio; 413 se passar do limite (``limite_em_bytes``, o que o dono configurou, CT15). Em qualquer
     recusa **o arquivo parcial é apagado**: o disco não guarda vídeo sem dono.
     """
     extensao = Path(nome_original).suffix.lower()
@@ -68,10 +65,10 @@ async def gravar_video(frame_id: int, nome_original: str, arquivo: UploadFile) -
                 if total == 0 and not conteudo_confere_com_a_extensao(extensao, bloco[:16]):
                     raise _recusar("O conteúdo do arquivo não é de um vídeo do tipo que a extensão diz.")
                 total += len(bloco)
-                if total > TAMANHO_MAXIMO_DO_VIDEO:
+                if total > limite_em_bytes:
                     raise HTTPException(
                         status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                        detail=f"O vídeo passa do limite de {TAMANHO_MAXIMO_DO_VIDEO // (1024 * 1024)} MB.",
+                        detail=f"O vídeo passa do limite de {limite_em_bytes // (1024 * 1024)} MB.",
                     )
                 saida.write(bloco)
         if total == 0:

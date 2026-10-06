@@ -173,19 +173,17 @@ def teste_arquivo_vazio_responde_422(cliente: TestClient) -> None:
     assert "vazio" in resposta.json()["detail"].lower()
 
 
-def teste_arquivo_acima_do_limite_responde_413(cliente: TestClient, monkeypatch) -> None:
+def teste_arquivo_acima_do_limite_responde_413(cliente: TestClient) -> None:
     """O limite protege o Raspberry Pi, e é checado durante a leitura.
 
-    O limite real é de 60 MB; aqui ele é reduzido para o teste não precisar
+    O limite padrão é de 60 MB (CT15, editável pelo dono); aqui ele é reduzido para 1 MB para o teste não precisar
     fabricar 60 MB de dados.
     """
-    from imagineer.rotas import livros as rotas_livros
-
-    monkeypatch.setattr(rotas_livros, "TAMANHO_MAXIMO_DO_EPUB", 1024)
+    assert cliente.put("/admin/limites", json={"tamanho_maximo_do_epub_mb": 1}).status_code == 200
 
     resposta = cliente.post(
         "/livros",
-        files={"arquivo": ("grande.epub", b"x" * 5000, "application/epub+zip")},
+        files={"arquivo": ("grande.epub", b"x" * (1024 * 1024 + 1), "application/epub+zip")},
     )
 
     assert resposta.status_code == 413

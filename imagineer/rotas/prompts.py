@@ -62,7 +62,6 @@ from imagineer.rotas._comum import (
 )
 from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.catalogo_imagens import (
-    TAMANHO_MAXIMO_DA_IMAGEM,
     ExtensaoDeImagemInvalida,
     caminho_absoluto,
     remover_arquivo,
@@ -70,6 +69,7 @@ from imagineer.servicos.catalogo_imagens import (
     tipo_da_imagem,
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.limites import BYTES_POR_MB, exigir_espaco, obter_limites
 from imagineer.servicos.uso_de_ia import coletando_o_custo, gasto_do_livro
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
@@ -491,7 +491,9 @@ async def importar_imagem(
 ) -> ImagemResumo:
     """Recebe de volta a imagem gerada fora do sistema (passos 10 e 11)."""
     prompt = _buscar_prompt(sessao, prompt_id)
-    conteudo = await ler_com_limite(arquivo, TAMANHO_MAXIMO_DA_IMAGEM)
+    exigir_espaco(sessao)  # CT17, CT18
+    conteudo = await ler_com_limite(arquivo, obter_limites(sessao).tamanho_maximo_da_imagem_mb * BYTES_POR_MB)
+    exigir_espaco(sessao, len(conteudo))
 
     try:
         caminho = salvar_imagem(prompt.id, arquivo.filename or "", conteudo)
@@ -566,6 +568,7 @@ def gerar_imagem(
     Recusa responde 200 (``RECUSADA``); só os outros erros do provedor viram 422/502, sem suavizar.
     """
     prompt = _buscar_prompt(sessao, prompt_id)
+    exigir_espaco(sessao)  # CT17, CT18: sem espaço, recusa **antes** de gastar com o provedor
     try:
         resultado = gerar_imagem_do_prompt(
             sessao,

@@ -13,7 +13,9 @@ from imagineer.modelos import AudioDeCapitulo, SituacaoDoAudio
 from imagineer.rotas._comum import buscar_capitulo as _buscar_capitulo
 from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
+from imagineer.servicos.acesso import usuario_ou_dono
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.limites import exigir_espaco, obter_limites
 from imagineer.servicos.narracao import (
     AudioEmAndamento,
     apagar_audios_do_capitulo,
@@ -21,6 +23,7 @@ from imagineer.servicos.narracao import (
     audio_pronto,
     gerar_audio,
     iniciar_audio,
+    narracao_em_andamento_da_pessoa,
     parametros_da_narracao,
     situacao_efetiva,
 )
@@ -130,6 +133,19 @@ def gerar_narracao(
     if pronto is not None and not (pedido and pedido.refazer):
         resposta.status_code = status.HTTP_200_OK
         return _estado(pronto)
+
+    # CT16, CT17, CT18: o teto do capítulo, uma geração por vez por pessoa e espaço em disco, **antes** de gastar.
+    limites = obter_limites(sessao)
+    if len(capitulo.texto) > limites.caracteres_maximos_da_narracao:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"O capítulo tem {len(capitulo.texto)} caracteres; o limite para narrar é {limites.caracteres_maximos_da_narracao}.",
+        )
+    if narracao_em_andamento_da_pessoa(sessao, usuario_ou_dono(sessao)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Você já tem uma narração sendo gerada. Espere terminar para pedir outra."
+        )
+    exigir_espaco(sessao)
 
     try:
         audio = iniciar_audio(sessao, capitulo, modelo, voz)

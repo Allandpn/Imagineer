@@ -349,7 +349,7 @@ Content-Type: application/json
   "texto_pt": "um recuo lento, o cavaleiro parado"
 }
 
-### Importa um video para o frame (VD16): .mp4, .m4v, .mov ou .webm, ate 200 MB; prompt_id (opcional) e o prompt de VIDEO de origem
+### Importa um video para o frame (VD16): .mp4, .m4v, .mov ou .webm, ate o limite do servidor (padrao 50 MB; GET /admin/limites); prompt_id (opcional) e o prompt de VIDEO de origem
 POST {{baseUrl}}/frames/{{frameId}}/videos
 Content-Type: multipart/form-data; boundary=WebAppBoundary
 

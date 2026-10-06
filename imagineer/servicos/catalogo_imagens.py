@@ -30,14 +30,6 @@ def tipo_da_imagem(caminho: Path) -> str | None:
     return TIPOS_POR_EXTENSAO.get(caminho.suffix.lower())
 
 
-TAMANHO_MAXIMO_DA_IMAGEM = 25 * 1024 * 1024
-"""Limite de upload por imagem, em bytes.
-
-Generoso para PNGs de alta resolução, e ainda protege o Raspberry Pi de um
-arquivo absurdo — o mesmo raciocínio do limite do EPUB (item 6.2).
-"""
-
-
 class ExtensaoDeImagemInvalida(Exception):
     """A extensão do arquivo enviado não está entre as aceitas."""
 

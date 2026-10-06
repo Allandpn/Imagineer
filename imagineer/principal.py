@@ -16,6 +16,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from imagineer.banco import revisao  # noqa: F401
 from imagineer.erros import registrar_tratadores
 from imagineer.rotas import (
+    admin,
     busca,
     audio,
     capitulos,
@@ -60,6 +61,7 @@ aplicacao.add_middleware(GZipMiddleware, minimum_size=1000)
 
 aplicacao.include_router(saude.rotas)
 aplicacao.include_router(eu.rotas)
+aplicacao.include_router(admin.rotas)
 aplicacao.include_router(livros.rotas)
 aplicacao.include_router(leitura.rotas_de_livro)
 aplicacao.include_router(leitura.rotas_de_pin)

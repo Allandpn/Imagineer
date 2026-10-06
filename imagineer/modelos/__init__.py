@@ -28,11 +28,14 @@ from imagineer.modelos.sugestao import (
     sugestoes_participante,
 )
 from imagineer.modelos.uso_ia import UsoDeIA
+from imagineer.modelos.limites import ID_UNICO_DOS_LIMITES, Limites
 from imagineer.modelos.usuario import DONO_ID, Usuario
 from imagineer.modelos.audio_de_capitulo import AudioDeCapitulo, SituacaoDoAudio
 from imagineer.modelos.video import Video
 
 __all__ = [
+    "ID_UNICO_DOS_LIMITES",
+    "Limites",
     "Capitulo",
     "CategoriaEstilo",
     "Configuracao",

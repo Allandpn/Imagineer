@@ -58,6 +58,7 @@ from imagineer.servicos.acesso import buscar_visivel, usuario_ou_dono
 from imagineer.servicos.capa_do_livro import CapaInvalida, capa_de_um_arquivo
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.limites import BYTES_POR_MB, obter_limites
 from imagineer.servicos.imagens_reduzidas import garantir_dimensoes
 from imagineer.servicos.importacao_epub import (
     ArquivoEpubInvalido,
@@ -67,14 +68,6 @@ from imagineer.servicos.importacao_epub import (
 from imagineer.servicos.upload import ler_com_limite
 
 rotas = APIRouter(prefix="/livros", tags=["Livros"])
-
-TAMANHO_MAXIMO_DO_EPUB = 60 * 1024 * 1024
-"""Limite do arquivo enviado, em bytes.
-
-O maior dos dezoito livros de validação tem 46 MB — uma história em quadrinhos —
-então 60 MB acomoda o caso real com folga e ainda protege o Raspberry Pi de um
-arquivo absurdo.
-"""
 
 
 @rotas.post(
@@ -94,7 +87,7 @@ async def importar_livro(
     resolveria um problema que não existe e acrescentaria estado para o app
     acompanhar.
     """
-    conteudo = await ler_com_limite(arquivo, TAMANHO_MAXIMO_DO_EPUB)
+    conteudo = await ler_com_limite(arquivo, obter_limites(sessao).tamanho_maximo_do_epub_mb * BYTES_POR_MB)
 
     try:
         livro = importar_epub(sessao, conteudo, arquivo.filename or "livro.epub")
@@ -447,7 +440,7 @@ async def definir_capa(
     """Troca a capa. Aceita uma **imagem** ou um **EPUB** (extrai a capa dele, sem reimportar nada): os livros já importados
     não guardaram o arquivo, então é assim que ganham capa. 422 se não é imagem nem EPUB com capa."""
     livro = _buscar_livro(sessao, livro_id)
-    conteudo = await ler_com_limite(arquivo, TAMANHO_MAXIMO_DO_EPUB)
+    conteudo = await ler_com_limite(arquivo, obter_limites(sessao).tamanho_maximo_do_epub_mb * BYTES_POR_MB)
     try:
         livro.capa, livro.capa_tipo = capa_de_um_arquivo(conteudo)
     except CapaInvalida as erro:

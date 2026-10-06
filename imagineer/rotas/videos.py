@@ -16,6 +16,7 @@ from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import Frame, Prompt, TipoDePrompt, Video
 from imagineer.rotas._comum import buscar_frame as _buscar_frame
 from imagineer.rotas._comum import obter_ou_404
+from imagineer.servicos.limites import BYTES_POR_MB, exigir_espaco, obter_limites
 from imagineer.servicos.catalogo_de_videos import gravar_video, remover_video_do_disco, tipo_do_video
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
 from imagineer.servicos.dimensoes_de_video import garantir_dimensoes_do_video
@@ -59,7 +60,7 @@ def listar_videos(frame_id: int, sessao: Session = Depends(obter_sessao)) -> lis
 )
 async def importar_video(
     frame_id: int,
-    arquivo: UploadFile = File(description="O vídeo (.mp4, .m4v, .mov ou .webm), até 200 MB"),
+    arquivo: UploadFile = File(description="O vídeo (.mp4, .m4v, .mov ou .webm), o limite é o que o dono configurou (padrão 50 MB)"),
     prompt_id: int | None = Form(default=None, description="O prompt de vídeo de onde ele veio (opcional); tem de ser deste frame."),
     sessao: Session = Depends(obter_sessao),
 ) -> VideoResumo:
@@ -72,7 +73,9 @@ async def importar_video(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="O prompt informado não é um prompt de vídeo deste frame.",
             )
-    caminho, tamanho = await gravar_video(frame.id, arquivo.filename or "", arquivo)
+    exigir_espaco(sessao)  # CT17, CT18: sem espaço, recusa antes de gravar
+    limites = obter_limites(sessao)
+    caminho, tamanho = await gravar_video(frame.id, arquivo.filename or "", arquivo, limites.tamanho_maximo_do_video_mb * BYTES_POR_MB)
     video = Video(frame_id=frame.id, prompt_id=prompt_id, caminho_arquivo=caminho, tamanho_em_bytes=tamanho, nome_original=(arquivo.filename or "")[:300])
     garantir_dimensoes_do_video(video, caminho_absoluto(caminho))  # VD17: o tamanho, para o capítulo desenhar o vídeo como uma imagem
     sessao.add(video)

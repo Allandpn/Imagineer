@@ -7,3 +7,17 @@ GET {{baseUrl}}/saude
 GET {{baseUrl}}/eu
 Tailscale-User-Login: maria@exemplo.com
 Tailscale-User-Name: Maria
+
+
+### Os limites do servidor e o espaço usado (CT15 a CT20). Só o dono; para os outros é 404.
+GET {{baseUrl}}/admin/limites
+
+### Muda só o que for enviado; vale no pedido seguinte. Tamanhos em MB, armazenamento e cota em GB, narração em caracteres.
+PUT {{baseUrl}}/admin/limites
+Content-Type: application/json
+
+{
+  "tamanho_maximo_do_video_mb": 50,
+  "tamanho_maximo_da_imagem_mb": 15,
+  "cota_por_pessoa_em_gb": 5
+}

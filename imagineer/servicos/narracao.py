@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from imagineer.ia.provedor import ChaveDeApiAusente, ErroDoProvedorIA, ModeloNaoEscolhido, ProvedorIA
-from imagineer.modelos import AudioDeCapitulo, Capitulo, Configuracao, SituacaoDoAudio
+from imagineer.modelos import AudioDeCapitulo, Capitulo, Configuracao, Livro, SituacaoDoAudio
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
 from imagineer.servicos.trechos_da_narracao import dividir_em_trechos
 from imagineer.servicos.uso_de_ia import gasto_do_livro
@@ -47,6 +47,17 @@ def situacao_efetiva(audio: AudioDeCapitulo) -> SituacaoDoAudio:
     if audio.situacao == SituacaoDoAudio.GERANDO and datetime.now(timezone.utc) - _aware(audio.criado_em) > LIMITE_PARA_GERANDO_PRESO:
         return SituacaoDoAudio.FALHOU
     return audio.situacao
+
+
+def narracao_em_andamento_da_pessoa(sessao: Session, usuario_id: int) -> bool:
+    """A pessoa já tem uma narração ``GERANDO`` (de qualquer capítulo dela)? Uma linha presa há mais de 30 minutos não conta (NA7). CT16."""
+    geracoes = sessao.scalars(
+        select(AudioDeCapitulo)
+        .join(Capitulo, Capitulo.id == AudioDeCapitulo.capitulo_id)
+        .join(Livro, Livro.id == Capitulo.livro_id)
+        .where(Livro.usuario_id == usuario_id, AudioDeCapitulo.situacao == SituacaoDoAudio.GERANDO)
+    )
+    return any(situacao_efetiva(audio) == SituacaoDoAudio.GERANDO for audio in geracoes)
 
 
 def audio_de_agora(sessao: Session, capitulo_id: int, modelo: str | None, voz: str) -> AudioDeCapitulo | None:

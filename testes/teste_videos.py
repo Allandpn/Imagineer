@@ -171,11 +171,11 @@ def teste_extensao_ou_conteudo_errados_sao_recusados_e_nao_deixam_arquivo(client
     assert cliente.get(f"/frames/{frame['id']}/videos").json() == []
 
 
-def teste_acima_do_limite_da_413_e_apaga_o_parcial(cliente: TestClient, usar_provedor_falso, _diretorio_de_imagens, monkeypatch) -> None:
+def teste_acima_do_limite_da_413_e_apaga_o_parcial(cliente: TestClient, usar_provedor_falso, _diretorio_de_imagens) -> None:
     _, frame = _cena(cliente, usar_provedor_falso)
-    monkeypatch.setattr(catalogo_de_videos, "TAMANHO_MAXIMO_DO_VIDEO", 32)
+    assert cliente.put("/admin/limites", json={"tamanho_maximo_do_video_mb": 1}).status_code == 200  # CT15: o limite é do banco
 
-    resposta = _importar_video(cliente, frame["id"], conteudo=MP4)  # 76 bytes
+    resposta = _importar_video(cliente, frame["id"], conteudo=MP4 + b"\x00" * (1024 * 1024))  # um pouco mais de 1 MB
 
     assert resposta.status_code == 413
     assert list((_diretorio_de_imagens / "videos").rglob("*.*")) == []
