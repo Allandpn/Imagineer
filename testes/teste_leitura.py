@@ -280,3 +280,40 @@ def teste_so_existe_um_marcador_por_livro(cliente: TestClient, sessao_com_tabela
     _marcar(cliente, livro["id"], c1, 30, AGORA - timedelta(minutes=1))
 
     assert sessao_com_tabelas.query(Marcador).filter_by(livro_id=livro["id"]).count() == 1
+
+
+# --------------------------------------------------------------------------- #
+# PN3: o pin traz o texto da lista
+# --------------------------------------------------------------------------- #
+
+
+def teste_o_pin_traz_o_comeco_do_paragrafo_e_o_capitulo(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    livro, capitulos = _cenario(cliente, sessao_com_tabelas)
+    capitulo = sessao_com_tabelas.get(Capitulo, capitulos[1])
+    capitulo.texto = "Primeiro parágrafo.\n\nSegundo    parágrafo,\ncom   quebra.\n\nTerceiro."
+    capitulo.titulo = "A chegada"
+    sessao_com_tabelas.commit()
+    posicao = capitulo.texto.index("Segundo")
+
+    criado = cliente.post(f"/livros/{livro['id']}/pins", json={"capitulo_id": capitulos[1], "posicao_no_texto": posicao, "nota": "voltar aqui"})
+
+    assert criado.status_code == 201, criado.text
+    corpo = criado.json()
+    assert corpo["trecho"] == "Segundo parágrafo, com quebra."  # até a linha em branco, em um espaço só
+    assert corpo["ordem_do_capitulo"] == capitulo.ordem and corpo["titulo_do_capitulo"] == "A chegada"
+    listado = cliente.get(f"/livros/{livro['id']}/pins").json()[0]
+    assert listado["trecho"] == corpo["trecho"] and listado["nota"] == "voltar aqui"
+    ajustado = cliente.patch(f"/pins/{corpo['id']}", json={"nota": None}).json()
+    assert ajustado["trecho"] == corpo["trecho"] and ajustado["nota"] is None
+
+
+def teste_o_trecho_do_pin_e_cortado_numa_palavra_e_aguenta_emoji(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    livro, capitulos = _cenario(cliente, sessao_com_tabelas)
+    capitulo = sessao_com_tabelas.get(Capitulo, capitulos[0])
+    capitulo.texto = "\U0001F600 " + "palavra " * 100
+    sessao_com_tabelas.commit()
+
+    corpo = cliente.post(f"/livros/{livro['id']}/pins", json={"capitulo_id": capitulos[0], "posicao_no_texto": 0}).json()
+
+    assert corpo["trecho"].startswith("\U0001F600 palavra") and corpo["trecho"].endswith("palavra…")
+    assert len(corpo["trecho"]) <= 301

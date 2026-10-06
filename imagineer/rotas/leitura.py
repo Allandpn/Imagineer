@@ -19,7 +19,7 @@ from imagineer.esquemas.leitura import (
 )
 from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import Capitulo, Marcador, Pin
-from imagineer.servicos.posicao_no_texto import tamanho_em_utf16
+from imagineer.servicos.posicao_no_texto import comeco_do_paragrafo, tamanho_em_utf16
 from imagineer.rotas._comum import (
     buscar_livro as _buscar_livro,
     buscar_pin as _buscar_pin,
@@ -109,17 +109,16 @@ def gravar_marcador(
     response_model=list[PinResposta],
     summary="Os pins do livro, na ordem do livro",
 )
-def listar_pins(livro_id: int, sessao: Session = Depends(obter_sessao)) -> list[Pin]:
-    """Os pins por ordem do capítulo e, dentro dele, da posição no texto."""
+def listar_pins(livro_id: int, sessao: Session = Depends(obter_sessao)) -> list[PinResposta]:
+    """Os pins por ordem do capítulo e, dentro dele, da posição no texto, cada um com o começo do parágrafo e o capítulo (PN3)."""
     _buscar_livro(sessao, livro_id)
-    return list(
-        sessao.scalars(
-            select(Pin)
-            .join(Capitulo, Capitulo.id == Pin.capitulo_id)
-            .where(Pin.livro_id == livro_id)
-            .order_by(Capitulo.ordem, Pin.posicao_no_texto, Pin.id)
-        )
+    pins = sessao.scalars(
+        select(Pin)
+        .join(Capitulo, Capitulo.id == Pin.capitulo_id)
+        .where(Pin.livro_id == livro_id)
+        .order_by(Capitulo.ordem, Pin.posicao_no_texto, Pin.id)
     )
+    return [_pin_resposta(sessao, pin) for pin in pins]
 
 
 @rotas_de_livro.post(
@@ -128,7 +127,7 @@ def listar_pins(livro_id: int, sessao: Session = Depends(obter_sessao)) -> list[
     status_code=status.HTTP_201_CREATED,
     summary="Marca um ponto do livro à mão",
 )
-def criar_pin(livro_id: int, novo: PinNovo, sessao: Session = Depends(obter_sessao)) -> Pin:
+def criar_pin(livro_id: int, novo: PinNovo, sessao: Session = Depends(obter_sessao)) -> PinResposta:
     """Cria um pin. O capítulo precisa ser deste livro e a posição precisa caber no texto dele."""
     _buscar_livro(sessao, livro_id)
     capitulo = _capitulo_do_livro(sessao, livro_id, novo.capitulo_id)
@@ -143,17 +142,17 @@ def criar_pin(livro_id: int, novo: PinNovo, sessao: Session = Depends(obter_sess
     sessao.add(pin)
     sessao.commit()
     sessao.refresh(pin)
-    return pin
+    return _pin_resposta(sessao, pin)
 
 
 @rotas_de_pin.patch("/{pin_id}", response_model=PinResposta, summary="Ajusta a nota de um pin")
-def ajustar_pin(pin_id: int, ajuste: PinAjuste, sessao: Session = Depends(obter_sessao)) -> Pin:
+def ajustar_pin(pin_id: int, ajuste: PinAjuste, sessao: Session = Depends(obter_sessao)) -> PinResposta:
     """Troca a nota do pin; ``null`` (ou texto em branco) apaga a nota."""
     pin = _buscar_pin(sessao, pin_id)
     pin.nota = ajuste.nota
     sessao.commit()
     sessao.refresh(pin)
-    return pin
+    return _pin_resposta(sessao, pin)
 
 
 @rotas_de_pin.delete(
@@ -169,6 +168,17 @@ def remover_pin(pin_id: int, sessao: Session = Depends(obter_sessao)) -> Respons
 # --------------------------------------------------------------------------- #
 # Funções internas
 # --------------------------------------------------------------------------- #
+
+
+def _pin_resposta(sessao: Session, pin: Pin) -> PinResposta:
+    """O pin com o que a lista mostra: o começo do parágrafo e o capítulo (PN3)."""
+    capitulo = sessao.get(Capitulo, pin.capitulo_id)
+    resposta = PinResposta.model_validate(pin)
+    if capitulo is not None:
+        resposta.trecho = comeco_do_paragrafo(capitulo.texto, pin.posicao_no_texto)
+        resposta.ordem_do_capitulo = capitulo.ordem
+        resposta.titulo_do_capitulo = capitulo.titulo
+    return resposta
 
 
 def _com_fuso(momento: datetime) -> datetime:

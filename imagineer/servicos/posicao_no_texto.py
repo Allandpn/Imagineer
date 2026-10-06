@@ -57,6 +57,20 @@ def _inicio_do_paragrafo(texto: str, indice: int) -> int:
     return inicio
 
 
+LIMITE_DO_COMECO_DO_PARAGRAFO = 300
+"""Quanto do começo de um parágrafo vai para uma lista (pins, favoritos)."""
+
+
+def comeco_do_paragrafo(texto: str, posicao: int) -> str:
+    """O começo do parágrafo que começa em ``posicao`` (UTF-16): até a linha em branco seguinte, em um espaço só, e no máximo 300 caracteres
+    (cortado numa palavra, com reticências). Não levanta erro: uma posição que cai no meio de um emoji perde só esse caractere."""
+    ate_o_fim = texto.encode("utf-16-le")[posicao * 2 :].decode("utf-16-le", errors="ignore")
+    limpo = " ".join(ate_o_fim.split("\n\n", 1)[0].split())
+    if len(limpo) <= LIMITE_DO_COMECO_DO_PARAGRAFO:
+        return limpo
+    return limpo[:LIMITE_DO_COMECO_DO_PARAGRAFO].rsplit(" ", 1)[0].rstrip(",;:- ") + "…"
+
+
 def tamanho_em_utf16(texto: str) -> int:
     """O tamanho do texto em unidades UTF-16: o limite de uma ``posicao_no_texto`` válida."""
     return len(texto.encode("utf-16-le")) // 2

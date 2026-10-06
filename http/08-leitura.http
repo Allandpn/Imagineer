@@ -43,7 +43,7 @@ Content-Type: application/json
     client.global.set("pinId", response.body.id);
 %}
 
-### Lista os pins do livro, na ordem do livro (capítulo e depois posição)
+### Lista os pins do livro, na ordem do livro (capítulo e depois posição); cada um traz trecho (o começo do parágrafo), ordem_do_capitulo e titulo_do_capitulo (PN3)
 GET {{baseUrl}}/livros/{{livroId}}/pins
 
 ### Ajusta a nota de um pin (null apaga a nota)

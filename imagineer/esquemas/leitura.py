@@ -85,6 +85,9 @@ class PinResposta(BaseModel):
     posicao_no_texto: int
     nota: str | None
     criado_em: datetime
+    trecho: str = Field(default="", description="O começo do parágrafo que começa na posição (até 300 caracteres, em um espaço só), para a lista (PN3).")
+    ordem_do_capitulo: int | None = None
+    titulo_do_capitulo: str | None = None
 
 
 CORES_DE_DESTAQUE = ("AMARELO", "VERDE", "AZUL", "ROSA")
