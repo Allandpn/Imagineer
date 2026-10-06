@@ -481,3 +481,17 @@ def teste_ct6_imagem_de_outra_pessoa_nao_serve_de_referencia(cliente: TestClient
     configuracao.modelos_com_referencia = {MODELO_COM_REFERENCIA: "image_input"}
     with pytest.raises(ReferenciasNaoPermitidas, match="Não existe imagem"):
         _preparar_referencias(sessao_com_tabelas, configuracao, MODELO_COM_REFERENCIA, [do_dono["id"]])
+
+
+def teste_ct6_estatisticas_de_leitura_so_somam_a_propria_pessoa(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    """Sem id na URL, a varredura de rotas não pega esta: o tempo e os títulos de outra pessoa não podem entrar na soma."""
+    dono_livro = Livro(titulo="Do dono", nome_arquivo="a.epub", usuario_id=DONO_ID)
+    sessao_com_tabelas.add(dono_livro)
+    sessao_com_tabelas.commit()
+    assert cliente.post(f"/livros/{dono_livro.id}/leitura/tempo", json={"dia": "2026-10-06", "segundos": 60}).status_code in (200, 201)
+
+    _como(sessao_com_tabelas, _pessoa(sessao_com_tabelas, "maria@exemplo.com").id)
+    assert cliente.get("/estatisticas/leitura").json() == {"dias": [], "livros": []}
+
+    _como(sessao_com_tabelas, DONO_ID)
+    assert [l["titulo"] for l in cliente.get("/estatisticas/leitura").json()["livros"]] == ["Do dono"]

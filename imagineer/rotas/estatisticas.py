@@ -17,6 +17,7 @@ from imagineer.esquemas.leitura import (
 )
 from imagineer.modelos import Livro, TempoDeLeitura
 from imagineer.rotas._comum import buscar_livro
+from imagineer.servicos.acesso import usuario_ou_dono
 
 rotas_de_livro = APIRouter(prefix="/livros", tags=["Estatísticas"])
 rotas_de_estatisticas = APIRouter(prefix="/estatisticas", tags=["Estatísticas"])
@@ -65,11 +66,12 @@ def somar_tempo_de_leitura(
 def estatisticas_de_leitura(sessao: Session = Depends(obter_sessao)) -> EstatisticasDeLeitura:
     """O tempo dos últimos 90 dias (todos os livros somados) e o resumo de cada livro; livros na lixeira ficam fora."""
     desde = date.today() - timedelta(days=DIAS_DAS_ESTATISTICAS)
+    dono = usuario_ou_dono(sessao)  # CT6-c: só o tempo e os livros da própria pessoa
 
     por_dia = sessao.execute(
         select(TempoDeLeitura.dia, func.sum(TempoDeLeitura.segundos))
         .join(Livro, Livro.id == TempoDeLeitura.livro_id)
-        .where(Livro.apagado_em.is_(None), TempoDeLeitura.dia > desde)
+        .where(Livro.usuario_id == dono, Livro.apagado_em.is_(None), TempoDeLeitura.dia > desde)
         .group_by(TempoDeLeitura.dia)
         .order_by(TempoDeLeitura.dia)
     ).all()
@@ -83,7 +85,7 @@ def estatisticas_de_leitura(sessao: Session = Depends(obter_sessao)) -> Estatist
             func.max(TempoDeLeitura.dia),
         )
         .join(TempoDeLeitura, TempoDeLeitura.livro_id == Livro.id)
-        .where(Livro.apagado_em.is_(None))
+        .where(Livro.usuario_id == dono, Livro.apagado_em.is_(None))
         .group_by(Livro.id, Livro.titulo)
         .order_by(func.max(TempoDeLeitura.dia).desc(), Livro.id)
     ).all()
