@@ -248,7 +248,7 @@ def teste_por_padrao_o_texto_mostra_a_imagem_e_o_artefato_nao_tem_video(cliente:
     assert artefato["video_id"] is None and artefato["imagem_id"] == imagem["id"]
 
 
-def teste_escolher_o_video_poe_o_video_no_artefato_e_voltar_a_imagem_tira(cliente: TestClient, usar_provedor_falso) -> None:
+def teste_escolher_o_video_tira_a_imagem_do_artefato_e_voltar_a_traz(cliente: TestClient, usar_provedor_falso) -> None:
     _, frame = _cena(cliente, usar_provedor_falso)
     prompt = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()
     imagem = _importar_imagem(cliente, prompt["id"])
@@ -259,12 +259,15 @@ def teste_escolher_o_video_poe_o_video_no_artefato_e_voltar_a_imagem_tira(client
     assert escolhido.status_code == 200 and escolhido.json()["video_do_texto_id"] == video["id"]
     artefato = _artefato_do_frame(cliente, frame)
     assert artefato["video_id"] == video["id"]
-    assert artefato["imagem_id"] == imagem["id"]  # a imagem continua lá: o app a usa de capa do vídeo
+    assert artefato["imagem_id"] is None  # VD17: o vídeo ocupa o lugar da imagem no texto
     assert cliente.get(f"/frames/{frame['id']}/videos").json()[0]["no_texto"] is True
+    # a imagem continua canônica e no catálogo: só o capítulo deixa de mostrá-la
+    assert cliente.get(f"/prompts/{prompt['id']}").json()["imagens"][0]["id"] == imagem["id"]
 
     volta = cliente.put(f"/frames/{frame['id']}/video-no-texto", json={"video_id": None}).json()
     assert volta["video_do_texto_id"] is None
-    assert _artefato_do_frame(cliente, frame)["video_id"] is None
+    voltou = _artefato_do_frame(cliente, frame)
+    assert voltou["video_id"] is None and voltou["imagem_id"] == imagem["id"]
 
 
 def teste_so_um_video_do_proprio_frame_pode_ir_para_o_texto(cliente: TestClient, usar_provedor_falso) -> None:
@@ -294,18 +297,15 @@ def teste_apagar_o_video_do_texto_devolve_o_texto_a_imagem(cliente: TestClient, 
     assert _artefato_do_frame(cliente, frame)["video_id"] is None
 
 
-def teste_ocultar_a_midia_do_capitulo_esconde_tambem_o_video(cliente: TestClient, usar_provedor_falso) -> None:
+def teste_ocultar_a_imagem_do_capitulo_nao_esconde_o_video_e_escolher_o_video_nao_mexe_nisso(cliente: TestClient, usar_provedor_falso) -> None:
     _, frame = _cena(cliente, usar_provedor_falso)
     video = _importar_video(cliente, frame["id"]).json()
-    cliente.put(f"/frames/{frame['id']}/video-no-texto", json={"video_id": video["id"]})
 
     cliente.put(f"/frames/{frame['id']}/imagem-oculta", json={"oculta": True})
-
-    assert _artefato_do_frame(cliente, frame)["video_id"] is None
-    # escolher o vídeo de novo é querer vê-lo (como a canônica, OC3)
     escolhido = cliente.put(f"/frames/{frame['id']}/video-no-texto", json={"video_id": video["id"]}).json()
-    assert escolhido["imagem_oculta"] is False
-    assert _artefato_do_frame(cliente, frame)["video_id"] == video["id"]
+
+    assert escolhido["imagem_oculta"] is True  # escolher o vídeo não desfaz o ocultar da imagem
+    assert _artefato_do_frame(cliente, frame)["video_id"] == video["id"]  # e a imagem oculta não esconde o vídeo
 
 
 def teste_mudar_o_video_do_texto_sobe_a_revisao_do_livro(cliente: TestClient, usar_provedor_falso) -> None:
@@ -316,3 +316,82 @@ def teste_mudar_o_video_do_texto_sobe_a_revisao_do_livro(cliente: TestClient, us
     cliente.put(f"/frames/{frame['id']}/video-no-texto", json={"video_id": video["id"]})
 
     assert cliente.get(f"/livros/{livro['id']}").json()["revisao"] > antes  # o capítulo mostra outra coisa: o app precisa reler
+
+
+# --------------------------------------------------------------------------- #
+# VD17: o tamanho do vídeo
+# --------------------------------------------------------------------------- #
+
+
+def _atom(nome: bytes, conteudo: bytes) -> bytes:
+    import struct
+
+    return struct.pack(">I4s", 8 + len(conteudo), nome) + conteudo
+
+
+def _mp4(largura: int, altura: int, girado: bool = False, versao: int = 0) -> bytes:
+    """Um MP4 mínimo, só o suficiente para o servidor ler o ``tkhd``: ``ftyp``, e ``moov > trak > tkhd`` (e uma trilha de áudio sem tamanho antes)."""
+    import struct
+
+    matriz = struct.pack(">9i", 0, 0x10000, 0, -0x10000, 0, 0, 0, 0, 0x40000000) if girado else struct.pack(">9i", 0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000)
+    if versao == 1:
+        cabecalho = struct.pack(">B3xQQIIQ", 1, 0, 0, 1, 0, 0)
+    else:
+        cabecalho = struct.pack(">B3xIIIII", 0, 0, 0, 1, 0, 0)
+    fim = struct.pack(">8x hhhh", 0, 0, 0, 0) + matriz
+    def tkhd(l, a):
+        return _atom(b"tkhd", cabecalho + fim + struct.pack(">II", l << 16, a << 16))
+    audio = _atom(b"trak", tkhd(0, 0))
+    video = _atom(b"trak", tkhd(largura, altura))
+    return _atom(b"ftyp", b"mp42" + b"\x00" * 4 + b"mp42") + _atom(b"moov", audio + video) + _atom(b"mdat", b"\x00" * 32)
+
+
+def teste_o_tamanho_do_mp4_vem_do_tkhd_com_a_rotacao(tmp_path) -> None:
+    from imagineer.servicos.dimensoes_de_video import ler_dimensoes_do_video
+
+    def ler(conteudo: bytes):
+        arquivo = tmp_path / "v.mp4"
+        arquivo.write_bytes(conteudo)
+        return ler_dimensoes_do_video(arquivo)
+
+    assert ler(_mp4(1280, 720)) == (1280, 720)  # pula a trilha de áudio, sem tamanho
+    assert ler(_mp4(1280, 720, versao=1)) == (1280, 720)  # tkhd de 64 bits
+    assert ler(_mp4(1920, 1080, girado=True)) == (1080, 1920)  # girado 90 graus: os lados se trocam
+    assert ler(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64) is None  # sem moov
+    assert ler(b"lixo") is None
+    assert ler(bytes([0x1A, 0x45, 0xDF, 0xA3]) + b"\x00" * 64) is None  # WebM: sem tamanho
+
+
+def teste_importar_um_mp4_grava_o_tamanho_e_o_artefato_traz_a_orientacao(cliente: TestClient, usar_provedor_falso) -> None:
+    _, frame = _cena(cliente, usar_provedor_falso)
+
+    paisagem = _importar_video(cliente, frame["id"], conteudo=_mp4(1280, 720)).json()
+    retrato = _importar_video(cliente, frame["id"], conteudo=_mp4(720, 1280)).json()
+    sem_tamanho = _importar_video(cliente, frame["id"], conteudo=WEBM, nome="a.webm").json()
+
+    assert (paisagem["largura"], paisagem["altura"]) == (1280, 720)
+    assert (retrato["largura"], retrato["altura"]) == (720, 1280)
+    assert sem_tamanho["largura"] is None and sem_tamanho["altura"] is None
+    cliente.put(f"/frames/{frame['id']}/video-no-texto", json={"video_id": paisagem["id"]})
+    artefato = _artefato_do_frame(cliente, frame)
+    assert (artefato["video_largura"], artefato["video_altura"], artefato["video_orientacao"]) == (1280, 720, "PAISAGEM")
+    cliente.put(f"/frames/{frame['id']}/video-no-texto", json={"video_id": retrato["id"]})
+    assert _artefato_do_frame(cliente, frame)["video_orientacao"] == "RETRATO"
+    cliente.put(f"/frames/{frame['id']}/video-no-texto", json={"video_id": sem_tamanho["id"]})
+    assert _artefato_do_frame(cliente, frame)["video_orientacao"] is None  # o app trata como paisagem
+
+
+def teste_o_video_importado_antes_do_tamanho_o_ganha_na_leitura_dos_artefatos(cliente: TestClient, usar_provedor_falso, sessao_com_tabelas) -> None:
+    _, frame = _cena(cliente, usar_provedor_falso)
+    video = _importar_video(cliente, frame["id"], conteudo=_mp4(720, 1280)).json()
+    from imagineer.modelos import Video
+
+    sessao = sessao_com_tabelas
+    registro = sessao.get(Video, video["id"])
+    registro.largura = registro.altura = None  # como os vídeos importados antes da migração
+    sessao.commit()
+    cliente.put(f"/frames/{frame['id']}/video-no-texto", json={"video_id": video["id"]})
+
+    artefato = _artefato_do_frame(cliente, frame)
+
+    assert (artefato["video_largura"], artefato["video_altura"], artefato["video_orientacao"]) == (720, 1280, "RETRATO")

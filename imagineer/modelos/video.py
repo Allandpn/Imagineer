@@ -29,6 +29,11 @@ class Video(Base):
     tamanho_em_bytes: Mapped[int] = mapped_column()
     nome_original: Mapped[str] = mapped_column(String(300), default="")
 
+    largura: Mapped[int | None] = mapped_column()
+    altura: Mapped[int | None] = mapped_column()
+    """O tamanho do vídeo em pixels, **já com a rotação aplicada** (VD17), lido do arquivo (``servicos/dimensoes_de_video.py``). Nulo = não se sabe
+    (WebM, ou um vídeo importado antes de existirem): o app o trata como paisagem."""
+
     data_importacao: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self) -> str:

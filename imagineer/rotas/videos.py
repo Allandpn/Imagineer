@@ -17,6 +17,7 @@ from imagineer.rotas._comum import buscar_frame as _buscar_frame
 from imagineer.rotas._comum import obter_ou_404
 from imagineer.servicos.catalogo_de_videos import gravar_video, remover_video_do_disco, tipo_do_video
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
+from imagineer.servicos.dimensoes_de_video import garantir_dimensoes_do_video
 
 rotas_de_frame = APIRouter(prefix="/frames", tags=["Vídeos"])
 rotas = APIRouter(prefix="/videos", tags=["Vídeos"])
@@ -72,6 +73,7 @@ async def importar_video(
             )
     caminho, tamanho = await gravar_video(frame.id, arquivo.filename or "", arquivo)
     video = Video(frame_id=frame.id, prompt_id=prompt_id, caminho_arquivo=caminho, tamanho_em_bytes=tamanho, nome_original=(arquivo.filename or "")[:300])
+    garantir_dimensoes_do_video(video, caminho_absoluto(caminho))  # VD17: o tamanho, para o capítulo desenhar o vídeo como uma imagem
     sessao.add(video)
     try:
         sessao.commit()
@@ -95,7 +97,6 @@ def definir_video_no_texto(frame_id: int, corpo: VideoNoTextoNovo, sessao: Sessi
         video = sessao.get(Video, corpo.video_id)
         if video is None or video.frame_id != frame.id:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Este vídeo não é deste frame.")
-        frame.imagem_oculta = False  # como em OC3: escolher o que o texto mostra é querer vê-lo
     frame.video_do_texto_id = corpo.video_id
     sessao.commit()
     sessao.refresh(frame)

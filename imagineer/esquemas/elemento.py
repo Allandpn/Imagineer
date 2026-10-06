@@ -137,7 +137,16 @@ class Artefato(BaseModel):
     )
     video_id: int | None = Field(
         default=None,
-        description="O vídeo que o texto mostra no lugar da imagem (item 4.8, VD17); o app o toca ao tocar no artefato. Nulo = mostra a imagem.",
+        description=(
+            "O vídeo que o texto mostra **no lugar da imagem** (item 4.8, VD17); o app o toca ao tocar no artefato. Nulo = mostra a imagem. "
+            "Com vídeo, `imagem_id` e os `imagem_*` vêm nulos: o vídeo é desenhado como uma imagem, com o tamanho dele."
+        ),
+    )
+    video_largura: int | None = Field(default=None, description="Largura do vídeo em pixels (já com a rotação); nula se não se sabe (WebM).")
+    video_altura: int | None = Field(default=None, description="Altura do vídeo em pixels; nula como a largura.")
+    video_orientacao: str | None = Field(
+        default=None,
+        description="RETRATO ou PAISAGEM, pelo vídeo real: paisagem ocupa a largura da área de leitura e retrato, a metade (VD17). Nulo sem tamanho (o app trata como paisagem).",
     )
 
 

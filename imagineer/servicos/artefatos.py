@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, object_session
 from imagineer.esquemas.elemento import Artefato, SituacaoDoArtefato, TipoDeArtefato
 from imagineer.modelos import Capitulo, Frame, Imagem, SugestaoDeCena, SugestaoDeElemento, TipoDeFrame, TipoDePrompt, Video
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
+from imagineer.servicos.dimensoes_de_video import garantir_dimensoes_do_video
 from imagineer.servicos.imagens_reduzidas import garantir_dimensoes, orientacao_de
 from imagineer.servicos.posicao_no_texto import posicao_da_primeira_mencao
 from imagineer.servicos.sugestoes import chave_normalizada
@@ -28,13 +29,26 @@ def _campos_da_imagem(imagem: Imagem | None) -> dict:
     }
 
 
+def _video_do_texto(frame: Frame | None) -> Video | None:
+    """O vídeo que o texto mostra no lugar da imagem (VD17), ou ``None`` (sem frame, sem escolha ou com o vídeo já apagado)."""
+    if frame is None or frame.video_do_texto_id is None:
+        return None
+    return object_session(frame).get(Video, frame.video_do_texto_id)
+
+
 def _campos_do_video(frame: Frame | None) -> dict:
-    """``video_id`` do artefato: o vídeo que o texto mostra no lugar da imagem (VD17). Sem frame, com a mídia oculta (OC1) ou com o
-    vídeo já apagado, não há."""
-    if frame is None or frame.imagem_oculta or frame.video_do_texto_id is None:
+    """Os campos ``video_*`` de um artefato (VD17). Calcula o tamanho de um vídeo antigo (só em memória: quem chama, a rota, faz o commit)."""
+    video = _video_do_texto(frame)
+    if video is None:
         return {}
-    video = object_session(frame).get(Video, frame.video_do_texto_id)
-    return {"video_id": video.id} if video is not None else {}
+    garantir_dimensoes_do_video(video, caminho_absoluto(video.caminho_arquivo))
+    orientacao = orientacao_de(video.largura, video.altura)
+    return {
+        "video_id": video.id,
+        "video_largura": video.largura,
+        "video_altura": video.altura,
+        "video_orientacao": orientacao.value if orientacao else None,
+    }
 
 
 def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[SituacaoDoArtefato, Imagem | None]:
@@ -44,6 +58,9 @@ def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[Situac
     """
     if not confirmado:
         return SituacaoDoArtefato.SUGERIDO, None
+    # VD17: com um vídeo posicionado, o capítulo mostra o vídeo e **não** a imagem (ela continua canônica; volta se o vídeo sai).
+    if _video_do_texto(frame) is not None:
+        return SituacaoDoArtefato.ILUSTRADO, None
     # OC1: com a imagem oculta, o capítulo não a mostra (o artefato cai para "prompt pronto", se há prompt).
     imagens = [] if frame is None or frame.imagem_oculta else [imagem for prompt in frame.prompts for imagem in prompt.imagens_ativas]
     canonica = next((i for i in imagens if frame is not None and i.id == frame.imagem_canonica_id), None)
@@ -52,7 +69,7 @@ def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[Situac
         de_fora = object_session(frame).get(Imagem, frame.imagem_canonica_id)
         canonica = de_fora if de_fora is not None and de_fora.apagada_em is None else None
     ultima = canonica or max(imagens, key=lambda i: (i.data_importacao, i.id), default=None)
-    if ultima is not None or _campos_do_video(frame):  # VD17: o vídeo escolhido ilustra, mesmo sem imagem
+    if ultima is not None:
         return SituacaoDoArtefato.ILUSTRADO, ultima
     if frame is not None and any(prompt.tipo == TipoDePrompt.IMAGEM for prompt in frame.prompts):  # VD7: vídeo não conta
         return SituacaoDoArtefato.PROMPT_PRONTO, None

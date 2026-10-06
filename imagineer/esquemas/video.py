@@ -16,6 +16,8 @@ class VideoResumo(BaseModel):
     nome_original: str = ""
     tamanho_em_bytes: int
     data_importacao: datetime
+    largura: int | None = Field(default=None, description="Largura em pixels, já com a rotação aplicada; nula se não se sabe.")
+    altura: int | None = Field(default=None, description="Altura em pixels; nula como a largura.")
     no_texto: bool = Field(default=False, description="O texto do capítulo mostra **este** vídeo no lugar da imagem (VD17).")
 
 
