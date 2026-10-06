@@ -42,7 +42,7 @@ class MotorDeNarracao(enum.Enum):
     """A voz do Android, como sempre foi: grátis, sem internet. É o padrão."""
 
     IA = "IA"
-    """Voz de IA gerada pelo servidor (paga e só com servidor). **Ainda não implementado**: só o campo existe."""
+    """Voz de IA gerada pelo servidor, com um modelo de voz do OpenRouter (``modelo_narracao``; NA1): paga, e só com servidor."""
 
 
 class ModoDeNarracao(enum.Enum):
@@ -52,7 +52,7 @@ class ModoDeNarracao(enum.Enum):
     """Um narrador lê tudo. É o padrão."""
 
     POR_PERSONAGEM = "POR_PERSONAGEM"
-    """Uma voz por personagem (uma IA identifica quem fala). **Ainda não implementado**: só o campo existe."""
+    """Uma voz por personagem (uma IA identifica quem fala). **Ainda não implementado** (NA10): só o campo existe."""
 
 
 class CategoriaEstilo(enum.Enum):
@@ -231,7 +231,11 @@ class Configuracao(Base):
         default=MotorDeNarracao.APARELHO,
         server_default=MotorDeNarracao.APARELHO.value,
     )
-    """Quem narra (RL21). Hoje só ``APARELHO`` toca; ``IA`` fica guardado para quando existir (RL26)."""
+    """Quem narra (RL21): ``APARELHO`` (a voz do Android) ou ``IA`` (o MP3 gerado pelo servidor, NA1)."""
+
+    modelo_narracao: Mapped[str | None] = mapped_column(String(200))
+    """O modelo de **voz** do OpenRouter que fala o capítulo (NA1), como ``microsoft/mai-voice-2.1-flash``; nulo = nenhum escolhido
+    (``POST /capitulos/{id}/audio`` responde 422). A lista vem de ``GET /configuracao/modelos-de-narracao``."""
 
     narracao_modo: Mapped[ModoDeNarracao] = mapped_column(
         Enum(ModoDeNarracao, native_enum=False, length=20, create_constraint=False, values_callable=lambda tipo: [m.value for m in tipo]),
@@ -241,10 +245,11 @@ class Configuracao(Base):
     """Uma voz ou uma por personagem (RL25)."""
 
     narracao_voz: Mapped[str | None] = mapped_column(String(100))
-    """A voz do motor de IA (RL24); nula = a padrão do fornecedor."""
+    """A voz do modelo de narração (RL24), como ``pt-BR-Luana:MAI-Voice-2.1-Flash``; nula = a padrão do modelo (alguns modelos exigem uma)."""
 
     narracao_instrucoes: Mapped[str | None] = mapped_column(Text)
-    """As instruções de tom da narração (RL23), em texto livre; nulas = sem instrução."""
+    """As instruções de tom da narração (RL23), em texto livre; nulas = sem instrução. **Guardadas, mas ainda não enviadas** (NA2): o endpoint
+    de voz do OpenRouter não tem campo de instrução, e colar o tom no texto faria os modelos o lerem em voz alta."""
 
     def __repr__(self) -> str:
         return (

@@ -1,6 +1,6 @@
-"""A narração por voz de IA (itens NA1 a NA10): dividir o capítulo, falar, guardar, estimar, registrar o gasto e servir o arquivo.
+"""A narração por voz de IA (itens NA1 a NA10): dividir o capítulo, falar pelo OpenRouter, guardar, estimar, registrar o gasto e servir o arquivo.
 
-Nenhum teste fala com a OpenAI: o narrador é um falso (``NarradorFalso``) ou a OpenAI é um transporte falso do ``httpx``.
+Nenhum teste fala com o OpenRouter de verdade: o provedor é o ``ProvedorFalso`` ou o ``ProvedorOpenRouter`` com um transporte falso do ``httpx``.
 """
 
 import json
@@ -13,20 +13,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from imagineer.configuracao import obter_configuracoes
-from imagineer.ia.narradores import (
-    CARACTERES_POR_MINUTO,
-    LIMITE_DO_TRECHO,
-    NarradorFalso,
-    NarradorOpenAI,
-    dividir_em_trechos,
-)
-from imagineer.ia.provedor import ChaveDeApiAusente, ErroDoProvedorIA
-from imagineer.modelos import AudioDeCapitulo, Capitulo, Livro, SituacaoDoAudio, UsoDeIA
-from imagineer.servicos import narracao
+from imagineer.ia.falso import ProvedorFalso
+from imagineer.ia.openrouter import ENDERECO_BASE, ProvedorOpenRouter
+from imagineer.ia.provedor import ChaveDeApiAusente, ErroDoProvedorIA, ModeloNaoEscolhido, UsoDaChamada
+from imagineer.modelos import AudioDeCapitulo, Capitulo, Livro, SituacaoDoAudio
+from imagineer.servicos import narracao, uso_de_ia
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
+from imagineer.servicos.trechos_da_narracao import CARACTERES_POR_MINUTO, LIMITE_DO_TRECHO, dividir_em_trechos
 from testes.teste_rotas_prompts import _diretorio_de_imagens  # noqa: F401  (a pasta de imagens temporária que o cenário usa)
 from testes.teste_rotas_prompts import _livro
+
+MODELO = "microsoft/mai-voice-2.1-flash"
+VOZ = "pt-BR-Luana:MAI-Voice-2.1-Flash"
 
 
 # --------------------------------------------------------------------------- #
@@ -69,61 +67,114 @@ def teste_nenhum_caractere_se_perde_e_nenhum_trecho_passa_do_limite() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# NA1 e NA3: a OpenAI
+# NA1 e NA3: o OpenRouter (provedor com transporte falso)
 # --------------------------------------------------------------------------- #
 
+CATALOGO = {
+    "data": [
+        {"id": MODELO, "name": "Microsoft: MAI-Voice 2.1 Flash", "pricing": {"prompt": "0.000015"}, "supported_voices": [VOZ, "pt-BR-Caio:MAI-Voice-2.1-Flash"]},
+        {"id": "google/gemini-3.8-flash-tts", "name": "Gemini TTS", "pricing": {"prompt": "0.0000005", "completion": "0.000009"}, "supported_voices": ["Zephyr"]},
+        {"id": "bytedance-seed/seed-audio-1-0", "name": "Seed Audio", "pricing": {"prompt": "0", "completion": "0.0025"}},
+        {"id": "fish-audio/s2.1-pro-free:free", "name": "Fish Free", "pricing": {"prompt": "0", "completion": "0"}},
+        {"id": "sem/preco", "name": "Sem preço", "pricing": {}},
+        {"name": "sem id"},
+    ]
+}
 
-def _openai(resposta: httpx.Response, pedidos: list | None = None) -> NarradorOpenAI:
+
+def _openrouter(
+    audio: httpx.Response | None = None, avisos: list | None = None, pedidos: list | None = None, catalogo: httpx.Response | None = None, chave: str | None = "sk-teste"
+) -> ProvedorOpenRouter:
     def responder(pedido: httpx.Request) -> httpx.Response:
+        if pedido.url.path.endswith("/models"):
+            return catalogo or httpx.Response(200, json=CATALOGO)
         if pedidos is not None:
-            pedidos.append((pedido.url, dict(pedido.headers), json.loads(pedido.content)))
-        return resposta
+            pedidos.append((pedido.url.path, dict(pedido.headers), json.loads(pedido.content)))
+        return audio or httpx.Response(200, content=b"MP3", headers={"content-type": "audio/mpeg", "x-generation-id": "gen-voz-1"})
 
-    return NarradorOpenAI("sk-teste", cliente=httpx.Client(transport=httpx.MockTransport(responder)))
+    cliente = httpx.Client(base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder))
+    return ProvedorOpenRouter(chave_api=chave, cliente=cliente, ao_usar=avisos.append if avisos is not None else None)
 
 
-def teste_a_openai_recebe_modelo_voz_instrucao_e_mp3() -> None:
+def teste_o_catalogo_de_voz_traz_vozes_e_o_preco_por_caractere_so_quando_da_para_estimar() -> None:
+    modelos = {m.id: m for m in _openrouter().listar_modelos_de_voz()}
+
+    assert set(modelos) == {MODELO, "google/gemini-3.8-flash-tts", "bytedance-seed/seed-audio-1-0", "fish-audio/s2.1-pro-free:free", "sem/preco"}
+    assert modelos[MODELO].preco_por_caractere == Decimal("0.000015") and modelos[MODELO].vozes == [VOZ, "pt-BR-Caio:MAI-Voice-2.1-Flash"]
+    assert modelos["google/gemini-3.8-flash-tts"].preco_por_caractere is None  # entrada + saída por token: não dá para estimar
+    assert modelos["bytedance-seed/seed-audio-1-0"].preco_por_caractere is None and not modelos["bytedance-seed/seed-audio-1-0"].gratuito  # por segundo
+    assert modelos["fish-audio/s2.1-pro-free:free"].gratuito and modelos["fish-audio/s2.1-pro-free:free"].preco_por_caractere == 0
+    assert modelos["sem/preco"].preco_por_caractere is None and not modelos["sem/preco"].gratuito  # sem preço ≠ gratuito
+
+
+def teste_o_catalogo_vem_com_os_gratuitos_primeiro() -> None:
+    assert _openrouter().listar_modelos_de_voz()[0].id == "fish-audio/s2.1-pro-free:free"
+
+
+def teste_narrar_envia_modelo_voz_texto_e_mp3_e_devolve_audio_custo_e_id() -> None:
     pedidos: list = []
-    narrador = _openai(httpx.Response(200, content=b"MP3"), pedidos)
+    audio = _openrouter(pedidos=pedidos).narrar("Era uma vez.", MODELO, VOZ)
 
-    assert narrador.narrar("Era uma vez.", "nova", "voz grave e calma") == b"MP3"
+    assert audio.conteudo == b"MP3" and audio.id_da_geracao == "gen-voz-1"
+    assert audio.custo == Decimal("0.00018000")  # 12 caracteres × 0,000015
+    (caminho, cabecalhos, corpo), = pedidos
+    assert caminho.endswith("/audio/speech") and cabecalhos["authorization"] == "Bearer sk-teste"
+    assert corpo == {"model": MODELO, "input": "Era uma vez.", "response_format": "mp3", "voice": VOZ}
 
-    (url, cabecalhos, corpo), = pedidos
-    assert str(url) == "https://api.openai.com/v1/audio/speech"
-    assert cabecalhos["authorization"] == "Bearer sk-teste"
-    assert corpo == {"model": "gpt-4o-mini-tts", "input": "Era uma vez.", "voice": "nova", "response_format": "mp3", "instructions": "voz grave e calma"}
 
-
-def teste_sem_voz_usa_a_padrao_e_sem_instrucao_nao_manda_o_campo() -> None:
+def teste_sem_voz_o_campo_nao_vai_no_pedido() -> None:
     pedidos: list = []
-    _openai(httpx.Response(200, content=b"MP3"), pedidos).narrar("Texto.", None, None)
-    corpo = pedidos[0][2]
-    assert corpo["voice"] == NarradorOpenAI.VOZ_PADRAO
-    assert "instructions" not in corpo
+    _openrouter(pedidos=pedidos).narrar("Texto.", MODELO, None)
+    assert "voice" not in pedidos[0][2]
 
 
-def teste_chave_recusada_vira_chave_ausente_e_falhas_viram_erro_em_portugues() -> None:
+def teste_cada_trecho_falado_e_avisado_como_gasto_estimado_com_o_id_da_geracao() -> None:
+    avisos: list[UsoDaChamada] = []
+    _openrouter(avisos=avisos).narrar("Era uma vez.", MODELO, VOZ)
+
+    (uso,) = avisos
+    assert (uso.operacao, uso.modelo, uso.provedor, uso.estimado, uso.id_da_geracao) == ("narracao", MODELO, "openrouter", True, "gen-voz-1")
+    assert uso.custo == Decimal("0.00018000")
+
+
+def teste_modelo_que_nao_cobra_por_caractere_fala_mas_fica_sem_custo_e_nao_estimado() -> None:
+    avisos: list[UsoDaChamada] = []
+    audio = _openrouter(avisos=avisos).narrar("Texto.", "google/gemini-3.8-flash-tts", "Zephyr")
+
+    assert audio.custo is None
+    assert avisos[0].custo is None and avisos[0].estimado is False  # nunca um zero inventado
+
+
+def teste_catalogo_fora_do_ar_nao_derruba_a_narracao_so_deixa_o_custo_em_branco() -> None:
+    audio = _openrouter(catalogo=httpx.Response(503, text="fora")).narrar("Texto.", MODELO, VOZ)
+    assert audio.conteudo == b"MP3" and audio.custo is None
+
+
+def teste_falhas_viram_erros_em_portugues() -> None:
     with pytest.raises(ChaveDeApiAusente, match="recusou a chave"):
-        _openai(httpx.Response(401, text="no")).narrar("x", None, None)
-    with pytest.raises(ErroDoProvedorIA, match="429"):
-        _openai(httpx.Response(429, text="slow down")).narrar("x", None, None)
+        _openrouter(audio=httpx.Response(401, text="no")).narrar("x", MODELO, VOZ)
+    with pytest.raises(ErroDoProvedorIA, match="saldo"):
+        _openrouter(audio=httpx.Response(402, text="pay")).narrar("x", MODELO, VOZ)
     with pytest.raises(ErroDoProvedorIA, match="500"):
-        _openai(httpx.Response(500, text="boom")).narrar("x", None, None)
-    with pytest.raises(ErroDoProvedorIA, match="vazio"):
-        _openai(httpx.Response(200, content=b"")).narrar("x", None, None)
+        _openrouter(audio=httpx.Response(500, text="boom")).narrar("x", MODELO, VOZ)
+    with pytest.raises(ErroDoProvedorIA, match="não devolveu um áudio"):
+        _openrouter(audio=httpx.Response(200, content=b"")).narrar("x", MODELO, VOZ)
+    with pytest.raises(ErroDoProvedorIA, match="não devolveu um áudio"):
+        _openrouter(audio=httpx.Response(200, json={"erro": "x"})).narrar("x", MODELO, VOZ)
 
 
-def teste_sem_chave_o_narrador_nao_esta_disponivel_e_nao_fala() -> None:
-    narrador = NarradorOpenAI("")
-    assert narrador.disponivel is False
-    with pytest.raises(ChaveDeApiAusente, match="OPENAI_API_KEY"):
-        narrador.narrar("x", None, None)
+def teste_erro_de_voz_do_modelo_aponta_para_a_tela_de_narracao() -> None:
+    with pytest.raises(ErroDoProvedorIA, match="Configurações → Narração"):
+        _openrouter(audio=httpx.Response(400, json={"error": {"message": "voice is required"}})).narrar("x", MODELO, None)
 
 
-def teste_o_custo_estimado_e_proporcional_aos_minutos() -> None:
-    narrador = NarradorOpenAI("k")
-    assert narrador.custo_estimado(CARACTERES_POR_MINUTO) == Decimal("0.015")
-    assert narrador.custo_estimado(CARACTERES_POR_MINUTO * 10) == Decimal("0.15")
+def teste_sem_chave_ou_sem_modelo_a_narracao_nem_sai() -> None:
+    sem_chave = _openrouter(chave=None)
+    assert sem_chave.pode_narrar is False
+    with pytest.raises(ChaveDeApiAusente):
+        sem_chave.narrar("x", MODELO, VOZ)
+    with pytest.raises(ModeloNaoEscolhido):
+        _openrouter().narrar("x", "", VOZ)
 
 
 # --------------------------------------------------------------------------- #
@@ -140,60 +191,127 @@ def _capitulo(cliente: TestClient, sessao: Session, texto: str | None = None) ->
 
 
 def _tres_trechos() -> str:
-    """Três parágrafos de 3.000 caracteres: nenhum par cabe junto no limite de 3.500, então são três trechos."""
-    return "\n".join(f"{letra}" * 3000 for letra in "ABC")
+    """Três parágrafos de 2.000 caracteres: nenhum par cabe junto no limite de 2.500, então são três trechos."""
+    return "\n".join(f"{letra}" * 2000 for letra in "ABC")
 
 
-def teste_estimativa_nao_precisa_de_chave_e_diz_caracteres_minutos_e_custo(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    usar_narrador_falso(NarradorFalso(disponivel=False))
-    capitulo_id = _capitulo(cliente, sessao_com_tabelas, "x" * 1800)
+def _escolher(cliente: TestClient, modelo: str | None = MODELO, voz: str | None = VOZ) -> None:
+    resposta = cliente.put("/configuracao", json={"modelo_narracao": modelo, "narracao_voz": voz})
+    assert resposta.status_code == 200, resposta.text
 
-    resposta = cliente.get(f"/capitulos/{capitulo_id}/audio/estimativa")
+
+@pytest.fixture
+def narrar_com(usar_provedor_falso, usar_criador_de_sessao_de_teste):
+    """``narrar_com(**opcoes)`` põe um ``ProvedorFalso`` no lugar do provedor e liga o segundo plano ao banco de teste."""
+
+    def preparar(**opcoes) -> ProvedorFalso:
+        return usar_provedor_falso(ProvedorFalso(**opcoes))
+
+    return preparar
+
+
+def teste_escolher_o_modelo_de_voz_grava_e_apagar_com_vazio_desfaz(cliente: TestClient) -> None:
+    assert cliente.get("/configuracao").json()["modelo_narracao"] is None
+    _escolher(cliente)
+    corpo = cliente.get("/configuracao").json()
+    assert corpo["modelo_narracao"] == MODELO and corpo["narracao_voz"] == VOZ
+
+    cliente.put("/configuracao", json={"modelo_narracao": "  "})
+    assert cliente.get("/configuracao").json()["modelo_narracao"] is None
+
+
+def teste_a_lista_de_modelos_de_voz_traz_vozes_preco_e_gratuito(cliente: TestClient, narrar_com) -> None:
+    narrar_com()
+
+    resposta = cliente.get("/configuracao/modelos-de-narracao")
 
     assert resposta.status_code == 200
-    corpo = resposta.json()
+    por_id = {m["id"]: m for m in resposta.json()}
+    assert por_id[MODELO]["vozes"][0].startswith("pt-BR-") and Decimal(por_id[MODELO]["preco_por_caractere"]) == Decimal("0.000015")
+    assert por_id["google/gemini-3.8-flash-tts"]["preco_por_caractere"] is None
+    assert por_id["fish-audio/s2.1-pro-free:free"]["gratuito"] is True
+
+
+def teste_a_lista_de_modelos_de_voz_com_o_servico_fora_do_ar_responde_502(cliente: TestClient, narrar_com) -> None:
+    narrar_com(erro=ErroDoProvedorIA("fora do ar"))
+    assert cliente.get("/configuracao/modelos-de-narracao").status_code == 502
+
+
+def teste_estimativa_diz_caracteres_minutos_e_custo_pelo_preco_do_catalogo(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    narrar_com()
+    capitulo_id = _capitulo(cliente, sessao_com_tabelas, "x" * (CARACTERES_POR_MINUTO * 2))
+    _escolher(cliente)
+
+    corpo = cliente.get(f"/capitulos/{capitulo_id}/audio/estimativa").json()
+
     assert corpo["caracteres"] == 1800 and corpo["minutos"] == 2.0
-    assert Decimal(corpo["custo_estimado"]) == Decimal("0.0018")
-    assert corpo["modelo"] == "gpt-4o-mini-tts" and corpo["voz"] is None and corpo["ja_gerado"] is False
+    assert Decimal(corpo["custo_estimado"]) == Decimal("0.0270")  # 1800 × 0,000015
+    assert corpo["modelo"] == MODELO and corpo["voz"] == VOZ and corpo["ja_gerado"] is False
 
 
-def teste_gerar_sem_chave_da_openai_responde_422_e_nao_cria_nada(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    usar_narrador_falso(NarradorFalso(disponivel=False))
+def teste_estimativa_sem_preco_por_caractere_ou_sem_catalogo_vem_nula_e_sem_modelo_responde_422(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    provedor = narrar_com()
+    capitulo_id = _capitulo(cliente, sessao_com_tabelas, "x" * 100)
+    assert cliente.get(f"/capitulos/{capitulo_id}/audio/estimativa").status_code == 422  # nenhum modelo escolhido
+
+    _escolher(cliente, "google/gemini-3.8-flash-tts", "Zephyr")
+    assert cliente.get(f"/capitulos/{capitulo_id}/audio/estimativa").json()["custo_estimado"] is None  # cobra por token
+
+    _escolher(cliente)
+    provedor._erro = ErroDoProvedorIA("fora do ar")
+    assert cliente.get(f"/capitulos/{capitulo_id}/audio/estimativa").json()["custo_estimado"] is None  # o catálogo não respondeu
+
+
+def teste_gerar_sem_modelo_sem_chave_ou_sem_texto_responde_422_e_nao_cria_nada(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    narrar_com()
     capitulo_id = _capitulo(cliente, sessao_com_tabelas)
+    resposta = cliente.post(f"/capitulos/{capitulo_id}/audio")  # nenhum modelo escolhido
+    assert resposta.status_code == 422 and "Configurações → Narração" in resposta.json()["detail"]
 
+    _escolher(cliente)
+    narrar_com(pode_narrar=False)
     resposta = cliente.post(f"/capitulos/{capitulo_id}/audio")
+    assert resposta.status_code == 422 and "CHAVE_API_OPENROUTER" in resposta.json()["detail"]
 
-    assert resposta.status_code == 422 and "OPENAI_API_KEY" in resposta.json()["detail"]
+    narrar_com()
+    sessao_com_tabelas.get(Capitulo, capitulo_id).texto = "   \n "
+    sessao_com_tabelas.commit()
+    assert cliente.post(f"/capitulos/{capitulo_id}/audio").status_code == 422
+
     assert sessao_com_tabelas.scalars(select(AudioDeCapitulo)).all() == []
 
 
-def teste_gerar_capitulo_sem_texto_responde_422(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    usar_narrador_falso(NarradorFalso())
-    capitulo_id = _capitulo(cliente, sessao_com_tabelas, "   \n ")
-
-    assert cliente.post(f"/capitulos/{capitulo_id}/audio").status_code == 422
-
-
-def teste_gerar_conta_a_voz_e_o_tom_da_configuracao_e_deixa_o_audio_pronto(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    narrador = usar_narrador_falso(NarradorFalso())
+def teste_gerar_usa_o_modelo_e_a_voz_da_configuracao_e_deixa_o_audio_pronto(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    provedor = narrar_com()
     capitulo_id = _capitulo(cliente, sessao_com_tabelas, _tres_trechos())
-    cliente.put("/configuracao", json={"narracao_voz": "nova", "narracao_instrucoes": "voz grave e calma"})
+    _escolher(cliente)
 
     resposta = cliente.post(f"/capitulos/{capitulo_id}/audio")
 
     assert resposta.status_code == 202
     assert resposta.json()["situacao"] == "GERANDO"  # o que a rota respondeu na hora; o resto roda em segundo plano
-    assert [(len(t), v, i) for t, v, i in narrador.pedidos] == [(3000, "nova", "voz grave e calma")] * 3
+    assert [(len(t), m, v) for t, m, v in provedor.chamadas_de_narracao] == [(2000, MODELO, VOZ)] * 3
 
     estado = cliente.get(f"/capitulos/{capitulo_id}/audio/estado").json()
-    assert estado["situacao"] == "PRONTO" and estado["voz"] == "nova" and estado["erro"] is None
-    assert estado["caracteres"] == 9002 and estado["tamanho_em_bytes"] == len(b"MP3[1]MP3[2]MP3[3]")
-    assert Decimal(estado["custo"]) == Decimal(9000) / 1_000_000
+    assert estado["situacao"] == "PRONTO" and estado["modelo"] == MODELO and estado["voz"] == VOZ and estado["erro"] is None
+    assert estado["caracteres"] == 6002 and estado["tamanho_em_bytes"] == len(b"MP3[1]MP3[2]MP3[3]")
+    assert Decimal(estado["custo"]) == Decimal(6000) / 1_000_000
 
 
-def teste_o_arquivo_e_a_juncao_dos_trechos_em_ordem_e_aceita_range(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    usar_narrador_falso(NarradorFalso())
+def teste_sem_voz_escolhida_a_narracao_vai_com_a_voz_padrao_do_modelo(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    provedor = narrar_com()
+    capitulo_id = _capitulo(cliente, sessao_com_tabelas, "Um texto curto.")
+    _escolher(cliente, voz=None)
+
+    cliente.post(f"/capitulos/{capitulo_id}/audio")
+
+    assert provedor.chamadas_de_narracao == [("Um texto curto.", MODELO, None)]
+
+
+def teste_o_arquivo_e_a_juncao_dos_trechos_em_ordem_e_aceita_range(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    narrar_com()
     capitulo_id = _capitulo(cliente, sessao_com_tabelas, _tres_trechos())
+    _escolher(cliente)
     cliente.post(f"/capitulos/{capitulo_id}/audio")
 
     inteiro = cliente.get(f"/capitulos/{capitulo_id}/audio")
@@ -205,74 +323,86 @@ def teste_o_arquivo_e_a_juncao_dos_trechos_em_ordem_e_aceita_range(cliente: Test
     assert pedaco.status_code == 206 and pedaco.content == b"MP3[2]"
 
 
-def teste_cada_trecho_concluido_e_registrado_como_gasto_estimado_do_livro(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    usar_narrador_falso(NarradorFalso())
+def teste_o_gasto_de_cada_trecho_e_anotado_com_o_livro_do_capitulo(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    class ProvedorQueConfereOLivro(ProvedorFalso):
+        livros_vistos: list = []
+
+        def narrar(self, texto, modelo, voz):
+            self.livros_vistos.append(uso_de_ia._livro_do_gasto.get())
+            return super().narrar(texto, modelo, voz)
+
+    from imagineer.rotas.configuracao import obter_provedor
+    from imagineer.principal import aplicacao
+
+    aplicacao.dependency_overrides[obter_provedor] = lambda: ProvedorQueConfereOLivro()
     livro = _livro(cliente)
     capitulo_id = livro["capitulos"][0]["id"]
     sessao_com_tabelas.get(Capitulo, capitulo_id).texto = _tres_trechos()
     sessao_com_tabelas.commit()
+    _escolher(cliente)
 
     cliente.post(f"/capitulos/{capitulo_id}/audio")
 
-    usos = sessao_com_tabelas.scalars(select(UsoDeIA).where(UsoDeIA.operacao == "narracao")).all()
-    assert len(usos) == 3
-    assert {(u.provedor, u.modelo, u.estimado, u.livro_id) for u in usos} == {("openai", "gpt-4o-mini-tts", True, livro["id"])}
-    assert [u.custo for u in usos] == [Decimal("0.003")] * 3
+    assert ProvedorQueConfereOLivro.livros_vistos == [livro["id"]] * 3  # o provedor anota dentro de gasto_do_livro (NA6)
 
 
-def teste_falha_no_meio_marca_falhou_sem_arquivo_e_registra_o_que_ja_foi_gasto(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    usar_narrador_falso(NarradorFalso(falhar_no_trecho=2))
+def teste_falha_no_meio_marca_falhou_sem_arquivo_e_guarda_o_custo_dos_trechos_feitos(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    narrar_com(narracao_falha_no_trecho=2)
     capitulo_id = _capitulo(cliente, sessao_com_tabelas, _tres_trechos())
+    _escolher(cliente)
 
     cliente.post(f"/capitulos/{capitulo_id}/audio")
 
     estado = cliente.get(f"/capitulos/{capitulo_id}/audio/estado").json()
     assert estado["situacao"] == "FALHOU" and "falha de teste" in estado["erro"]
     assert estado["tamanho_em_bytes"] is None
-    assert Decimal(estado["custo"]) == Decimal("0.003")  # o primeiro trecho foi cobrado
-    assert len(sessao_com_tabelas.scalars(select(UsoDeIA)).all()) == 1
+    assert Decimal(estado["custo"]) == Decimal("0.002")  # o primeiro trecho foi cobrado
     assert not any(caminho_absoluto("audios").rglob("*.mp3"))  # nunca há arquivo parcial (NA7)
     assert cliente.get(f"/capitulos/{capitulo_id}/audio").status_code == 404
 
 
-def teste_ja_pronto_devolve_200_sem_gastar_e_refazer_gera_de_novo_e_substitui_o_antigo(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    narrador = usar_narrador_falso(NarradorFalso())
+def teste_ja_pronto_devolve_200_sem_gastar_e_refazer_gera_de_novo_e_substitui_o_antigo(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    provedor = narrar_com()
     capitulo_id = _capitulo(cliente, sessao_com_tabelas, "Um texto curto.")
+    _escolher(cliente)
     primeiro = cliente.post(f"/capitulos/{capitulo_id}/audio")
-    assert primeiro.status_code == 202 and len(narrador.pedidos) == 1
+    assert primeiro.status_code == 202 and len(provedor.chamadas_de_narracao) == 1
     arquivo_antigo = caminho_absoluto(sessao_com_tabelas.scalars(select(AudioDeCapitulo.arquivo)).one())
     assert cliente.get(f"/capitulos/{capitulo_id}/audio/estimativa").json()["ja_gerado"] is True
 
     de_novo = cliente.post(f"/capitulos/{capitulo_id}/audio")
     assert de_novo.status_code == 200 and de_novo.json()["situacao"] == "PRONTO"
-    assert len(narrador.pedidos) == 1  # nenhuma chamada nova, nenhum gasto
+    assert len(provedor.chamadas_de_narracao) == 1  # nenhuma chamada nova, nenhum gasto
 
     refeito = cliente.post(f"/capitulos/{capitulo_id}/audio", json={"refazer": True})
-    assert refeito.status_code == 202 and len(narrador.pedidos) == 2
+    assert refeito.status_code == 202 and len(provedor.chamadas_de_narracao) == 2
     linhas = sessao_com_tabelas.scalars(select(AudioDeCapitulo)).all()
     assert len(linhas) == 1 and linhas[0].situacao == SituacaoDoAudio.PRONTO  # o antigo saiu
     assert not arquivo_antigo.exists() and caminho_absoluto(linhas[0].arquivo).is_file()
 
 
-def teste_ja_gerando_responde_409(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    narrador = usar_narrador_falso(NarradorFalso())
+def teste_ja_gerando_responde_409(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    provedor = narrar_com()
     capitulo_id = _capitulo(cliente, sessao_com_tabelas)
-    sessao_com_tabelas.add(AudioDeCapitulo(capitulo_id=capitulo_id, modelo="gpt-4o-mini-tts", situacao=SituacaoDoAudio.GERANDO))
+    _escolher(cliente)
+    sessao_com_tabelas.add(AudioDeCapitulo(capitulo_id=capitulo_id, modelo=MODELO, voz=VOZ, situacao=SituacaoDoAudio.GERANDO))
     sessao_com_tabelas.commit()
 
     resposta = cliente.post(f"/capitulos/{capitulo_id}/audio")
 
-    assert resposta.status_code == 409 and narrador.pedidos == []
+    assert resposta.status_code == 409 and provedor.chamadas_de_narracao == []
 
 
-def teste_gerando_preso_ha_mais_de_30_minutos_vale_como_falhou_e_libera_uma_nova_geracao(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    usar_narrador_falso(NarradorFalso())
+def teste_gerando_preso_ha_mais_de_30_minutos_vale_como_falhou_e_libera_uma_nova_geracao(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    narrar_com()
     capitulo_id = _capitulo(cliente, sessao_com_tabelas, "Um texto curto.")
-    preso = AudioDeCapitulo(
-        capitulo_id=capitulo_id, modelo="gpt-4o-mini-tts", situacao=SituacaoDoAudio.GERANDO,
-        criado_em=datetime.now(timezone.utc) - timedelta(minutes=31),
+    _escolher(cliente)
+    sessao_com_tabelas.add(
+        AudioDeCapitulo(
+            capitulo_id=capitulo_id, modelo=MODELO, voz=VOZ, situacao=SituacaoDoAudio.GERANDO,
+            criado_em=datetime.now(timezone.utc) - timedelta(minutes=31),
+        )
     )
-    sessao_com_tabelas.add(preso)
     sessao_com_tabelas.commit()
 
     assert cliente.get(f"/capitulos/{capitulo_id}/audio/estado").json()["situacao"] == "FALHOU"
@@ -280,23 +410,27 @@ def teste_gerando_preso_ha_mais_de_30_minutos_vale_como_falhou_e_libera_uma_nova
     assert cliente.get(f"/capitulos/{capitulo_id}/audio/estado").json()["situacao"] == "PRONTO"
 
 
-def teste_trocar_a_voz_ou_o_tom_gera_outro_audio_e_o_antigo_nao_conta(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    usar_narrador_falso(NarradorFalso())
+def teste_trocar_a_voz_ou_o_modelo_gera_outro_audio_e_o_antigo_nao_conta(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    narrar_com()
     capitulo_id = _capitulo(cliente, sessao_com_tabelas, "Um texto curto.")
+    _escolher(cliente)
     cliente.post(f"/capitulos/{capitulo_id}/audio")
     assert cliente.get(f"/capitulos/{capitulo_id}/audio/estado").json()["situacao"] == "PRONTO"
 
-    cliente.put("/configuracao", json={"narracao_voz": "onyx"})
+    _escolher(cliente, voz="pt-BR-Caio:MAI-Voice-2.1-Flash")
     assert cliente.get(f"/capitulos/{capitulo_id}/audio/estado").json()["situacao"] == "NAO_GERADO"
     assert cliente.get(f"/capitulos/{capitulo_id}/audio").status_code == 404
-
     assert cliente.post(f"/capitulos/{capitulo_id}/audio").status_code == 202
+
+    _escolher(cliente, modelo="google/gemini-3.8-flash-tts", voz="Zephyr")
+    assert cliente.get(f"/capitulos/{capitulo_id}/audio/estado").json()["situacao"] == "NAO_GERADO"
     assert len(sessao_com_tabelas.scalars(select(AudioDeCapitulo)).all()) == 2  # os dois ficam (NA4)
 
 
-def teste_apagar_remove_as_linhas_e_os_arquivos(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
-    usar_narrador_falso(NarradorFalso())
+def teste_apagar_remove_as_linhas_e_os_arquivos(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
+    narrar_com()
     capitulo_id = _capitulo(cliente, sessao_com_tabelas, "Um texto curto.")
+    _escolher(cliente)
     cliente.post(f"/capitulos/{capitulo_id}/audio")
     arquivo = caminho_absoluto(sessao_com_tabelas.scalars(select(AudioDeCapitulo.arquivo)).one())
     assert arquivo.is_file()
@@ -307,11 +441,12 @@ def teste_apagar_remove_as_linhas_e_os_arquivos(cliente: TestClient, sessao_com_
     assert sessao_com_tabelas.scalars(select(AudioDeCapitulo)).all() == []
 
 
-def teste_apagar_o_livro_de_vez_leva_os_arquivos_de_narracao(cliente: TestClient, sessao_com_tabelas, usar_narrador_falso) -> None:
+def teste_apagar_o_livro_de_vez_leva_os_arquivos_de_narracao(cliente: TestClient, sessao_com_tabelas, narrar_com) -> None:
     from imagineer.servicos.lixeira import apagar_livro_de_vez
 
-    usar_narrador_falso(NarradorFalso())
+    narrar_com()
     livro = _livro(cliente)
+    _escolher(cliente)
     cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/audio")
     arquivo = caminho_absoluto(sessao_com_tabelas.scalars(select(AudioDeCapitulo.arquivo)).one())
     assert arquivo.is_file()
@@ -323,19 +458,8 @@ def teste_apagar_o_livro_de_vez_leva_os_arquivos_de_narracao(cliente: TestClient
     assert sessao_com_tabelas.scalars(select(AudioDeCapitulo)).all() == []
 
 
-def teste_hash_das_instrucoes_ignora_espacos_nas_pontas_e_e_vazio_sem_instrucao() -> None:
-    assert narracao.hash_das_instrucoes(None) == "" and narracao.hash_das_instrucoes("   ") == ""
-    assert narracao.hash_das_instrucoes(" suspense ") == narracao.hash_das_instrucoes("suspense")
-    assert narracao.hash_das_instrucoes("suspense") != narracao.hash_das_instrucoes("calma")
+def teste_parametros_da_narracao_sem_modelo_ficam_nulos_e_a_voz_vazia_e_a_padrao() -> None:
+    from imagineer.modelos import Configuracao
 
-
-def teste_a_configuracao_diz_se_o_servidor_pode_narrar_com_ia(cliente: TestClient, monkeypatch) -> None:
-    assert cliente.get("/configuracao").json()["narracao_ia_disponivel"] is False
-
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-teste")
-    obter_configuracoes.cache_clear()
-    try:
-        assert cliente.get("/configuracao").json()["narracao_ia_disponivel"] is True
-    finally:
-        monkeypatch.delenv("OPENAI_API_KEY")
-        obter_configuracoes.cache_clear()
+    assert narracao.parametros_da_narracao(Configuracao()) == (None, "")
+    assert narracao.parametros_da_narracao(Configuracao(modelo_narracao=" a/b ", narracao_voz=" v ")) == ("a/b", "v")

@@ -1,7 +1,7 @@
-"""audios de capitulo: a narracao por voz de IA (NA4)
+"""audios de capitulo e modelo de narracao: a narracao por voz de IA (NA1, NA4)
 
-Tabela nova `audios_de_capitulo`: um MP3 por (capitulo, voz, instrucoes), gerado pelo servidor. So o caminho relativo do arquivo vai
-para o banco. Nada muda para quem nao usa a narracao por IA.
+Tabela nova `audios_de_capitulo`: um MP3 por (capitulo, modelo, voz), gerado pelo servidor. So o caminho relativo do arquivo vai
+para o banco. E uma coluna nova em `configuracao`: `modelo_narracao`, o modelo de voz do OpenRouter. Nada muda para quem nao usa a narracao.
 
 Identificador desta migration: a1b2c3d4e5f7
 Vem depois de: f2a3b4c5d6e7
@@ -25,10 +25,8 @@ def aplicar() -> None:
         "audios_de_capitulo",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("capitulo_id", sa.Integer(), sa.ForeignKey("capitulos.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("motor", sa.String(length=20), nullable=False, server_default="openai"),
-        sa.Column("modelo", sa.String(length=100), nullable=False),
+        sa.Column("modelo", sa.String(length=200), nullable=False),
         sa.Column("voz", sa.String(length=100), nullable=False, server_default=""),
-        sa.Column("instrucoes_hash", sa.String(length=40), nullable=False, server_default=""),
         sa.Column("situacao", sa.String(length=20), nullable=False),
         sa.Column("erro", sa.Text(), nullable=True),
         sa.Column("arquivo", sa.String(length=500), nullable=True),
@@ -38,10 +36,12 @@ def aplicar() -> None:
         sa.Column("criado_em", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
     op.create_index("ix_audios_de_capitulo_capitulo_id", "audios_de_capitulo", ["capitulo_id"])
+    op.add_column("configuracao", sa.Column("modelo_narracao", sa.String(length=200), nullable=True))
 
 
 def reverter() -> None:
-    """Remove a tabela; os arquivos de audio ficam no disco (apague a pasta `audios/` se quiser)."""
+    """Remove a tabela e a coluna; os arquivos de audio ficam no disco (apague a pasta `audios/` se quiser)."""
+    op.drop_column("configuracao", "modelo_narracao")
     op.drop_index("ix_audios_de_capitulo_capitulo_id", table_name="audios_de_capitulo")
     op.drop_table("audios_de_capitulo")
 

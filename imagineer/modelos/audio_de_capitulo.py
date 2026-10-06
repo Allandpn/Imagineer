@@ -21,7 +21,7 @@ class SituacaoDoAudio(enum.Enum):
 class AudioDeCapitulo(Base):
     """O MP3 de um capítulo, gerado pelo servidor com a voz e o tom escolhidos.
 
-    **Um áudio por (capítulo, voz, instruções)**: trocar a voz ou o tom gera **outro** áudio; o antigo fica até ser apagado. Só o caminho
+    **Um áudio por (capítulo, modelo, voz)**: trocar o modelo de voz ou a voz gera **outro** áudio; o antigo fica até ser apagado. Só o caminho
     relativo do arquivo vai para o banco (como nas imagens e nos vídeos); o arquivo mora em ``DIRETORIO_IMAGENS/audios/``. Apagar o
     áudio apaga também o arquivo: um capítulo longo passa de uma dezena de megabytes.
     """
@@ -32,17 +32,11 @@ class AudioDeCapitulo(Base):
 
     capitulo_id: Mapped[int] = mapped_column(ForeignKey("capitulos.id", ondelete="CASCADE"), index=True)
 
-    motor: Mapped[str] = mapped_column(String(20), default="openai", server_default="openai")
-    """Quem falou. Hoje só ``openai`` (NA1); a coluna existe para outro fornecedor entrar sem migração."""
-
-    modelo: Mapped[str] = mapped_column(String(100))
+    modelo: Mapped[str] = mapped_column(String(200))
+    """O modelo de voz do OpenRouter que falou (``configuracao.modelo_narracao``), como ``microsoft/mai-voice-2.1-flash``."""
 
     voz: Mapped[str] = mapped_column(String(100), default="", server_default="")
     """A voz usada; vazia = a padrão do fornecedor (``configuracao.narracao_voz`` nula)."""
-
-    instrucoes_hash: Mapped[str] = mapped_column(String(40), default="", server_default="")
-    """SHA-1 do texto das instruções de tom; vazio = sem instrução. Guardar o hash, e não o texto, basta para saber se o áudio ainda
-    vale para as instruções de agora."""
 
     situacao: Mapped[SituacaoDoAudio] = mapped_column(
         Enum(SituacaoDoAudio, native_enum=False, length=20, create_constraint=False, values_callable=lambda tipo: [m.value for m in tipo]),

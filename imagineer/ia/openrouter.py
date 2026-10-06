@@ -22,7 +22,9 @@ from imagineer.ia.fornecedores_de_imagem import (
     separar_fornecedor,
 )
 from imagineer.ia.provedor import (
+    AudioNarrado,
     ModeloDeImagemDisponivel,
+    ModeloDeVoz,
     ReferenciasParaGerar,
     CenaSugerida,
     ChaveDeApiAusente,
@@ -797,6 +799,8 @@ class ProvedorOpenRouter(ProvedorIA):
         """Os geradores de imagem dos outros fornecedores (fal.ai, Replicate), só dos que têm chave (F2)."""
         self._chave_api = chave_api
         self._cliente = cliente or httpx.Client(base_url=ENDERECO_BASE, timeout=TEMPO_LIMITE)
+        self._precos_de_voz: dict[str, Decimal | None] | None = None
+        """O preço por caractere de cada modelo de voz, lido do catálogo **uma vez** por provedor (NA3)."""
         self._ao_usar = ao_usar
         """Chamada depois de cada conversa bem-sucedida, com o que ela consumiu (item 4.3).
         O provedor não sabe o que fazer com isso (gravar, somar...): só avisa."""
@@ -852,6 +856,80 @@ class ProvedorOpenRouter(ProvedorIA):
                 )
             )
         return sorted(modelos, key=lambda m: m.nome.lower())
+
+    # ----------------------------------------------------------------------- #
+    # Voz (NA1 a NA3)
+    # ----------------------------------------------------------------------- #
+
+    def listar_modelos_de_voz(self) -> list[ModeloDeVoz]:
+        """Os modelos de **voz** do OpenRouter (endpoint público, sem chave), com as vozes e o preço **por caractere** (NA1).
+
+        O preço só vale como "por caractere" quando o modelo cobra **só** a entrada (``pricing.prompt``): quem cobra também por token de
+        saída (Gemini TTS) ou só por segundo (Seed Audio) fica sem preço, porque dar um número daria um falso. Gratuito = preço zero."""
+        dados = self._pedir("GET", "/models?output_modalities=speech")
+        modelos = []
+        for bruto in dados.get("data", []):
+            if not bruto.get("id"):
+                continue
+            preco = bruto.get("pricing") or {}
+            entrada, saida = _decimal_ou_nulo(preco.get("prompt")), _decimal_ou_nulo(preco.get("completion"))
+            # Gratuito = **todo** preço zero (Seed Audio tem o prompt em zero e cobra por segundo: não é gratuito); sem preço nenhum = não se sabe.
+            gratuito = bool(preco) and all((_decimal_ou_nulo(v) or 0) == 0 for v in preco.values())
+            por_caractere = Decimal(0) if gratuito else (entrada if entrada and not saida else None)
+            modelos.append(
+                ModeloDeVoz(
+                    id=bruto["id"],
+                    nome=bruto.get("name") or bruto["id"],
+                    vozes=[str(v) for v in (bruto.get("supported_voices") or [])],
+                    preco_por_caractere=por_caractere,
+                    gratuito=gratuito,
+                )
+            )
+        return sorted(modelos, key=lambda m: (not m.gratuito, m.nome.lower()))
+
+    @property
+    def pode_narrar(self) -> bool:
+        return bool(self._chave_api)
+
+    def narrar(self, texto: str, modelo: str, voz: str | None) -> AudioNarrado:
+        """Fala o texto pelo endpoint de voz do OpenRouter (``/audio/speech``, compatível com o da OpenAI) e devolve o MP3 (NA1)."""
+        if not modelo:
+            raise ModeloNaoEscolhido("Nenhum modelo de narração foi escolhido. Escolha um em Configurações → Narração.")
+        if not self._chave_api:
+            raise ChaveDeApiAusente(
+                "Não há chave de API do OpenRouter configurada. Defina a variável de ambiente CHAVE_API_OPENROUTER ou mande a sua chave pelo app."
+            )
+        corpo = {"model": modelo, "input": texto, "response_format": "mp3"}
+        if voz:
+            corpo["voice"] = voz
+
+        conteudo, cabecalhos = self._pedir_audio(corpo)
+        custo = self._custo_da_narracao(modelo, len(texto))
+        id_da_geracao = cabecalhos.get("x-generation-id")
+        self._avisar_narracao(modelo, custo, id_da_geracao)
+        return AudioNarrado(conteudo=conteudo, custo=custo, id_da_geracao=id_da_geracao)
+
+    def _custo_da_narracao(self, modelo: str, caracteres: int) -> Decimal | None:
+        """Caracteres × o preço por caractere que o catálogo informa (NA3); ``None`` se o modelo não cobra por caractere ou o catálogo falhou."""
+        if self._precos_de_voz is None:
+            try:
+                self._precos_de_voz = {m.id: m.preco_por_caractere for m in self.listar_modelos_de_voz()}
+            except ErroDoProvedorIA:
+                logging.getLogger(__name__).warning("Não foi possível ler os preços das vozes do OpenRouter agora.")
+                return None  # tenta de novo no próximo trecho
+        preco = self._precos_de_voz.get(modelo)
+        return None if preco is None else (Decimal(caracteres) * preco).quantize(Decimal("0.00000001"))
+
+    def _avisar_narracao(self, modelo: str, custo: Decimal | None, id_da_geracao: str | None) -> None:
+        """Avisa o ``ao_usar`` do trecho falado. **Nunca derruba a chamada** (como ``_avisar_uso``). O custo vai como estimado (CU2)."""
+        if self._ao_usar is None:
+            return
+        try:
+            self._ao_usar(
+                UsoDaChamada(operacao="narracao", modelo=modelo, custo=custo, id_da_geracao=id_da_geracao, estimado=custo is not None)
+            )
+        except Exception:  # noqa: BLE001 - de propósito: métrica nunca derruba a chamada
+            logging.getLogger(__name__).exception("Não foi possível anotar o consumo da narração.")
 
     # ----------------------------------------------------------------------- #
     # As três operações do item 4.2
@@ -1351,6 +1429,30 @@ class ProvedorOpenRouter(ProvedorIA):
                 "O OpenRouter respondeu algo que não é JSON."
             ) from erro
 
+    def _pedir_audio(self, corpo: dict) -> tuple[bytes, httpx.Headers]:
+        """``POST /audio/speech``: devolve os bytes do áudio e os cabeçalhos, traduzindo qualquer falha em ``ErroDoProvedorIA``.
+
+        A resposta é o **áudio cru**, não JSON; já os erros (status 400 ou mais) vêm em JSON."""
+        try:
+            resposta = self._cliente.post("/audio/speech", json=corpo, headers={"Authorization": f"Bearer {self._chave_api}"})
+        except httpx.TimeoutException as erro:
+            raise ErroDoProvedorIA("O OpenRouter não respondeu no tempo esperado ao narrar um trecho.") from erro
+        except httpx.HTTPError as erro:
+            raise ErroDoProvedorIA(f"Não foi possível falar com o OpenRouter: {erro}") from erro
+
+        if resposta.status_code == 401:
+            raise ChaveDeApiAusente("O OpenRouter recusou a chave de API. Verifique se ela está certa.")
+        if resposta.status_code == 402:
+            raise ErroHttpDoProvedor(402, resposta.text, "O OpenRouter recusou por falta de saldo (402). Adicione créditos ou escolha um modelo gratuito.")
+        if resposta.status_code >= 400:
+            detalhe = _resumir(resposta.text)
+            if "voice" in resposta.text.lower():
+                detalhe = f"{detalhe} — este modelo pode exigir uma voz (ou não ter a que foi escolhida): confira em Configurações → Narração."
+            raise ErroHttpDoProvedor(resposta.status_code, resposta.text, f"O OpenRouter respondeu {resposta.status_code}: {detalhe}")
+        if not resposta.content or "json" in resposta.headers.get("content-type", ""):
+            raise ErroDoProvedorIA("O OpenRouter não devolveu um áudio para este trecho.")
+        return resposta.content, resposta.headers
+
 
 def estimar_tokens(texto: str) -> int:
     """Estima quantos tokens um texto ocupa.
@@ -1474,6 +1576,14 @@ def _numero_ou_nulo(valor: object) -> float | None:
     try:
         return float(valor)  # type: ignore[arg-type]
     except (TypeError, ValueError):
+        return None
+
+
+def _decimal_ou_nulo(valor: object) -> Decimal | None:
+    """O número em ``valor`` como ``Decimal`` (o OpenRouter manda os preços como texto, e dinheiro não se faz com ``float``), ou ``None``."""
+    try:
+        return Decimal(str(valor))
+    except (InvalidOperation, ValueError):
         return None
 
 

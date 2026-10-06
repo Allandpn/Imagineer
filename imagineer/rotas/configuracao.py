@@ -117,14 +117,14 @@ class ConfiguracaoAtual(BaseModel):
         )
     )
     narracao_motor: MotorDeNarracao = Field(
-        description="Quem narra (RL21): `APARELHO` (a voz do Android, o padrão) ou `IA` (o servidor gera o MP3 do capítulo, NA1; só vale se `narracao_ia_disponivel`)."
+        description="Quem narra (RL21): `APARELHO` (a voz do Android, o padrão) ou `IA` (o servidor gera o MP3 do capítulo com `modelo_narracao`, NA1)."
     )
-    narracao_ia_disponivel: bool = Field(
-        description="O servidor tem a chave da OpenAI (`OPENAI_API_KEY`), então `POST /capitulos/{id}/audio` funciona (NA8). O app só oferece o motor `IA` quando é `true`."
+    modelo_narracao: str | None = Field(
+        description="O modelo de **voz** do OpenRouter que fala o capítulo (NA1); nulo = nenhum escolhido. A lista: `GET /configuracao/modelos-de-narracao`."
     )
     narracao_modo: ModoDeNarracao = Field(description="`UMA_VOZ` (padrão) ou `POR_PERSONAGEM` (RL25). Guardado; só `UMA_VOZ` gera áudio por enquanto (NA10).")
-    narracao_voz: str | None = Field(description="A voz do motor de IA (RL24); nula = a padrão do fornecedor.")
-    narracao_instrucoes: str | None = Field(description="As instruções de tom da narração (RL23), em texto livre.")
+    narracao_voz: str | None = Field(description="A voz do `modelo_narracao` (RL24), como `pt-BR-Luana:MAI-Voice-2.1-Flash`; nula = a padrão do modelo (alguns modelos exigem uma).")
+    narracao_instrucoes: str | None = Field(description="As instruções de tom da narração (RL23), em texto livre. Guardadas, mas **ainda não enviadas** ao modelo (NA2).")
 
 
 class ConfiguracaoNova(BaseModel):
@@ -155,6 +155,7 @@ class ConfiguracaoNova(BaseModel):
     modelo_video: str | None = Field(default=None, max_length=200)
     prioridade_ia: PrioridadeIA | None = None
     narracao_motor: MotorDeNarracao | None = None
+    modelo_narracao: str | None = Field(default=None, max_length=200)
     narracao_modo: ModoDeNarracao | None = None
     narracao_voz: str | None = Field(default=None, max_length=100)
     narracao_instrucoes: str | None = Field(default=None, max_length=2000)
@@ -259,7 +260,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         modelo_video=configuracao.modelo_video,
         prioridade_ia=configuracao.prioridade_ia,
         narracao_motor=configuracao.narracao_motor,
-        narracao_ia_disponivel=bool(obter_configuracoes().chave_api_openai.strip()),
+        modelo_narracao=configuracao.modelo_narracao,
         narracao_modo=configuracao.narracao_modo,
         narracao_voz=configuracao.narracao_voz,
         narracao_instrucoes=configuracao.narracao_instrucoes,

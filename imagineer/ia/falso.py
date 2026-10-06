@@ -13,11 +13,15 @@ erros.
 """
 
 import io
+from decimal import Decimal
 
 from PIL import Image
 
 from imagineer.ia.provedor import (
+    AudioNarrado,
+    ErroDoProvedorIA,
     ModeloDeImagemDisponivel,
+    ModeloDeVoz,
     ReferenciasParaGerar,
     CenaSugerida,
     ConteudoRecusado,
@@ -44,6 +48,12 @@ def imagem_falsa(largura: int = 20, altura: int = 30) -> bytes:
     saida = io.BytesIO()
     Image.new("RGB", (largura, altura), (120, 80, 40)).save(saida, format="PNG")
     return saida.getvalue()
+
+MODELOS_DE_VOZ_FALSOS = [
+    ModeloDeVoz(id="microsoft/mai-voice-2.1-flash", nome="Microsoft: MAI-Voice 2.1 Flash", vozes=["pt-BR-Caio:MAI-Voice-2.1-Flash", "pt-BR-Luana:MAI-Voice-2.1-Flash"], preco_por_caractere=Decimal("0.000015")),
+    ModeloDeVoz(id="google/gemini-3.8-flash-tts", nome="Google: Gemini 3.8 Flash TTS", vozes=["Zephyr", "Puck"], preco_por_caractere=None),
+    ModeloDeVoz(id="fish-audio/s2.1-pro-free:free", nome="Fish Audio: S2.1 Pro Free", preco_por_caractere=Decimal(0), gratuito=True),
+]
 
 MODELOS_DE_IMAGEM_FALSOS = [
     ModeloDeImagemDisponivel(id="meta/muse-image", nome="Muse Image", preco_por_token=0.0000024, moderado=True),
@@ -86,7 +96,13 @@ class ProvedorFalso(ProvedorIA):
         recusas_de_imagem: int = 0,
         prompt_suavizado: str = "a softer version of the prompt",
         prompt_de_video: str = "slow push-in, the subject breathes slowly. No on-screen text.",
+        pode_narrar: bool = True,
+        narracao_falha_no_trecho: int | None = None,
     ):
+        self._pode_narrar = pode_narrar
+        self._narracao_falha_no_trecho = narracao_falha_no_trecho
+        self.chamadas_de_narracao: list[tuple[str, str, str | None]] = []
+        """O que a narração recebeu, por trecho: ``(texto, modelo, voz)``."""
         self._prompt_de_video = prompt_de_video
         self.chamadas_de_video: list[dict] = []
         self._recusas_de_imagem = recusas_de_imagem
@@ -124,6 +140,23 @@ class ProvedorFalso(ProvedorIA):
         if self._erro is not None:
             raise self._erro
         return list(MODELOS_DE_IMAGEM_FALSOS)
+
+    def listar_modelos_de_voz(self) -> list[ModeloDeVoz]:
+        if self._erro is not None:
+            raise self._erro
+        return list(MODELOS_DE_VOZ_FALSOS)
+
+    @property
+    def pode_narrar(self) -> bool:
+        return self._pode_narrar
+
+    def narrar(self, texto: str, modelo: str, voz: str | None) -> AudioNarrado:
+        """Devolve ``MP3[n]`` (o n-ésimo trecho) e o custo de US$ 0,000001 por caractere; o trecho ``narracao_falha_no_trecho`` falha."""
+        self.chamadas_de_narracao.append((texto, modelo, voz))
+        numero = len(self.chamadas_de_narracao)
+        if self._narracao_falha_no_trecho == numero:
+            raise ErroDoProvedorIA("O OpenRouter respondeu 500: falha de teste.")
+        return AudioNarrado(conteudo=f"MP3[{numero}]".encode(), custo=Decimal(len(texto)) / 1_000_000, id_da_geracao=f"gen-{numero}")
 
     def extrair_elementos(
         self,

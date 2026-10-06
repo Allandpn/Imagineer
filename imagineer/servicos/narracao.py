@@ -2,10 +2,9 @@
 
 O fluxo (NA5): a rota cria a linha em ``GERANDO`` (``iniciar_audio``) e entrega o trabalho para o segundo plano (``gerar_audio``), que
 fala o capítulo trecho a trecho, junta os MP3 e só então grava o arquivo. **Nunca há arquivo parcial** (NA7): se um trecho falha, a linha
-vira ``FALHOU`` com o motivo. O gasto de cada trecho concluído é registrado na hora (NA6), em sessão própria.
+vira ``FALHOU`` com o motivo. O gasto de cada trecho concluído é anotado pelo provedor na hora (NA6).
 """
 
-import hashlib
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -14,11 +13,11 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from imagineer.ia.narradores import Narrador, dividir_em_trechos
-from imagineer.ia.provedor import ChaveDeApiAusente, ErroDoProvedorIA, UsoDaChamada
+from imagineer.ia.provedor import ChaveDeApiAusente, ErroDoProvedorIA, ModeloNaoEscolhido, ProvedorIA
 from imagineer.modelos import AudioDeCapitulo, Capitulo, Configuracao, SituacaoDoAudio
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
-from imagineer.servicos.uso_de_ia import gasto_do_livro, gravar_uso
+from imagineer.servicos.trechos_da_narracao import dividir_em_trechos
+from imagineer.servicos.uso_de_ia import gasto_do_livro
 
 LIMITE_PARA_GERANDO_PRESO = timedelta(minutes=30)
 """Uma linha ``GERANDO`` há mais tempo que isto é lida como ``FALHOU`` (NA7): o servidor reiniciou no meio e ninguém vai terminá-la."""
@@ -32,16 +31,10 @@ class CapituloSemTexto(Exception):
     """O capítulo não tem texto para narrar (vira 422 na rota)."""
 
 
-def hash_das_instrucoes(instrucoes: str | None) -> str:
-    """O SHA-1 das instruções de tom, ou vazio se não há instrução (NA4)."""
-    texto = (instrucoes or "").strip()
-    return hashlib.sha1(texto.encode("utf-8")).hexdigest() if texto else ""
-
-
-def parametros_da_narracao(configuracao: Configuracao) -> tuple[str, str | None]:
-    """A voz e as instruções **de agora** (RL23/RL24): o que a pessoa escolheu em Configurações → Narração. A voz vazia é a padrão."""
-    instrucoes = (configuracao.narracao_instrucoes or "").strip() or None
-    return (configuracao.narracao_voz or "").strip(), instrucoes
+def parametros_da_narracao(configuracao: Configuracao) -> tuple[str | None, str]:
+    """O modelo de voz e a voz **de agora** (``modelo_narracao`` e ``narracao_voz``, NA1/RL24): o que a pessoa escolheu em Configurações →
+    Narração. O modelo é ``None`` se nenhum foi escolhido; a voz vazia é a padrão do modelo."""
+    return (configuracao.modelo_narracao or "").strip() or None, (configuracao.narracao_voz or "").strip()
 
 
 def _aware(momento: datetime) -> datetime:
@@ -56,28 +49,32 @@ def situacao_efetiva(audio: AudioDeCapitulo) -> SituacaoDoAudio:
     return audio.situacao
 
 
-def audio_de_agora(sessao: Session, capitulo_id: int, voz: str, hash_instrucoes: str) -> AudioDeCapitulo | None:
-    """O áudio mais recente do capítulo **com a voz e as instruções de agora**, em qualquer situação; ou ``None``."""
+def audio_de_agora(sessao: Session, capitulo_id: int, modelo: str | None, voz: str) -> AudioDeCapitulo | None:
+    """O áudio mais recente do capítulo **com o modelo e a voz de agora**, em qualquer situação; ou ``None`` (também sem modelo escolhido)."""
+    if modelo is None:
+        return None
     return sessao.scalar(
         select(AudioDeCapitulo)
         .where(
             AudioDeCapitulo.capitulo_id == capitulo_id,
+            AudioDeCapitulo.modelo == modelo,
             AudioDeCapitulo.voz == voz,
-            AudioDeCapitulo.instrucoes_hash == hash_instrucoes,
         )
         .order_by(AudioDeCapitulo.id.desc())
         .limit(1)
     )
 
 
-def audio_pronto(sessao: Session, capitulo_id: int, voz: str, hash_instrucoes: str) -> AudioDeCapitulo | None:
-    """O áudio ``PRONTO`` mais recente com a voz e as instruções de agora; ou ``None``."""
+def audio_pronto(sessao: Session, capitulo_id: int, modelo: str | None, voz: str) -> AudioDeCapitulo | None:
+    """O áudio ``PRONTO`` mais recente com o modelo e a voz de agora; ou ``None`` (também sem modelo escolhido)."""
+    if modelo is None:
+        return None
     return sessao.scalar(
         select(AudioDeCapitulo)
         .where(
             AudioDeCapitulo.capitulo_id == capitulo_id,
+            AudioDeCapitulo.modelo == modelo,
             AudioDeCapitulo.voz == voz,
-            AudioDeCapitulo.instrucoes_hash == hash_instrucoes,
             AudioDeCapitulo.situacao == SituacaoDoAudio.PRONTO,
         )
         .order_by(AudioDeCapitulo.id.desc())
@@ -85,7 +82,7 @@ def audio_pronto(sessao: Session, capitulo_id: int, voz: str, hash_instrucoes: s
     )
 
 
-def iniciar_audio(sessao: Session, capitulo: Capitulo, narrador: Narrador, voz: str, hash_instrucoes: str) -> AudioDeCapitulo:
+def iniciar_audio(sessao: Session, capitulo: Capitulo, modelo: str, voz: str) -> AudioDeCapitulo:
     """Cria a linha ``GERANDO``, com o commit feito. Levanta ``AudioEmAndamento`` se já há uma geração rodando neste capítulo."""
     for existente in sessao.scalars(select(AudioDeCapitulo).where(AudioDeCapitulo.capitulo_id == capitulo.id, AudioDeCapitulo.situacao == SituacaoDoAudio.GERANDO)):
         if situacao_efetiva(existente) == SituacaoDoAudio.GERANDO:
@@ -94,10 +91,8 @@ def iniciar_audio(sessao: Session, capitulo: Capitulo, narrador: Narrador, voz: 
         existente.erro = "A geração anterior foi interrompida (o servidor reiniciou no meio)."
     audio = AudioDeCapitulo(
         capitulo_id=capitulo.id,
-        motor=narrador.nome,
-        modelo=narrador.modelo,
+        modelo=modelo,
         voz=voz,
-        instrucoes_hash=hash_instrucoes,
         situacao=SituacaoDoAudio.GERANDO,
         caracteres=len(capitulo.texto or ""),
     )
@@ -110,29 +105,26 @@ def iniciar_audio(sessao: Session, capitulo: Capitulo, narrador: Narrador, voz: 
 def gerar_audio(
     criador: sessionmaker,
     audio_id: int,
-    narrador: Narrador,
+    provedor: ProvedorIA,
     texto: str,
+    modelo: str,
     voz: str,
-    instrucoes: str | None,
     livro_id: int,
 ) -> None:
     """O trabalho de segundo plano: fala o texto, grava o arquivo e marca ``PRONTO`` (ou ``FALHOU``). Nunca levanta exceção.
 
-    Usa uma sessão **própria** (``criador``): a da requisição já foi fechada quando isto roda.
+    Usa uma sessão **própria** (``criador``): a da requisição já foi fechada quando isto roda. O gasto de cada trecho é anotado pelo
+    próprio provedor (``ao_usar``, NA6) **durante** a chamada, dentro de ``gasto_do_livro`` para vir com o livro.
     """
     partes: list[bytes] = []
-    custo_total = Decimal(0)
+    custo_total: Decimal | None = None
     try:
-        for trecho in dividir_em_trechos(texto):
-            mp3 = narrador.narrar(trecho, voz or None, instrucoes)
-            custo = narrador.custo_estimado(len(trecho))
-            with gasto_do_livro(livro_id):
-                gravar_uso(
-                    UsoDaChamada(operacao="narracao", modelo=narrador.modelo, custo=custo, provedor=narrador.nome, estimado=True),
-                    criador,
-                )
-            partes.append(mp3)
-            custo_total += custo
+        with gasto_do_livro(livro_id):
+            for trecho in dividir_em_trechos(texto):
+                falado = provedor.narrar(trecho, modelo, voz or None)
+                partes.append(falado.conteudo)
+                if falado.custo is not None:
+                    custo_total = (custo_total or Decimal(0)) + falado.custo
         conteudo = b"".join(partes)
         with criador() as sessao:
             audio = sessao.get(AudioDeCapitulo, audio_id)
@@ -143,7 +135,7 @@ def gerar_audio(
             audio.erro = None
             _tirar_os_antigos(sessao, audio)
             sessao.commit()
-    except (ErroDoProvedorIA, ChaveDeApiAusente) as erro:
+    except (ErroDoProvedorIA, ChaveDeApiAusente, ModeloNaoEscolhido) as erro:
         _marcar_como_falha(criador, audio_id, str(erro), custo_total)
     except Exception:  # noqa: BLE001 — trabalho de segundo plano: ninguém mais está olhando para tratar
         logging.getLogger(__name__).exception("Falha inesperada ao gerar a narração do áudio %s", audio_id)
@@ -151,13 +143,13 @@ def gerar_audio(
 
 
 def _tirar_os_antigos(sessao: Session, novo: AudioDeCapitulo) -> None:
-    """Gerar de novo (``refazer``) não acumula arquivos: ao ficar ``PRONTO``, o áudio novo substitui os **outros** do mesmo capítulo, voz e
-    instruções (disco é do Raspberry Pi). Áudios com outra voz ou outro tom ficam (NA4)."""
+    """Gerar de novo (``refazer``) não acumula arquivos: ao ficar ``PRONTO``, o áudio novo substitui os **outros** do mesmo capítulo, modelo e
+    voz (disco é do Raspberry Pi). Áudios com outro modelo ou outra voz ficam (NA4)."""
     for antigo in sessao.scalars(
         select(AudioDeCapitulo).where(
             AudioDeCapitulo.capitulo_id == novo.capitulo_id,
+            AudioDeCapitulo.modelo == novo.modelo,
             AudioDeCapitulo.voz == novo.voz,
-            AudioDeCapitulo.instrucoes_hash == novo.instrucoes_hash,
             AudioDeCapitulo.id != novo.id,
         )
     ):
@@ -168,7 +160,7 @@ def _tirar_os_antigos(sessao: Session, novo: AudioDeCapitulo) -> None:
         sessao.delete(antigo)
 
 
-def _marcar_como_falha(criador: sessionmaker, audio_id: int, motivo: str, custo_ate_aqui: Decimal) -> None:
+def _marcar_como_falha(criador: sessionmaker, audio_id: int, motivo: str, custo_ate_aqui: Decimal | None) -> None:
     """``FALHOU`` com o motivo e o que já foi gasto (NA6/NA7); sem arquivo."""
     with criador() as sessao:
         audio = sessao.get(AudioDeCapitulo, audio_id)
@@ -176,7 +168,7 @@ def _marcar_como_falha(criador: sessionmaker, audio_id: int, motivo: str, custo_
             return
         audio.situacao = SituacaoDoAudio.FALHOU
         audio.erro = motivo
-        audio.custo = custo_ate_aqui or None
+        audio.custo = custo_ate_aqui
         sessao.commit()
 
 

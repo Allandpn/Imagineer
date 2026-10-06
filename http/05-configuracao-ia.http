@@ -68,16 +68,18 @@ Content-Type: application/json
 }
 
 ### Narração (RL21 a RL26; NA1 a NA10) — a voz e o tom que o POST /capitulos/{id}/audio usa
-# `GET /configuracao` traz `narracao_ia_disponivel` (o servidor tem a chave da OpenAI). Só `UMA_VOZ` gera áudio por enquanto.
+# O modelo de voz (`modelo_narracao`) e a voz vêm de GET /configuracao/modelos-de-narracao (OpenRouter, preço por caractere). Só `UMA_VOZ` gera áudio por enquanto.
+# `narracao_instrucoes` fica guardada, mas ainda não é enviada ao modelo (NA2).
 # narracao_motor: APARELHO (a voz do Android, padrão) ou IA. narracao_modo: UMA_VOZ (padrão) ou POR_PERSONAGEM.
 # narracao_voz e narracao_instrucoes: texto livre; vazio ou null apaga. Só o que vem no corpo muda.
 PUT {{baseUrl}}/configuracao
 Content-Type: application/json
 
 {
-  "narracao_motor": "APARELHO",
+  "narracao_motor": "IA",
+  "modelo_narracao": "microsoft/mai-voice-2.1-flash",
   "narracao_modo": "UMA_VOZ",
-  "narracao_voz": "nova",
+  "narracao_voz": "pt-BR-Luana:MAI-Voice-2.1-Flash",
   "narracao_instrucoes": "voz grave e calma, com suspense nas cenas de tensão"
 }
 
@@ -171,3 +173,6 @@ GET {{baseUrl}}/configuracao/modelos-de-imagem
 # Content-Type: application/json
 #
 # { "modelo": "meta/muse-image" }
+
+### Os modelos de VOZ do OpenRouter: vozes e preço por caractere (NA1). Os gratuitos vêm primeiro. Não gasta nada
+GET {{baseUrl}}/configuracao/modelos-de-narracao

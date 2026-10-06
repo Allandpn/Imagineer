@@ -115,6 +115,32 @@ class ModeloDisponivel:
 
 
 @dataclass
+class ModeloDeVoz:
+    """Um modelo de **voz** do provedor, como a tela de configuração o mostra (NA1)."""
+
+    id: str
+    nome: str
+    vozes: list[str] = field(default_factory=list)
+    """As vozes que o modelo aceita (``voice``). Vazia = o modelo não lista vozes (clona de uma amostra, ou tem uma só)."""
+    preco_por_caractere: Decimal | None = None
+    """Dólares por caractere de texto narrado, **quando o modelo cobra assim**. Nulo = não dá para estimar: o modelo cobra por token
+    ou por segundo (Gemini TTS, Seed Audio), ou é gratuito sem preço informado. Nunca um valor inventado."""
+    gratuito: bool = False
+
+
+@dataclass
+class AudioNarrado:
+    """O áudio de um trecho falado, com o que ele custou (NA6)."""
+
+    conteudo: bytes
+    """O MP3."""
+    custo: Decimal | None = None
+    """O custo **estimado** em dólares: caracteres do trecho × o preço por caractere do catálogo. Nulo = não se sabe (NA3)."""
+    id_da_geracao: str | None = None
+    """O ``X-Generation-Id`` do OpenRouter, para conferir a cobrança no painel dele."""
+
+
+@dataclass
 class ModeloDeImagemDisponivel:
     """Um modelo de **imagem** oferecido pelo provedor, como o catálogo (MI1) o mostra."""
 
@@ -526,6 +552,23 @@ class ProvedorIA(ABC):
     def listar_modelos_de_imagem(self) -> list[ModeloDeImagemDisponivel]:
         """Os modelos de **imagem** do OpenRouter, para o catálogo (MI1). Não é abstrata: um provedor que não lista devolve vazio."""
         return []
+
+    def listar_modelos_de_voz(self) -> list[ModeloDeVoz]:
+        """Os modelos de **voz** do provedor, para a tela de Narração (NA1). Não é abstrata: um provedor que não lista devolve vazio."""
+        return []
+
+    @property
+    def pode_narrar(self) -> bool:
+        """``True`` se este provedor tem o que a narração exige (a chave). Sem isso, gerar nem começa (NA5, 422). Não é abstrata."""
+        return False
+
+    def narrar(self, texto: str, modelo: str, voz: str | None) -> AudioNarrado:
+        """Fala ``texto`` com a voz de IA e devolve o MP3 (NA1). Não é abstrata: um provedor que não fala levanta o erro abaixo.
+
+        ``voz`` nula = a padrão do modelo (alguns modelos exigem uma voz). O texto é falado **como está** (NA1: os modelos de voz leem o
+        ``input`` palavra por palavra). Levanta ``ChaveDeApiAusente`` se a chave for recusada e ``ErroDoProvedorIA`` para qualquer outra
+        falha, sempre com a mensagem em português."""
+        raise ErroDoProvedorIA("Este provedor não narra.")
 
     @abstractmethod
     def gerar_imagem(
