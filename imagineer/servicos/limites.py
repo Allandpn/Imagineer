@@ -26,6 +26,7 @@ from imagineer.modelos import (
     Limites,
     Livro,
     Prompt,
+    Usuario,
     Video,
 )
 from imagineer.servicos.acesso import usuario_ou_dono
@@ -95,6 +96,13 @@ def uso_da_pessoa_em_bytes(sessao: Session, usuario_id: int) -> int:
     return int(imagens) + int(videos) + int(audios)
 
 
+def cota_efetiva_em_gb(limites: Limites, usuario: Usuario) -> int | None:
+    """A cota que vale para a pessoa: a própria (CT23) ou o padrão; ``None`` para o dono, que não tem cota."""
+    if usuario.id == DONO_ID:
+        return None
+    return usuario.cota_em_gb if usuario.cota_em_gb is not None else limites.cota_por_pessoa_em_gb
+
+
 def _sem_espaco(detalhe: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_507_INSUFFICIENT_STORAGE, detail=detalhe)
 
@@ -113,7 +121,7 @@ def exigir_espaco(sessao: Session, bytes_novos: int = 0) -> None:
             "recusados até liberar espaço."
         )
     usuario_id = usuario_ou_dono(sessao)
-    if usuario_id != DONO_ID:
-        cota = limites.cota_por_pessoa_em_gb * BYTES_POR_GB
-        if uso_da_pessoa_em_bytes(sessao, usuario_id) + bytes_novos > cota:
-            raise _sem_espaco(f"Você chegou à sua cota de {limites.cota_por_pessoa_em_gb} GB. Apague imagens, vídeos ou áudios para liberar espaço.")
+    pessoa = sessao.get(Usuario, usuario_id)
+    cota_em_gb = cota_efetiva_em_gb(limites, pessoa) if pessoa is not None else None
+    if cota_em_gb is not None and uso_da_pessoa_em_bytes(sessao, usuario_id) + bytes_novos > cota_em_gb * BYTES_POR_GB:
+        raise _sem_espaco(f"Você chegou à sua cota de {cota_em_gb} GB. Apague imagens, vídeos ou áudios para liberar espaço.")

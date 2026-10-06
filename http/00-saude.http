@@ -21,3 +21,16 @@ Content-Type: application/json
   "tamanho_maximo_da_imagem_mb": 15,
   "cota_por_pessoa_em_gb": 5
 }
+
+
+### As contas com livros, uso de espaço e cota (CT21). Só o dono.
+GET {{baseUrl}}/admin/usuarios
+
+### Libera as chaves de IA do servidor para uma conta e dá a ela 10 GB (CT22). `"cota_em_gb": null` volta ao padrão.
+PATCH {{baseUrl}}/admin/usuarios/2
+Content-Type: application/json
+
+{
+  "usa_chaves_do_servidor": true,
+  "cota_em_gb": 10
+}

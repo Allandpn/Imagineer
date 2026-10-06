@@ -173,7 +173,7 @@ Por padrão o servidor é **só seu** (`IMAGINEER_AUTENTICACAO=pessoal`): todo p
 
 Por que é seguro: o servidor só aceita o cabeçalho de identidade vindo do proxy confiável, e o `tailscale serve` apaga esse cabeçalho se ele vier de fora. Por isso a porta da API **nunca** pode ficar aberta para a rede (`ENDERECO_API=127.0.0.1`): quem a alcançasse direto poderia se passar por qualquer pessoa. Confira com `GET /eu` (quem o servidor acha que você é). `/saude` continua sem identidade, para o monitoramento.
 
-As chaves de IA do servidor (OpenRouter, fal.ai, Replicate) são **suas**: as outras pessoas usam a própria chave do OpenRouter, informada no app. Para liberar as chaves do servidor a alguém: `UPDATE usuarios SET usa_chaves_do_servidor = true WHERE login = 'fulano@exemplo.com';`.
+As chaves de IA do servidor (OpenRouter, fal.ai, Replicate) são **suas**: as outras pessoas usam a própria chave do OpenRouter, informada no app. Para liberar as chaves do servidor a alguém: `PATCH /admin/usuarios/{id}` com `{"usa_chaves_do_servidor": true}` (veja `http/00-saude.http`). `GET /admin/usuarios` mostra as contas, o uso de espaço de cada uma e a cota; `GET/PUT /admin/limites` muda os limites do servidor.
 
 ## Lista rápida
 

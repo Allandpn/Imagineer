@@ -206,3 +206,81 @@ def teste_ct18_passou_da_cota_da_pessoa_e_507_e_o_dono_nao_tem_cota(sessao_com_t
     with pytest.raises(Exception) as erro:
         exigir_espaco(sessao_com_tabelas)
     assert erro.value.status_code == 507 and "5 GB" in erro.value.detail
+
+
+# --------------------------------------------------------------------------- #
+# CT21 a CT23: administração das contas
+# --------------------------------------------------------------------------- #
+
+
+def teste_ct21_a_lista_traz_cada_conta_com_livros_uso_e_cota(cliente: TestClient, sessao_com_tabelas: Session, usar_provedor_falso) -> None:
+    _retrato_com_duas_imagens(cliente, usar_provedor_falso)
+    maria = _pessoa(sessao_com_tabelas)
+
+    contas = cliente.get("/admin/usuarios").json()
+
+    dono, dela = contas
+    assert [c["id"] for c in contas] == [DONO_ID, maria.id]
+    assert dono["dono"] and dono["usa_chaves_do_servidor"] and dono["livros"] == 1 and dono["uso_em_bytes"] > 0
+    assert dono["cota_efetiva_em_gb"] is None  # o dono não tem cota
+    assert dela["login"] == "maria@exemplo.com" and dela["livros"] == 0 and dela["uso_em_bytes"] == 0
+    assert dela["cota_em_gb"] is None and dela["cota_efetiva_em_gb"] == 5  # sem cota própria: vale o padrão
+    assert dela["usa_chaves_do_servidor"] is False
+
+
+def teste_ct22_o_dono_libera_e_tira_as_chaves_do_servidor(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    maria = _pessoa(sessao_com_tabelas)
+
+    liberada = cliente.patch(f"/admin/usuarios/{maria.id}", json={"usa_chaves_do_servidor": True})
+    assert liberada.status_code == 200 and liberada.json()["usa_chaves_do_servidor"] is True
+    assert sessao_com_tabelas.get(Usuario, maria.id).usa_chaves_do_servidor is True
+
+    tirada = cliente.patch(f"/admin/usuarios/{maria.id}", json={"usa_chaves_do_servidor": False})
+    assert tirada.json()["usa_chaves_do_servidor"] is False
+
+
+def teste_ct22_a_cota_propria_vale_e_null_volta_ao_padrao(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    maria = _pessoa(sessao_com_tabelas)
+
+    assert cliente.patch(f"/admin/usuarios/{maria.id}", json={"cota_em_gb": 12}).json()["cota_efetiva_em_gb"] == 12
+    # Só o campo enviado muda: as chaves ficam como estavam.
+    assert cliente.patch(f"/admin/usuarios/{maria.id}", json={"cota_em_gb": None}).json()["cota_efetiva_em_gb"] == 5
+    assert cliente.patch(f"/admin/usuarios/{maria.id}", json={}).json()["cota_em_gb"] is None
+
+
+def teste_ct22_o_dono_nao_fica_sem_as_chaves_nem_ganha_cota(cliente: TestClient) -> None:
+    assert cliente.patch(f"/admin/usuarios/{DONO_ID}", json={"usa_chaves_do_servidor": False}).status_code == 422
+    assert cliente.patch(f"/admin/usuarios/{DONO_ID}", json={"cota_em_gb": 1}).status_code == 422
+    assert cliente.get("/admin/usuarios").json()[0]["usa_chaves_do_servidor"] is True
+
+
+def teste_ct22_conta_inexistente_da_404_e_valor_invalido_da_422(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    maria = _pessoa(sessao_com_tabelas)
+
+    assert cliente.patch("/admin/usuarios/99999", json={"cota_em_gb": 3}).status_code == 404
+    assert cliente.patch(f"/admin/usuarios/{maria.id}", json={"cota_em_gb": 0}).status_code == 422
+    assert cliente.patch(f"/admin/usuarios/{maria.id}", json={"nome": "x"}).status_code == 422  # campo desconhecido
+
+
+def teste_ct21_ct22_quem_nao_e_o_dono_recebe_404_e_nao_se_promove(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    maria = _pessoa(sessao_com_tabelas)
+    definir_usuario(sessao_com_tabelas, maria.id)
+
+    assert cliente.get("/admin/usuarios").status_code == 404
+    assert cliente.patch(f"/admin/usuarios/{maria.id}", json={"usa_chaves_do_servidor": True}).status_code == 404
+    assert sessao_com_tabelas.get(Usuario, maria.id).usa_chaves_do_servidor is False
+
+
+def teste_ct23_a_cota_propria_e_a_que_o_servidor_aplica(sessao_com_tabelas: Session, monkeypatch) -> None:
+    maria = _pessoa(sessao_com_tabelas)
+    monkeypatch.setattr(servico, "uso_da_aplicacao_em_bytes", lambda: 0)
+    monkeypatch.setattr(servico, "uso_da_pessoa_em_bytes", lambda sessao, usuario_id: 3 * BYTES_POR_GB)
+    definir_usuario(sessao_com_tabelas, maria.id)
+
+    exigir_espaco(sessao_com_tabelas)  # 3 GB cabe nos 5 GB do padrão
+
+    maria.cota_em_gb = 2
+    sessao_com_tabelas.commit()
+    with pytest.raises(Exception) as erro:
+        exigir_espaco(sessao_com_tabelas)  # mas não nos 2 GB dela
+    assert erro.value.status_code == 507 and "2 GB" in erro.value.detail

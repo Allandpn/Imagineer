@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, false, func
+from sqlalchemy import Boolean, DateTime, Integer, String, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
@@ -34,6 +34,9 @@ class Usuario(Base):
     usa_chaves_do_servidor: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     """Pode gastar as chaves de IA do **servidor** (OpenRouter, fal.ai, Replicate), que são do dono (CT9). Falso para quem chega: essa pessoa usa a
     própria chave do OpenRouter, pelo header."""
+
+    cota_em_gb: Mapped[int | None] = mapped_column(Integer)
+    """A cota **desta** pessoa, em GB (CT23). Nula = vale o padrão de ``limites.cota_por_pessoa_em_gb``. O dono não tem cota, seja qual for o valor."""
 
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
