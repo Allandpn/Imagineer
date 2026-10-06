@@ -16,7 +16,9 @@ from imagineer.modelos import (
     SugestaoDeCena,
     SugestaoDeElemento,
     TipoDeFrame,
+    Video,
 )
+from imagineer.servicos.catalogo_de_videos import remover_video_do_disco
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
 from imagineer.servicos.imagens_reduzidas import remover_derivadas
 
@@ -81,6 +83,8 @@ def apagar_livro_de_vez(sessao: Session, livro: Livro) -> int:
     Capítulos, elementos, estados, frames e prompts saem em cascata com o livro. Quem chama faz o ``commit``.
     """
     liberados = sum(apagar_de_vez(sessao, imagem) for imagem in imagens_do_livro(sessao, livro.id))
+    for frame in sessao.scalars(select(Frame).join(Capitulo, Capitulo.id == Frame.capitulo_id).where(Capitulo.livro_id == livro.id)):
+        liberados += _apagar_videos_do_frame(sessao, frame)  # os arquivos de vídeo também (VD16)
     sessao.delete(livro)
     sessao.flush()
     return liberados
@@ -118,9 +122,20 @@ def imagens_do_frame(frame: Frame) -> list[Imagem]:
     return [imagem for prompt in frame.prompts for imagem in prompt.imagens]
 
 
+def _apagar_videos_do_frame(sessao: Session, frame: Frame) -> int:
+    """Apaga do disco os vídeos do frame (as linhas saem em cascata com ele). Devolve os bytes liberados (VD16)."""
+    liberados = 0
+    for video in sessao.scalars(select(Video).where(Video.frame_id == frame.id)):
+        liberados += video.tamanho_em_bytes
+        remover_video_do_disco(video.caminho_arquivo)
+    frame.video_do_texto_id = None  # a chave do frame para o vídeo não pode apontar para linha que vai embora
+    return liberados
+
+
 def apagar_frame_de_vez(sessao: Session, frame: Frame) -> int:
     """Remove o frame, os prompts e as imagens dele, **com os arquivos**. Devolve os bytes liberados. Quem chama faz o ``commit``."""
     liberados = sum(apagar_de_vez(sessao, imagem) for imagem in imagens_do_frame(frame))
+    liberados += _apagar_videos_do_frame(sessao, frame)
     sessao.delete(frame)
     sessao.flush()
     return liberados

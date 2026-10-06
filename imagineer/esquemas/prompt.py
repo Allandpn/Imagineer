@@ -5,7 +5,7 @@ from typing import Literal
 
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao, TipoDePrompt
 from imagineer.servicos.imagens_reduzidas import Orientacao, orientacao_de
@@ -92,6 +92,7 @@ class PromptResumo(BaseModel):
     tipo: TipoDePrompt = Field(default=TipoDePrompt.IMAGEM, description="`IMAGEM` (padrão) ou `VIDEO` (item 4.8): um prompt de vídeo não gera imagem.")
     imagem_partida_id: int | None = Field(default=None, description="Só no `VIDEO`: a imagem que vai de primeiro quadro; nulo = modo texto para vídeo.")
     so_imagem: bool = Field(default=False, description="O prompt existe só para guardar uma imagem importada sem prompt (PI1); não vale como prompt.")
+    oculto: bool = Field(default=False, description="Só no `VIDEO`: a pessoa o escondeu da lista (item 4.8, VD12); não foi apagado.")
     texto_pt: str | None = Field(default=None, description="A versão em português (PT1); nulo = ainda sem tradução. O que vai à imagem é o `texto`.")
     avaliacao: str | None
     data_criacao: datetime
@@ -177,9 +178,22 @@ class PromptNovo(BaseModel):
 
 
 class PromptAjuste(BaseModel):
-    """O que o app manda para anotar como a imagem ficou."""
+    """O que o app manda para ajustar um prompt: anotar como a imagem ficou (``avaliacao``) e, **só num prompt de vídeo** (item 4.8),
+    escondê-lo da lista (``oculto``, VD12) ou mudar o texto e a versão em português (``texto``, ``texto_pt``, VD13).
 
-    avaliacao: str = Field(min_length=1)
+    Ao menos um campo é obrigatório. ``texto`` sem ``texto_pt`` **apaga** o português guardado (já não descreve o inglês).
+    """
+
+    avaliacao: str | None = Field(default=None, min_length=1)
+    oculto: bool | None = None
+    texto: str | None = Field(default=None, min_length=1, max_length=4000)
+    texto_pt: str | None = Field(default=None, min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def _ao_menos_um(self) -> "PromptAjuste":
+        if not self.model_fields_set:
+            raise ValueError("Mande ao menos um campo: avaliacao, oculto, texto ou texto_pt.")
+        return self
 
 
 class Traducao(BaseModel):

@@ -135,6 +135,10 @@ class Artefato(BaseModel):
         default=None,
         description="RETRATO ou PAISAGEM, pela imagem real (item 7.5b, I1): o app decide o layout sem baixá-la. Nulo sem dimensões.",
     )
+    video_id: int | None = Field(
+        default=None,
+        description="O vídeo que o texto mostra no lugar da imagem (item 4.8, VD17); o app o toca ao tocar no artefato. Nulo = mostra a imagem.",
+    )
 
 
 class ArtefatosDoCapitulo(BaseModel):

@@ -33,6 +33,7 @@ from imagineer.rotas import (
     lixeira,
     perfis_renderizacao,
     prompts,
+    videos,
     saude,
     sugestoes,
 )
@@ -87,6 +88,8 @@ aplicacao.include_router(prompts.rotas_de_frame)
 aplicacao.include_router(prompts.rotas_de_capitulo)
 aplicacao.include_router(prompts.rotas)
 aplicacao.include_router(prompts.rotas_de_imagem)
+aplicacao.include_router(videos.rotas_de_frame)
+aplicacao.include_router(videos.rotas)
 aplicacao.include_router(lixeira.rotas)
 aplicacao.include_router(busca.rotas)
 aplicacao.include_router(custos.rotas)

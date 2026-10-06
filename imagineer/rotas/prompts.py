@@ -424,9 +424,24 @@ def abrir_prompt(prompt_id: int, sessao: Session = Depends(obter_sessao)) -> Pro
 def ajustar_prompt(
     prompt_id: int, ajuste: PromptAjuste, sessao: Session = Depends(obter_sessao)
 ) -> PromptDetalhe:
-    """Registra o que você achou do resultado, para comparar modelos depois."""
+    """Registra o que você achou do resultado, para comparar modelos depois. Num prompt **de vídeo** também esconde/mostra (VD12) e
+    edita o texto (VD13); ``oculto``, ``texto`` e ``texto_pt`` num prompt de imagem são 422."""
     prompt = _buscar_prompt(sessao, prompt_id)
-    prompt.avaliacao = ajuste.avaliacao
+    campos = ajuste.model_fields_set
+    if campos & {"oculto", "texto", "texto_pt"} and prompt.tipo != TipoDePrompt.VIDEO:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Esconder e editar o texto só valem num prompt de vídeo; o de imagem se edita ao gerar a imagem.",
+        )
+    if "avaliacao" in campos:
+        prompt.avaliacao = ajuste.avaliacao
+    if "oculto" in campos and ajuste.oculto is not None:
+        prompt.oculto = ajuste.oculto
+    if "texto" in campos and ajuste.texto is not None:
+        prompt.texto = ajuste.texto
+        prompt.texto_pt = ajuste.texto_pt if "texto_pt" in campos else None  # o inglês mudou: o português guardado já não o descreve
+    elif "texto_pt" in campos:
+        prompt.texto_pt = ajuste.texto_pt
     sessao.commit()
     sessao.refresh(prompt)
     return abrir_prompt(prompt_id, sessao)
@@ -1071,6 +1086,7 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
         tipo=prompt.tipo,
         imagem_partida_id=prompt.imagem_partida_id,
         so_imagem=prompt.so_imagem,
+        oculto=prompt.oculto,
         avaliacao=prompt.avaliacao,
         data_criacao=prompt.data_criacao,
         total_de_imagens=total_de_imagens,

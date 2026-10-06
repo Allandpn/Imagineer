@@ -123,6 +123,13 @@ class Frame(Base):
     """A imagem **canônica** do frame: a escolhida entre as variações para representá-lo e a que o capítulo mostra
     (item 7.5b, CAN1 a CAN4). Nulo = sem escolha: vale a mais recente."""
 
+    video_do_texto_id: Mapped[int | None] = mapped_column(
+        # use_alter: frames -> videos -> frames forma um ciclo; a chave sai por ALTER depois das tabelas.
+        # SET NULL: apagar o vídeo não apaga o frame, só devolve o texto à imagem (VD17).
+        ForeignKey("videos.id", ondelete="SET NULL", use_alter=True, name="fk_frames_video_do_texto_id"),
+    )
+    """O vídeo que o texto mostra no lugar da imagem (item 4.8, VD17). Nulo = o texto mostra a imagem (o que sempre foi)."""
+
     apagado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     """Quando o frame foi para a **lixeira** (LT3); nulo = ativo. Some do capítulo, dos artefatos e da galeria; leva os prompts e as imagens."""
 

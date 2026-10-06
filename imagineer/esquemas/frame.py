@@ -340,6 +340,7 @@ class ImagemCanonicaDoFrame(BaseModel):
     frame_id: int
     imagem_canonica_id: int | None
     imagem_oculta: bool = False
+    video_do_texto_id: int | None = None
 
 
 class ReferenciasDoFrame(BaseModel):

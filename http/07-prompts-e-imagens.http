@@ -318,3 +318,69 @@ Content-Type: application/json
   "texto": "a hooded knight on a foggy hill at dawn",
   "texto_pt": "um cavaleiro de capuz numa colina com nevoa ao amanhecer"
 }
+
+
+### O prompt de video (item 4.8): mesmo POST de prompt, com tipo VIDEO (e imagem_partida_id, opcional)
+POST {{baseUrl}}/frames/{{frameId}}/prompts
+Content-Type: application/json
+
+{
+  "tipo": "VIDEO"
+}
+
+> {%
+    client.global.set("promptDeVideoId", response.body.id);
+%}
+
+### Esconde um prompt de VIDEO da lista (VD12); {"oculto": false} mostra de novo. Em prompt de imagem e 422.
+PATCH {{baseUrl}}/prompts/{{promptDeVideoId}}
+Content-Type: application/json
+
+{
+  "oculto": true
+}
+
+### Edita o texto de um prompt de VIDEO (VD13); sem texto_pt, o portugues guardado e apagado. Em prompt de imagem e 422.
+PATCH {{baseUrl}}/prompts/{{promptDeVideoId}}
+Content-Type: application/json
+
+{
+  "texto": "a slow pull-back, the knight stands still",
+  "texto_pt": "um recuo lento, o cavaleiro parado"
+}
+
+### Importa um video para o frame (VD16): .mp4, .m4v, .mov ou .webm, ate 200 MB; prompt_id (opcional) e o prompt de VIDEO de origem
+POST {{baseUrl}}/frames/{{frameId}}/videos
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="arquivo"; filename="video-teste.mp4"
+Content-Type: video/mp4
+
+< ./arquivos/video-teste.mp4
+--WebAppBoundary
+Content-Disposition: form-data; name="prompt_id"
+
+{{promptDeVideoId}}
+--WebAppBoundary--
+
+> {%
+    client.global.set("videoId", response.body.id);
+%}
+
+### Os videos do frame, do mais novo ao mais antigo; "no_texto" diz qual o texto mostra
+GET {{baseUrl}}/frames/{{frameId}}/videos
+
+### O arquivo do video (aceita Range: bytes=0-99 e responde 206)
+GET {{baseUrl}}/videos/{{videoId}}/arquivo
+
+### O texto passa a mostrar o video no lugar da imagem (VD17); {"video_id": null} volta a imagem
+PUT {{baseUrl}}/frames/{{frameId}}/video-no-texto
+Content-Type: application/json
+
+{
+  "video_id": {{videoId}}
+}
+
+### Apaga o video e o arquivo (sem lixeira)
+DELETE {{baseUrl}}/videos/{{videoId}}

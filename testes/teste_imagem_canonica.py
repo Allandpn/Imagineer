@@ -26,7 +26,7 @@ def teste_can3_escolher_grava_e_o_frame_informa(cliente: TestClient, usar_proved
     resposta = _escolher(cliente, retrato["id"], primeira["id"])
 
     assert resposta.status_code == 200, resposta.text
-    assert resposta.json() == {"frame_id": retrato["id"], "imagem_canonica_id": primeira["id"], "imagem_oculta": False}
+    assert resposta.json() == {"frame_id": retrato["id"], "imagem_canonica_id": primeira["id"], "imagem_oculta": False, "video_do_texto_id": None}
     assert cliente.get(f"/frames/{retrato['id']}").json()["imagem_canonica_id"] == primeira["id"]
 
 

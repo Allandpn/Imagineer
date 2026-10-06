@@ -101,6 +101,9 @@ class Prompt(Base):
     """Só no ``VIDEO``: a imagem que o usuário vai anexar como **primeiro quadro** (VD1). O ``texto`` do prompt que a gerou é a fonte do
     que está nesse quadro. Nulo = prompt de vídeo sem imagem de partida (modo texto para vídeo)."""
 
+    oculto: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    """O prompt de **vídeo** foi escondido da lista pela pessoa (item 4.8, VD12); não é apagado e se mostra de novo. Só vale no ``VIDEO``."""
+
     so_imagem: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     """O prompt existe **só para guardar uma imagem importada** (PI1): a pessoa já tinha a imagem e não gerou prompt. Não vale como prompt:
     o botão principal o ignora e gerar imagem a partir dele é recusado (PI2)."""
