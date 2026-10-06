@@ -26,6 +26,7 @@ from imagineer.ia.provedor import (
 )
 from imagineer.modelos import Configuracao, Imagem, Prompt, TipoDeFrame
 from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao, TipoDePrompt
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, salvar_imagem
 from imagineer.servicos.imagens_reduzidas import ler_dimensoes, preparar_referencia
 from imagineer.servicos.sinais_de_menor import sinal_de_menor
@@ -180,7 +181,7 @@ def _preparar_referencias(
     imagens: list[ImagemDeReferencia] = []
     nomes: list[str | None] = []
     for imagem_id in ids:
-        imagem = sessao.get(Imagem, imagem_id)
+        imagem = buscar_visivel(sessao, Imagem, imagem_id)  # CT6: imagem de outra pessoa não serve de referência (vazaria na geração)
         if imagem is None or imagem.apagada_em is not None:  # LX4: a da lixeira não serve de referência
             raise ReferenciasNaoPermitidas(f"Não existe imagem com id {imagem_id} para usar como referência.")
         original = caminho_absoluto(imagem.caminho_arquivo)

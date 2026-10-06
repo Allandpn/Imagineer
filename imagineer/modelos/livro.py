@@ -6,6 +6,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, Stri
 from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
 from imagineer.banco.base import Base
+from imagineer.modelos.usuario import DONO_ID
 
 
 class Livro(Base):
@@ -18,6 +19,11 @@ class Livro(Base):
     __tablename__ = "livros"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id", ondelete="RESTRICT"), index=True, default=DONO_ID)
+    """Quem é dono do livro (CT5) — e, por herança, de tudo que pende dele. ``RESTRICT``: apagar uma pessoa com livros exige apagar os livros
+    antes, **com os arquivos** (nada fica órfão no disco). O padrão (o dono) existe para o código que cria um livro sem dizer de quem é; o
+    importador sempre diz."""
 
     titulo: Mapped[str] = mapped_column(String(500))
     autor: Mapped[str | None] = mapped_column(String(300))

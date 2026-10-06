@@ -6,11 +6,12 @@ permite reaproveitar a mesma combinação de estilo entre obras (item 3.4c).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
+from imagineer.servicos.acesso import usuario_ou_dono
 from imagineer.esquemas.frame import (
     PerfilRenderizacao as EsquemaPerfil,
 )
@@ -28,9 +29,11 @@ rotas = APIRouter(prefix="/perfis-renderizacao", tags=["Perfis de renderização
 
 @rotas.get("", response_model=list[EsquemaPerfil], summary="Lista os perfis")
 def listar_perfis(sessao: Session = Depends(obter_sessao)) -> list[EsquemaPerfil]:
-    """Todos os perfis, em ordem alfabética. Eles são compartilhados entre livros."""
+    """Os de fábrica e os **próprios** da pessoa (CT7), em ordem alfabética. Eles são compartilhados entre os livros dela."""
     perfis = sessao.scalars(
-        select(PerfilRenderizacao).order_by(PerfilRenderizacao.nome)
+        select(PerfilRenderizacao)
+        .where(or_(PerfilRenderizacao.usuario_id.is_(None), PerfilRenderizacao.usuario_id == usuario_ou_dono(sessao)))
+        .order_by(PerfilRenderizacao.nome)
     )
     return [EsquemaPerfil.model_validate(perfil) for perfil in perfis]
 
@@ -45,7 +48,7 @@ def criar_perfil(
     novo: PerfilRenderizacaoNovo, sessao: Session = Depends(obter_sessao)
 ) -> EsquemaPerfil:
     """Cria um perfil de estilo."""
-    perfil = PerfilRenderizacao(**novo.model_dump())
+    perfil = PerfilRenderizacao(**novo.model_dump(), usuario_id=usuario_ou_dono(sessao))  # CT7: o perfil novo é próprio
     sessao.add(perfil)
     _gravar(sessao, novo.nome)
     sessao.refresh(perfil)

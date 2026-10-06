@@ -12,6 +12,7 @@ um vazamento esperando acontecer. O header vale só para a chamada em curso.
 """
 
 from dataclasses import dataclass
+from functools import partial
 
 from sqlalchemy.orm import Session
 
@@ -19,7 +20,9 @@ from imagineer.configuracao import obter_configuracoes
 from imagineer.ia.fornecedores_de_imagem import montar_geradores
 from imagineer.ia.openrouter import ProvedorOpenRouter
 from imagineer.ia.provedor import ProvedorIA
-from imagineer.modelos.configuracao import ID_UNICO, Configuracao
+from imagineer.modelos.configuracao import Configuracao
+from imagineer.modelos.usuario import Usuario
+from imagineer.servicos.acesso import usuario_ou_dono
 from imagineer.servicos.uso_de_ia import gravar_uso
 
 
@@ -33,30 +36,37 @@ class ChaveResolvida:
 
 
 def obter_ou_criar(sessao: Session) -> Configuracao:
-    """Devolve a linha de configuração, criando-a vazia se ainda não existir.
+    """Devolve a configuração **da pessoa do pedido** (CT8), criando-a vazia se ainda não existir.
 
-    Criar sob demanda evita ter que semear a tabela numa migration, e mantém o
-    sistema funcionando num banco recém-criado.
+    Cada usuário tem a sua linha: o ``id`` dela é o id do usuário. Criar sob demanda evita semear a tabela numa migration — e é o que
+    dá a cada pessoa nova uma configuração própria na primeira visita. Sessão sem usuário = a do dono, como antes das contas.
     """
-    configuracao = sessao.get(Configuracao, ID_UNICO)
+    usuario_id = usuario_ou_dono(sessao)
+    configuracao = sessao.get(Configuracao, usuario_id)
     if configuracao is None:
-        configuracao = Configuracao(id=ID_UNICO)
+        configuracao = Configuracao(id=usuario_id)
         sessao.add(configuracao)
         sessao.commit()
         sessao.refresh(configuracao)
     return configuracao
 
 
-def resolver_chave(cabecalho: str | None = None) -> ChaveResolvida:
+def resolver_chave(cabecalho: str | None = None, usuario: Usuario | None = None) -> ChaveResolvida:
     """Decide qual chave usar, e informa a origem sem revelar o valor.
 
     ``cabecalho`` é o valor de ``X-Chave-API-OpenRouter``. Ausente, vazio ou só
     com espaços conta como ausente — um app que manda o header sempre, mesmo sem
     ter chave própria, não pode quebrar por isso.
+
+    **A chave do servidor é do dono (CT9):** só entra se ``usuario`` pode usá-la (``usa_chaves_do_servidor``). ``usuario=None`` é o
+    comportamento de antes das contas (testes e segundo plano): pode.
     """
     do_cabecalho = (cabecalho or "").strip()
     if do_cabecalho:
         return ChaveResolvida(valor=do_cabecalho, origem="cabecalho")
+
+    if usuario is not None and not usuario.usa_chaves_do_servidor:
+        return ChaveResolvida(valor=None, origem="ausente")
 
     do_ambiente = (obter_configuracoes().chave_api_openrouter or "").strip()
     if do_ambiente:
@@ -65,17 +75,23 @@ def resolver_chave(cabecalho: str | None = None) -> ChaveResolvida:
     return ChaveResolvida(valor=None, origem="ausente")
 
 
-def construir_provedor(cabecalho: str | None = None) -> ProvedorIA:
+def construir_provedor(cabecalho: str | None = None, usuario: Usuario | None = None) -> ProvedorIA:
     """Monta o provedor de IA com a chave que vale para esta chamada.
 
     As rotas dependem desta função (via ``obter_provedor``), e não de uma
     instância global. É o que permite aos testes substituírem o provedor inteiro
     por um falso, e o que faz uma troca de chave valer no pedido seguinte sem
     reiniciar o serviço.
+
+    Com ``usuario``: o gasto de cada chamada é gravado **no nome dele** (CT10), e fal.ai/Replicate só entram se ele usa as chaves do servidor (CT9) —
+    essas duas chaves são do dono e a pessoa convidada não tem como informar a dela por enquanto.
     """
     configuracoes = obter_configuracoes()
+    pode_usar_o_servidor = usuario is None or usuario.usa_chaves_do_servidor
     return ProvedorOpenRouter(
-        chave_api=resolver_chave(cabecalho).valor,
-        ao_usar=gravar_uso,
-        geradores_de_imagem=montar_geradores(configuracoes.chave_api_fal, configuracoes.chave_api_replicate),
+        chave_api=resolver_chave(cabecalho, usuario).valor,
+        ao_usar=gravar_uso if usuario is None else partial(gravar_uso, usuario_id=usuario.id),
+        geradores_de_imagem=(
+            montar_geradores(configuracoes.chave_api_fal, configuracoes.chave_api_replicate) if pode_usar_o_servidor else {}
+        ),
     )

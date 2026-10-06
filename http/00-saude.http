@@ -1,2 +1,9 @@
 ### Confere se a API está no ar e conectada ao banco (item 6.1)
 GET {{baseUrl}}/saude
+
+
+### Quem sou eu para o servidor (CT12). Modo `pessoal`: sempre o dono. Modo `tailscale`: quem o `tailscale serve` identificou.
+### Para testar o modo `tailscale` na mão, o pedido tem que vir de um proxy confiável (127.0.0.1) com o cabeçalho abaixo.
+GET {{baseUrl}}/eu
+Tailscale-User-Login: maria@exemplo.com
+Tailscale-User-Name: Maria

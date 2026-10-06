@@ -14,6 +14,7 @@ do FastAPI (``Depends``), que cuida de abrir antes e fechar depois.
 
 from collections.abc import Generator
 
+from fastapi import Depends, Request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -32,14 +33,38 @@ motor = create_engine(
 CriadorDeSessao = sessionmaker(bind=motor, autoflush=False, expire_on_commit=False)
 
 
-def obter_sessao() -> Generator[Session, None, None]:
+def obter_usuario(request: Request):
+    """Quem fez o pedido (CT2). Dependência do FastAPI: em modo ``pessoal`` é sempre o dono; em ``tailscale``, quem o cabeçalho do proxy disser.
+
+    Os imports ficam aqui dentro porque ``servicos.identidade`` precisa deste módulo (``CriadorDeSessao``): importar lá em cima faria um círculo.
+    """
+    from imagineer.servicos.identidade import resolver_usuario
+
+    return resolver_usuario(request, CriadorDeSessao)
+
+
+def obter_sessao_anonima() -> Generator[Session, None, None]:
+    """Uma sessão **sem usuário**, para a rota que não pode exigir identidade: ``/saude`` (o monitoramento e o healthcheck do contêiner chamam sem cabeçalho)."""
+    sessao = CriadorDeSessao()
+    try:
+        yield sessao
+    finally:
+        sessao.close()
+
+
+def obter_sessao(usuario=Depends(obter_usuario)) -> Generator[Session, None, None]:
     """Fornece uma sessão de banco para um request e a fecha no final.
 
     Usada nas rotas como ``sessao: Session = Depends(obter_sessao)``. O ``yield``
     entrega a sessão para a rota; o ``finally`` roda depois que a resposta foi
     montada, garantindo o fechamento mesmo se a rota levantar uma exceção.
+
+    **A sessão já nasce com o usuário do pedido** (CT6): é o que faz ``obter_ou_404`` e as listagens filtrarem por dono sem ninguém passar parâmetro.
     """
+    from imagineer.servicos.acesso import definir_usuario
+
     sessao = CriadorDeSessao()
+    definir_usuario(sessao, usuario.id)
     try:
         yield sessao
     finally:

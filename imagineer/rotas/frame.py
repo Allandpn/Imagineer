@@ -26,6 +26,7 @@ from imagineer.esquemas.frame import (
     ReferenciasDoFrame,
     VinculosDoFrame,
 )
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import (
     Capitulo,
     Elemento,
@@ -244,7 +245,7 @@ def definir_referencias(
     if len(ids) != len(corpo.imagens_ids):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Há imagens repetidas entre as referências.")
     for imagem_id in ids:
-        imagem = sessao.get(Imagem, imagem_id)
+        imagem = buscar_visivel(sessao, Imagem, imagem_id)
         if imagem is None or imagem.apagada_em is not None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"Não existe imagem com id {imagem_id} para usar como referência."
@@ -287,7 +288,7 @@ def definir_imagem_canonica(
     frame = _buscar_frame(sessao, frame_id)
     anterior = frame.imagem_canonica_id
     if corpo.imagem_id is not None:
-        imagem = sessao.get(Imagem, corpo.imagem_id)
+        imagem = buscar_visivel(sessao, Imagem, corpo.imagem_id)
         if imagem is None or imagem.apagada_em is not None or not _imagem_pode_ser_canonica(frame, imagem):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -334,7 +335,7 @@ def remover_frame(frame_id: int, sessao: Session = Depends(obter_sessao)) -> Non
 
     A cena sugerida que ele confirmara **volta a ser pendente**. Mover de novo um frame que já está na lixeira não dá erro.
     """
-    frame = sessao.get(Frame, frame_id)
+    frame = buscar_visivel(sessao, Frame, frame_id)
     if frame is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe frame com id {frame_id}.")
     mover_frame_para_a_lixeira(sessao, frame)
@@ -455,7 +456,7 @@ def _resolver_titulo(
 def _buscar_sugestao_de_cena(
     sessao: Session, sugestao_cena_id: int, capitulo_id: int
 ) -> SugestaoDeCena:
-    sugestao = sessao.get(SugestaoDeCena, sugestao_cena_id)
+    sugestao = buscar_visivel(sessao, SugestaoDeCena, sugestao_cena_id)
     if sugestao is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.lixeira import ElementoNaLixeira, ElementosDaLixeira, FrameNaLixeira, FramesDaLixeira, ImagemNaLixeira, LivroNaLixeira, LivrosDaLixeira, Lixeira, LixeiraEsvaziada
-from imagineer.modelos import Capitulo, Elemento, Frame, Imagem, Livro, TipoDeFrame
+from imagineer.servicos.acesso import buscar_visivel, usuario_ou_dono
+from imagineer.modelos import Capitulo, Elemento, Frame, Imagem, Livro, Prompt, TipoDeFrame
 from imagineer.servicos.imagens_reduzidas import orientacao_de
 from imagineer.servicos.lixeira import (
     apagar_de_vez,
@@ -31,7 +32,7 @@ rotas = APIRouter(prefix="/lixeira", tags=["Lixeira"])
 
 def _na_lixeira(sessao: Session, imagem_id: int) -> Imagem:
     """A imagem, desde que esteja na lixeira; senão 404 (LX5)."""
-    imagem = sessao.get(Imagem, imagem_id)
+    imagem = buscar_visivel(sessao, Imagem, imagem_id)
     if imagem is None or imagem.apagada_em is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não há imagem com id {imagem_id} na lixeira.")
     return imagem
@@ -65,10 +66,25 @@ def _descrever(imagem: Imagem) -> ImagemNaLixeira:
     )
 
 
+def _imagens_na_lixeira(sessao: Session) -> list[Imagem]:
+    """As imagens na lixeira **da pessoa do pedido** (CT6-c), da apagada mais recentemente para a mais antiga."""
+    return list(
+        sessao.scalars(
+            select(Imagem)
+            .join(Prompt, Prompt.id == Imagem.prompt_id)
+            .join(Frame, Frame.id == Prompt.frame_id)
+            .join(Capitulo, Capitulo.id == Frame.capitulo_id)
+            .join(Livro, Livro.id == Capitulo.livro_id)
+            .where(Imagem.apagada_em.is_not(None), Livro.usuario_id == usuario_ou_dono(sessao))
+            .order_by(Imagem.apagada_em.desc(), Imagem.id.desc())
+        )
+    )
+
+
 @rotas.get("/imagens", response_model=Lixeira, summary="As imagens da lixeira")
 def listar_a_lixeira(sessao: Session = Depends(obter_sessao)) -> Lixeira:
     """Da apagada mais recentemente para a mais antiga, com o livro, o capítulo e o frame de cada uma (LX5)."""
-    imagens = list(sessao.scalars(select(Imagem).where(Imagem.apagada_em.is_not(None)).order_by(Imagem.apagada_em.desc(), Imagem.id.desc())))
+    imagens = _imagens_na_lixeira(sessao)
     return Lixeira(imagens=[_descrever(i) for i in imagens], total_em_bytes=sum(tamanho_da_imagem(i) for i in imagens))
 
 
@@ -92,7 +108,7 @@ def apagar_a_imagem_de_vez(imagem_id: int, sessao: Session = Depends(obter_sessa
 @rotas.delete("/imagens", response_model=LixeiraEsvaziada, summary="Esvazia a lixeira")
 def esvaziar(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada:
     """Apaga de vez **tudo** o que está na lixeira (LX5). Nada disso roda sozinho (LX6)."""
-    imagens = list(sessao.scalars(select(Imagem).where(Imagem.apagada_em.is_not(None))))
+    imagens = _imagens_na_lixeira(sessao)  # CT6-c: só as da própria pessoa — esvaziar nunca leva a lixeira de outra
     liberados = sum(apagar_de_vez(sessao, imagem) for imagem in imagens)
     sessao.commit()
     return LixeiraEsvaziada(removidas=len(imagens), liberados_em_bytes=liberados)
@@ -105,7 +121,7 @@ def esvaziar(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada:
 
 def _livro_na_lixeira(sessao: Session, livro_id: int) -> Livro:
     """O livro, desde que esteja na lixeira; senão 404 (LT1)."""
-    livro = sessao.get(Livro, livro_id)
+    livro = buscar_visivel(sessao, Livro, livro_id)
     if livro is None or livro.apagado_em is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não há livro com id {livro_id} na lixeira.")
     return livro
@@ -128,7 +144,7 @@ def _descrever_livro(sessao: Session, livro: Livro) -> LivroNaLixeira:
 @rotas.get("/livros", response_model=LivrosDaLixeira, summary="Os livros da lixeira")
 def listar_livros_da_lixeira(sessao: Session = Depends(obter_sessao)) -> LivrosDaLixeira:
     """Do apagado mais recentemente para o mais antigo, com o que cada um leva junto (LT2)."""
-    livros = list(sessao.scalars(select(Livro).where(Livro.apagado_em.is_not(None)).order_by(Livro.apagado_em.desc(), Livro.id.desc())))
+    livros = list(sessao.scalars(select(Livro).where(Livro.apagado_em.is_not(None), Livro.usuario_id == usuario_ou_dono(sessao)).order_by(Livro.apagado_em.desc(), Livro.id.desc())))
     descritos = [_descrever_livro(sessao, livro) for livro in livros]
     return LivrosDaLixeira(livros=descritos, total_em_bytes=sum(d.tamanho_das_imagens_em_bytes for d in descritos))
 
@@ -153,7 +169,7 @@ def apagar_o_livro_de_vez(livro_id: int, sessao: Session = Depends(obter_sessao)
 @rotas.delete("/livros", response_model=LixeiraEsvaziada, summary="Esvazia a lixeira de livros")
 def esvaziar_livros(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada:
     """Apaga de vez **todos** os livros da lixeira. Nada disso roda sozinho (LX6)."""
-    livros = list(sessao.scalars(select(Livro).where(Livro.apagado_em.is_not(None))))
+    livros = list(sessao.scalars(select(Livro).where(Livro.apagado_em.is_not(None), Livro.usuario_id == usuario_ou_dono(sessao))))  # CT6-c
     liberados = sum(apagar_livro_de_vez(sessao, livro) for livro in livros)
     sessao.commit()
     return LixeiraEsvaziada(removidas=len(livros), liberados_em_bytes=liberados)
@@ -166,7 +182,7 @@ def esvaziar_livros(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada
 
 def _frame_na_lixeira(sessao: Session, frame_id: int) -> Frame:
     """O frame, desde que esteja na lixeira; senão 404 (LT1)."""
-    frame = sessao.get(Frame, frame_id)
+    frame = buscar_visivel(sessao, Frame, frame_id)
     # Um retrato que foi junto com o elemento volta com ele (LT4): não se restaura nem se apaga sozinho.
     if frame is None or frame.apagado_em is None or frame.apagado_com_elemento_id is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não há frame com id {frame_id} na lixeira.")
@@ -203,7 +219,9 @@ def _frames_da_lixeira(sessao: Session) -> list[Frame]:
             select(Frame)
             .join(Capitulo, Capitulo.id == Frame.capitulo_id)
             .join(Livro, Livro.id == Capitulo.livro_id)
-            .where(Frame.apagado_em.is_not(None), Frame.apagado_com_elemento_id.is_(None), Livro.apagado_em.is_(None))
+            .where(
+                Frame.apagado_em.is_not(None), Frame.apagado_com_elemento_id.is_(None), Livro.apagado_em.is_(None), Livro.usuario_id == usuario_ou_dono(sessao)
+            )
             .order_by(Frame.apagado_em.desc(), Frame.id.desc())
         )
     )
@@ -249,7 +267,7 @@ def esvaziar_frames(sessao: Session = Depends(obter_sessao)) -> LixeiraEsvaziada
 
 def _elemento_na_lixeira(sessao: Session, elemento_id: int) -> Elemento:
     """O elemento, desde que esteja na lixeira; senão 404 (LT1)."""
-    elemento = sessao.get(Elemento, elemento_id)
+    elemento = buscar_visivel(sessao, Elemento, elemento_id)
     if elemento is None or elemento.apagado_em is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não há elemento com id {elemento_id} na lixeira.")
     return elemento
@@ -280,7 +298,7 @@ def _elementos_da_lixeira(sessao: Session) -> list[Elemento]:
         sessao.scalars(
             select(Elemento)
             .join(Livro, Livro.id == Elemento.livro_id)
-            .where(Elemento.apagado_em.is_not(None), Livro.apagado_em.is_(None))
+            .where(Elemento.apagado_em.is_not(None), Livro.apagado_em.is_(None), Livro.usuario_id == usuario_ou_dono(sessao))
             .order_by(Elemento.apagado_em.desc(), Elemento.id.desc())
         )
     )

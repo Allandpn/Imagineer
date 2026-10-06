@@ -16,14 +16,16 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from imagineer.banco.sessao import obter_sessao
+from imagineer.banco.sessao import obter_sessao_anonima
 
 rotas = APIRouter(tags=["Saúde"])
 
 
 @rotas.get("/saude", summary="Verifica a saúde da aplicação")
-def verificar_saude(sessao: Session = Depends(obter_sessao)) -> dict[str, str]:
+def verificar_saude(sessao: Session = Depends(obter_sessao_anonima)) -> dict[str, str]:
     """Responde se a API está no ar e se a conexão com o banco funciona.
+
+    **Não exige identidade** (CT2): o monitoramento chama sem o cabeçalho do Tailscale, e a rota não devolve dado de ninguém.
 
     O ``SELECT 1`` é a consulta mais barata possível: não lê tabela nenhuma,
     só obriga o banco a responder, provando que a conexão está viva.

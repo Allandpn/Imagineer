@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.frame import ImagemCanonicaDoFrame
 from imagineer.esquemas.video import VideoNoTextoNovo, VideoResumo
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import Frame, Prompt, TipoDePrompt, Video
 from imagineer.rotas._comum import buscar_frame as _buscar_frame
 from imagineer.rotas._comum import obter_ou_404
@@ -65,7 +66,7 @@ async def importar_video(
     """Grava o arquivo aos pedaços (nunca inteiro na memória) e confere a extensão e o começo do conteúdo."""
     frame = _buscar_frame(sessao, frame_id)
     if prompt_id is not None:
-        prompt = sessao.get(Prompt, prompt_id)
+        prompt = buscar_visivel(sessao, Prompt, prompt_id)
         if prompt is None or prompt.frame_id != frame.id or prompt.tipo != TipoDePrompt.VIDEO:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -94,7 +95,7 @@ def definir_video_no_texto(frame_id: int, corpo: VideoNoTextoNovo, sessao: Sessi
     """``{"video_id": 7}`` faz o texto mostrar o vídeo no lugar da imagem; ``{"video_id": null}`` volta à imagem. O vídeo tem de ser **do frame**."""
     frame = _buscar_frame(sessao, frame_id)
     if corpo.video_id is not None:
-        video = sessao.get(Video, corpo.video_id)
+        video = buscar_visivel(sessao, Video, corpo.video_id)
         if video is None or video.frame_id != frame.id:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Este vídeo não é deste frame.")
     frame.video_do_texto_id = corpo.video_id

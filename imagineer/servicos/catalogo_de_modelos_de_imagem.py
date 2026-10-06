@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 
 from imagineer.ia.fornecedores_de_imagem import separar_fornecedor
 from imagineer.ia.provedor import ErroDoProvedorIA, ModeloDeImagemDisponivel, ProvedorIA
-from imagineer.modelos import Configuracao, Imagem, UsoDeIA
+from imagineer.modelos import Capitulo, Configuracao, Frame, Imagem, Livro, Prompt, UsoDeIA
+from imagineer.servicos.acesso import gastos_da_pessoa, usuario_ou_dono
 from imagineer.servicos.imagens_reduzidas import ler_dimensoes
 from imagineer.servicos import precos_de_imagem as fornecedores
 from imagineer.servicos.precos_de_imagem import preco_informado
@@ -62,7 +63,7 @@ def _precos_medidos(sessao: Session) -> dict[str, Decimal]:
     """A **média** do custo das imagens já geradas, por modelo (MI2). Só vale o custo que o fornecedor informou (não o estimado)."""
     linhas = sessao.execute(
         select(UsoDeIA.modelo, func.avg(UsoDeIA.custo))
-        .where(UsoDeIA.operacao == "imagem", UsoDeIA.custo.is_not(None), UsoDeIA.estimado.is_(False))
+        .where(UsoDeIA.operacao == "imagem", UsoDeIA.custo.is_not(None), UsoDeIA.estimado.is_(False), gastos_da_pessoa(sessao))
         .group_by(UsoDeIA.modelo)
     ).all()
     return {modelo: Decimal(str(media)) for modelo, media in linhas if media is not None}
@@ -72,7 +73,11 @@ def _resolucoes_tipicas(sessao: Session) -> dict[str, str]:
     """A resolução da imagem **mais recente** de cada modelo (MI4), como ``1024×1024``."""
     linhas = sessao.execute(
         select(Imagem.modelo, Imagem.largura, Imagem.altura)
-        .where(Imagem.modelo.is_not(None), Imagem.largura.is_not(None), Imagem.altura.is_not(None))
+        .join(Prompt, Prompt.id == Imagem.prompt_id)
+        .join(Frame, Frame.id == Prompt.frame_id)
+        .join(Capitulo, Capitulo.id == Frame.capitulo_id)
+        .join(Livro, Livro.id == Capitulo.livro_id)
+        .where(Imagem.modelo.is_not(None), Imagem.largura.is_not(None), Imagem.altura.is_not(None), Livro.usuario_id == usuario_ou_dono(sessao))
         .order_by(Imagem.id)
     ).all()
     return {_chave_do_uso(modelo): f"{largura}×{altura}" for modelo, largura, altura in linhas}  # a última sobrescreve

@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from imagineer.modelos import (
+    DONO_ID,
     Capitulo,
     Elemento,
     EstadoElemento,
@@ -70,9 +71,11 @@ def teste_perfil_de_renderizacao_nao_pertence_a_um_livro(
 
 
 def teste_nome_do_perfil_e_unico(sessao_com_tabelas: Session) -> None:
-    """Dois perfis com o mesmo nome seriam indistinguíveis na tela de escolha."""
-    _perfil(sessao_com_tabelas)
-    sessao_com_tabelas.add(PerfilRenderizacao(nome="Aquarela sombria"))
+    """Dois perfis **da mesma pessoa** com o mesmo nome seriam indistinguíveis na tela de escolha (CT7: a unicidade é por pessoa)."""
+    dono = _perfil(sessao_com_tabelas)
+    dono.usuario_id = DONO_ID
+    sessao_com_tabelas.commit()
+    sessao_com_tabelas.add(PerfilRenderizacao(nome="Aquarela sombria", usuario_id=DONO_ID))
 
     with pytest.raises(IntegrityError):
         sessao_com_tabelas.commit()

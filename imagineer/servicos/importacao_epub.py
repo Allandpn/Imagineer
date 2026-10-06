@@ -31,6 +31,7 @@ from ebooklib import ITEM_DOCUMENT, ITEM_IMAGE, epub
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from imagineer.servicos.acesso import usuario_ou_dono
 from imagineer.modelos import Capitulo, Livro
 from imagineer.servicos.capa_do_livro import capa_do_epub
 
@@ -313,6 +314,7 @@ def importar_epub(sessao: Session, conteudo: bytes, nome_arquivo: str) -> Livro:
     extraido = extrair_epub(conteudo, nome_arquivo)
 
     livro = Livro(
+        usuario_id=usuario_ou_dono(sessao),  # CT5: o livro é de quem o importou
         titulo=extraido.titulo,
         titulo_confirmado=extraido.titulo_confirmado,
         autor=extraido.autor,
@@ -339,14 +341,18 @@ def livros_com_mesmo_identificador(
 
     Serve para o app **avisar** que o livro parece já ter sido importado — não
     para impedir (item 3.4a). Um identificador nulo nunca casa com nada: EPUBs
-    sem identificador não são "o mesmo livro" só por isso.
+    sem identificador não são "o mesmo livro" só por isso. **Só os livros da própria pessoa** (CT6-c): mostrar o de outra revelaria o que ela tem.
     """
     if not identificador_epub:
         return []
 
     return list(
         sessao.scalars(
-            select(Livro).where(Livro.identificador_epub == identificador_epub, Livro.apagado_em.is_(None))
+            select(Livro).where(
+                Livro.identificador_epub == identificador_epub,
+                Livro.apagado_em.is_(None),
+                Livro.usuario_id == usuario_ou_dono(sessao),
+            )
         ).all()
     )
 

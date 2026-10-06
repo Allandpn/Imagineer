@@ -15,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 
 from imagineer.banco.sessao import CriadorDeSessao
 from imagineer.ia.provedor import UsoDaChamada
-from imagineer.modelos import Configuracao, UsoDeIA
+from imagineer.modelos import DONO_ID, Configuracao, UsoDeIA
 from imagineer.servicos.precos_de_imagem import preco_estimado_da_imagem
 
 _livro_do_gasto: ContextVar[int | None] = ContextVar("livro_do_gasto", default=None)
@@ -48,19 +48,20 @@ def gasto_do_livro(livro_id: int | None) -> Iterator[None]:
         _livro_do_gasto.reset(marca)
 
 
-def gravar_uso(uso: UsoDaChamada, criador: sessionmaker = CriadorDeSessao) -> None:
+def gravar_uso(uso: UsoDaChamada, criador: sessionmaker = CriadorDeSessao, usuario_id: int | None = None) -> None:
     """Grava uma linha em ``usos_ia`` numa sessão própria.
 
     Args:
         uso: o que a chamada consumiu.
         criador: de onde sai a sessão; os testes passam um ligado ao banco de teste.
+        usuario_id: de quem é o gasto (CT10); ``None`` = sem dono informado, que a leitura trata como do dono.
     """
     # CU2: o fornecedor não informou o custo de uma imagem: estima (marcado como estimado), sem tabela fixa (PD3).
     custo, estimado = uso.custo, uso.estimado
     with criador() as sessao:
         if custo is None and uso.operacao == "imagem":
             # PD3: o preço informado pela pessoa; senão o que o fal.ai publica; senão nenhum (nunca um valor inventado).
-            informados = sessao.scalar(select(Configuracao.precos_informados).limit(1))
+            informados = sessao.scalar(select(Configuracao.precos_informados).where(Configuracao.id == (usuario_id or DONO_ID)))
             custo = preco_estimado_da_imagem(uso.modelo, informados)
             estimado = custo is not None
         coletor = _coletor_de_custo.get()
@@ -76,6 +77,7 @@ def gravar_uso(uso: UsoDaChamada, criador: sessionmaker = CriadorDeSessao) -> No
                 id_da_geracao=uso.id_da_geracao,
                 provedor=uso.provedor,
                 livro_id=_livro_do_gasto.get(),
+                usuario_id=usuario_id,
                 estimado=estimado,
             )
         )

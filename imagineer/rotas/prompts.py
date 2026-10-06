@@ -35,6 +35,7 @@ from imagineer.ia.provedor import (
     ModeloNaoEscolhido,
     ProvedorIA,
 )
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import (
     Capitulo,
     Configuracao,
@@ -889,7 +890,7 @@ def _resolver_imagem_de_partida(sessao: Session, frame: Frame, corpo: PromptNovo
         for imagem in prompt.imagens_ativas
     ]
     if corpo.imagem_partida_id is not None:
-        imagem = sessao.get(Imagem, corpo.imagem_partida_id)
+        imagem = buscar_visivel(sessao, Imagem, corpo.imagem_partida_id)
         valida = imagem is not None and imagem.apagada_em is None and (
             imagem in do_frame or imagem.id == frame.imagem_canonica_id
         )
@@ -925,7 +926,7 @@ def _resolver_perfil(
             ),
         )
 
-    perfil = sessao.get(PerfilRenderizacao, escolhido)
+    perfil = buscar_visivel(sessao, PerfilRenderizacao, escolhido)
     if perfil is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

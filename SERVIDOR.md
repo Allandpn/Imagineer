@@ -162,6 +162,19 @@ docker compose restart api
 
 O backup do banco **e** o das imagens são independentes: o banco guarda só a referência de cada imagem, e o arquivo mora no volume `imagens`. Guarde os dois fora do Pi.
 
+## 6. Dividir o servidor com família e amigos (contas de usuário)
+
+Por padrão o servidor é **só seu** (`IMAGINEER_AUTENTICACAO=pessoal`): todo pedido é do dono e nada muda. Para outras pessoas usarem o mesmo servidor, cada uma com os próprios livros, imagens, leitura e gastos:
+
+1. No painel do Tailscale, **compartilhe o aparelho do servidor** com a pessoa (ela entra com a conta Tailscale *dela*; não precisa da sua).
+2. No `.env`: `IMAGINEER_AUTENTICACAO=tailscale`, `IMAGINEER_DONO=<seu e-mail do Tailscale>` (obrigatório), `ENDERECO_API=127.0.0.1` e `IMAGINEER_PROXIES_CONFIAVEIS=127.0.0.1,::1,172.16.0.0/12` (a faixa é a ponte do Docker; veja o `.env.exemplo`).
+3. `docker compose up -d` e `docker compose exec api alembic upgrade head` (a migração `b2c3d4e5f6a8` cria a conta do dono e passa todos os livros que já existem para ela).
+4. `tailscale serve --bg 8000`. **Não use `tailscale funnel`**: ele abre para a internet e não manda a identidade.
+
+Por que é seguro: o servidor só aceita o cabeçalho de identidade vindo do proxy confiável, e o `tailscale serve` apaga esse cabeçalho se ele vier de fora. Por isso a porta da API **nunca** pode ficar aberta para a rede (`ENDERECO_API=127.0.0.1`): quem a alcançasse direto poderia se passar por qualquer pessoa. Confira com `GET /eu` (quem o servidor acha que você é). `/saude` continua sem identidade, para o monitoramento.
+
+As chaves de IA do servidor (OpenRouter, fal.ai, Replicate) são **suas**: as outras pessoas usam a própria chave do OpenRouter, informada no app. Para liberar as chaves do servidor a alguém: `UPDATE usuarios SET usa_chaves_do_servidor = true WHERE login = 'fulano@exemplo.com';`.
+
 ## Lista rápida
 
 - **Só código:** `git push` → no Pi, `git pull && docker compose up -d --build`.

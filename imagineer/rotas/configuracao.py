@@ -8,10 +8,10 @@ from decimal import Decimal, InvalidOperation
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from imagineer.banco.sessao import obter_sessao
+from imagineer.banco.sessao import obter_sessao, obter_usuario
 from imagineer.configuracao import obter_configuracoes
 from imagineer.ia.provedor import ProvedorIA
-from imagineer.modelos import ModoDeNarracao, MotorDeNarracao, PrioridadeIA
+from imagineer.modelos import ModoDeNarracao, MotorDeNarracao, PrioridadeIA, Usuario
 from imagineer.servicos.catalogo_de_modelos_de_imagem import chave_do_modelo_de_imagem, montar_catalogo, testar_modelo_de_imagem
 from imagineer.servicos.configuracao_ia import (
     construir_provedor,
@@ -31,6 +31,7 @@ def obter_provedor(
             "a chave do servidor e nunca é gravada (item 4.3)."
         ),
     ),
+    usuario: Usuario = Depends(obter_usuario),
 ) -> ProvedorIA:
     """Dependência que entrega o provedor de IA já configurado.
 
@@ -38,7 +39,7 @@ def obter_provedor(
     poderem substituí-la por um provedor falso — e para uma troca de chave valer
     no pedido seguinte, sem reiniciar o serviço.
     """
-    return construir_provedor(chave_api_openrouter)
+    return construir_provedor(chave_api_openrouter, usuario)
 
 
 class ConfiguracaoAtual(BaseModel):
@@ -235,10 +236,12 @@ class ModeloDaLista(BaseModel):
 
 
 @rotas.get("", response_model=ConfiguracaoAtual, summary="A configuração atual")
-def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtual:
+def ver_configuracao(sessao: Session = Depends(obter_sessao), usuario: Usuario = Depends(obter_usuario)) -> ConfiguracaoAtual:
     """Diz quais modelos estão escolhidos e se há chave — sem devolver a chave."""
     configuracao = obter_ou_criar(sessao)
-    chave = resolver_chave()  # sem header: só o que o servidor tem
+    chave = resolver_chave(None, usuario)  # sem header: só o que o servidor tem **para esta pessoa** (CT9)
+    configuracoes = obter_configuracoes()
+    do_servidor = usuario.usa_chaves_do_servidor
 
     return ConfiguracaoAtual(
         tem_chave_api=chave.valor is not None,
@@ -249,8 +252,8 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
         modelo_imagem=configuracao.modelo_imagem,
         fornecedores_de_imagem={
             "openrouter": chave.valor is not None,
-            "fal": bool(obter_configuracoes().chave_api_fal.strip()),
-            "replicate": bool(obter_configuracoes().chave_api_replicate.strip()),
+            "fal": do_servidor and bool(configuracoes.chave_api_fal.strip()),
+            "replicate": do_servidor and bool(configuracoes.chave_api_replicate.strip()),
         },
         modelos_de_imagem=list(configuracao.modelos_de_imagem or []),
         modelos_sem_filtro=list(configuracao.modelos_sem_filtro or []),
@@ -269,7 +272,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao)) -> ConfiguracaoAtu
 
 @rotas.put("", response_model=ConfiguracaoAtual, summary="Grava a configuração")
 def gravar_configuracao(
-    nova: ConfiguracaoNova, sessao: Session = Depends(obter_sessao)
+    nova: ConfiguracaoNova, sessao: Session = Depends(obter_sessao), usuario: Usuario = Depends(obter_usuario)
 ) -> ConfiguracaoAtual:
     """Escolhe os modelos e a prioridade de IA. A chave não passa por aqui."""
     configuracao = obter_ou_criar(sessao)
@@ -306,7 +309,7 @@ def gravar_configuracao(
         setattr(configuracao, campo, limpo)
 
     sessao.commit()
-    return ver_configuracao(sessao)
+    return ver_configuracao(sessao, usuario)
 
 
 @rotas.get("/modelos-de-imagem", response_model=CatalogoDeImagem, summary="Os modelos de imagem, com preço, moderação e resolução")

@@ -42,7 +42,9 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
 
 from imagineer.banco.base import Base
-from imagineer.banco.sessao import obter_sessao
+from imagineer.banco.sessao import obter_sessao, obter_sessao_anonima, obter_usuario
+from imagineer.modelos import DONO_ID, Usuario
+from imagineer.servicos.acesso import definir_usuario
 from imagineer.principal import aplicacao
 
 # Importar os modelos registra as tabelas na Base.metadata — é o que permite
@@ -91,6 +93,11 @@ def sessao_com_tabelas() -> Session:
     Base.metadata.create_all(motor)
     criador = sessionmaker(bind=motor)
     sessao = criador()
+    # Contas (CT4/CT6): o dono existe (a migração o cria em produção) e **a sessão de todo teste é a dele**, com o escopo ligado. Assim os
+    # testes que já existiam rodam sob o isolamento e quebram se algum helper perder a conferência do dono.
+    sessao.add(Usuario(id=DONO_ID, nome="Dono", dono=True, usa_chaves_do_servidor=True))
+    sessao.commit()
+    definir_usuario(sessao, DONO_ID)
     try:
         yield sessao
     finally:
@@ -172,6 +179,9 @@ def cliente(sessao_com_tabelas: Session) -> TestClient:
         yield sessao_com_tabelas
 
     aplicacao.dependency_overrides[obter_sessao] = obter_sessao_de_teste
+    aplicacao.dependency_overrides[obter_sessao_anonima] = obter_sessao_de_teste
+    # Quem fez o pedido é quem a sessão de teste diz (``definir_usuario``): é como o teste de isolamento "vira" outra pessoa.
+    aplicacao.dependency_overrides[obter_usuario] = lambda: sessao_com_tabelas.get(Usuario, sessao_com_tabelas.info["usuario_id"])
     try:
         yield TestClient(aplicacao)
     finally:

@@ -11,6 +11,7 @@ from typing import TypeVar
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import (
     Capitulo,
     Elemento,
@@ -30,7 +31,7 @@ T = TypeVar("T")
 
 def obter_ou_404(sessao: Session, modelo: type[T], id_: int, rotulo: str) -> T:
     """Devolve o registro ``modelo`` de id ``id_``, ou responde 404 ("Não existe ``rotulo`` com id ``id_``.")."""
-    registro = sessao.get(modelo, id_)
+    registro = buscar_visivel(sessao, modelo, id_)  # CT6-a: o que é de outra pessoa "não existe"
     if registro is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

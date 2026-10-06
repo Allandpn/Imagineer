@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.custos import CustosDoMes, GastoAgrupado
+from imagineer.servicos.acesso import gastos_da_pessoa, usuario_ou_dono
 from imagineer.modelos import Livro, UsoDeIA
 
 rotas = APIRouter(prefix="/custos", tags=["Custos"])
@@ -28,8 +29,8 @@ def custos_do_mes(
     inicio = _inicio_do_mes(mes)
     fim = datetime(inicio.year + (inicio.month == 12), inicio.month % 12 + 1, 1, tzinfo=timezone.utc)
 
-    linhas = sessao.scalars(select(UsoDeIA).where(UsoDeIA.criado_em >= inicio, UsoDeIA.criado_em < fim)).all()
-    titulos = dict(sessao.execute(select(Livro.id, Livro.titulo)).all())
+    linhas = sessao.scalars(select(UsoDeIA).where(UsoDeIA.criado_em >= inicio, UsoDeIA.criado_em < fim, gastos_da_pessoa(sessao))).all()  # CT10
+    titulos = dict(sessao.execute(select(Livro.id, Livro.titulo).where(Livro.usuario_id == usuario_ou_dono(sessao))).all())
 
     por_provedor, por_operacao, por_livro, por_modelo = (defaultdict(_Acumulado) for _ in range(4))
     total = estimado = ZERO
@@ -98,5 +99,5 @@ def _inicio_do_mes(mes: str | None) -> datetime:
 
 
 def _meses_com_gasto(sessao: Session) -> list[str]:
-    datas = sessao.scalars(select(UsoDeIA.criado_em)).all()
+    datas = sessao.scalars(select(UsoDeIA.criado_em).where(gastos_da_pessoa(sessao))).all()
     return sorted({f"{d.year:04d}-{d.month:02d}" for d in datas}, reverse=True)

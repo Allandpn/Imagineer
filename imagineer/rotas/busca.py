@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.busca import OcorrenciaNoTexto, ResultadoDaBusca
+from imagineer.servicos.acesso import usuario_ou_dono
 from imagineer.modelos import Capitulo, Livro
 from imagineer.rotas._comum import buscar_capitulo as _buscar_capitulo, buscar_livro as _buscar_livro
 from imagineer.servicos.busca_no_texto import procurar
@@ -32,7 +33,7 @@ def buscar(
     consulta = (
         select(Livro.id, Livro.titulo, Capitulo.id, Capitulo.ordem, Capitulo.titulo, Capitulo.texto)
         .join(Capitulo, Capitulo.livro_id == Livro.id)
-        .where(Capitulo.ignorado.is_(False), Livro.apagado_em.is_(None))  # o livro da lixeira não entra na pesquisa (LT2)
+        .where(Capitulo.ignorado.is_(False), Livro.apagado_em.is_(None), Livro.usuario_id == usuario_ou_dono(sessao))  # lixeira (LT2); só os da pessoa (CT6-c)
         .order_by(Livro.titulo, Livro.id, Capitulo.ordem)
     )
     if capitulo_id is not None:

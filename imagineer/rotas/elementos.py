@@ -26,6 +26,7 @@ from imagineer.esquemas.elemento import (
     HistoricoIdentidadeResumo,
     ImagemDoElemento,
 )
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import (
     Capitulo,
     Elemento,
@@ -248,7 +249,7 @@ def remover_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao)) 
 
     As sugestões que o citavam voltam a ser pendentes. Só "apagar de vez", na lixeira, remove tudo (com os arquivos das imagens).
     """
-    elemento = sessao.get(Elemento, elemento_id)
+    elemento = buscar_visivel(sessao, Elemento, elemento_id)
     if elemento is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe elemento com id {elemento_id}.")
     mover_elemento_para_a_lixeira(sessao, elemento)

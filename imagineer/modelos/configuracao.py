@@ -2,13 +2,13 @@
 
 import enum
 
-from sqlalchemy import JSON, CheckConstraint, Enum, String, Text
+from sqlalchemy import JSON, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
 
 ID_UNICO = 1
-"""O único id que a tabela de configuração aceita."""
+"""O id da configuração do **dono** (que é o usuário 1, CT8): o padrão de uma configuração criada sem dizer de quem é."""
 
 MODELO_DE_IMAGEM_PADRAO = "meta/muse-image"
 """O modelo que gera a imagem enquanto o usuário não escolher outro (decisão do Allan, 01/10/2026)."""
@@ -106,22 +106,16 @@ class CategoriaEstilo(enum.Enum):
 
 
 class Configuracao(Base):
-    """A configuração da integração com IA, numa linha só.
+    """A configuração da integração com IA **de uma pessoa** (CT8).
 
-    Não é a modelagem mais elegante, mas é a mais honesta para o que é: não
-    existem "duas configurações" num sistema pessoal de um usuário. A alternativa
-    — uma tabela de pares chave/valor — perderia a tipagem de cada campo e
-    ganharia só flexibilidade que não vai ser usada.
+    O ``id`` **é o id do usuário**: a linha 1 é a do dono, como sempre foi (era a "linha única"), e cada pessoa que chega ganha a sua na
+    primeira vez que a configuração é lida. Não é a modelagem mais elegante, mas evita uma coluna e uma sequência a mais; a alternativa — uma
+    tabela de pares chave/valor — perderia a tipagem de cada campo e ganharia só flexibilidade que não vai ser usada.
     """
 
     __tablename__ = "configuracao"
-    __table_args__ = (
-        # Impede uma segunda linha aparecer por acidente. Sem isto, dois registros
-        # de configuração conviveriam e o sistema leria um deles sem avisar.
-        CheckConstraint("id = 1", name="linha_unica"),
-    )
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False, default=ID_UNICO)
+    id: Mapped[int] = mapped_column(ForeignKey("usuarios.id", ondelete="CASCADE"), primary_key=True, autoincrement=False, default=ID_UNICO)
 
     # Não há coluna para a chave de API, de propósito (item 4.3): a chave do
     # servidor vem só da variável de ambiente, e a de cada usuário chega por

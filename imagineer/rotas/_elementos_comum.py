@@ -13,6 +13,7 @@ from imagineer.esquemas.elemento import (
     ElementoResumo,
     EstadoResumo,
 )
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import (
     Capitulo,
     Elemento,
@@ -140,7 +141,7 @@ def exigir_imagem(sessao: Session, imagem_id: int) -> None:
 
     Sem isto, a chave estrangeira falharia no commit e o app receberia um 500.
     """
-    imagem = sessao.get(Imagem, imagem_id)
+    imagem = buscar_visivel(sessao, Imagem, imagem_id)
     if imagem is None or imagem.apagada_em is not None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

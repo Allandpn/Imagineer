@@ -3,7 +3,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
-from imagineer.banco.sessao import obter_sessao
+from imagineer.banco.sessao import obter_sessao_anonima
 from imagineer.principal import aplicacao
 
 
@@ -31,7 +31,7 @@ def teste_saude_reporta_degradado_quando_o_banco_falha() -> None:
     def obter_sessao_quebrada():
         yield SessaoQueFalha()
 
-    aplicacao.dependency_overrides[obter_sessao] = obter_sessao_quebrada
+    aplicacao.dependency_overrides[obter_sessao_anonima] = obter_sessao_quebrada
     try:
         resposta = TestClient(aplicacao).get("/saude")
     finally:

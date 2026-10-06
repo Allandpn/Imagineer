@@ -27,6 +27,7 @@ from imagineer.esquemas.elemento import (
     SugestoesDeCapitulo,
 )
 from imagineer.ia.provedor import ProvedorIA
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import Capitulo, EstadoElemento, Frame, SugestaoDeCena, SugestaoDeElemento, TipoDeFrame
 from imagineer.rotas._comum import (
     buscar_capitulo as _buscar_capitulo,
@@ -263,7 +264,7 @@ def posicionar_cena(
     sugestao_cena_id: int, corpo: PosicaoManualNova, sessao: Session = Depends(obter_sessao)
 ) -> PosicaoManualDoArtefato:
     """PM1 a PM4, para cenas. Mesmas regras de `PUT /sugestoes-elemento/{id}/posicao`."""
-    cena = sessao.get(SugestaoDeCena, sugestao_cena_id)
+    cena = buscar_visivel(sessao, SugestaoDeCena, sugestao_cena_id)
     if cena is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -289,7 +290,7 @@ def ajustar_sugestao_de_cena(
 ) -> CenaSugeridaResposta:
     """`descartada: true` tira a cena das pendentes e ela sobrevive a uma reanálise;
     `false` a restaura. Uma cena que já virou Frame não se descarta (409): o Frame existe."""
-    cena = sessao.get(SugestaoDeCena, sugestao_cena_id)
+    cena = buscar_visivel(sessao, SugestaoDeCena, sugestao_cena_id)
     if cena is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

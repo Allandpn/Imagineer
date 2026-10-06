@@ -1,6 +1,6 @@
 """Modelo do PerfilRenderizacao — o estilo visual a aplicar (item 3.4c)."""
 
-from sqlalchemy import Boolean, Enum, String, Text, false
+from sqlalchemy import Boolean, Enum, ForeignKey, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from imagineer.banco.base import Base
@@ -21,12 +21,16 @@ class PerfilRenderizacao(Base):
     """
 
     __tablename__ = "perfis_renderizacao"
+    __table_args__ = (UniqueConstraint("usuario_id", "nome"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    nome: Mapped[str] = mapped_column(String(100), unique=True)
-    """Como você chama o perfil ("Aquarela sombria"). Único, para não acumular
-    duplicatas de uma lista que é pequena e curada à mão."""
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="CASCADE"), index=True)
+    """De quem é o perfil próprio (CT7). **Nulo = de fábrica**: visível a todos e travado (PF3)."""
+
+    nome: Mapped[str] = mapped_column(String(100))
+    """Como você chama o perfil ("Aquarela sombria"). Único **por pessoa** (``UNIQUE (usuario_id, nome)``, CT7), para não acumular duplicatas de
+    uma lista pequena e curada à mão sem que dois amigos disputem o mesmo nome. Os de fábrica (``usuario_id`` nulo) são semeados por nome."""
 
     # Todos os campos de estilo aceitam nulo porque cada ferramenta de imagem
     # entende um subconjunto diferente: um perfil voltado a uma delas pode não

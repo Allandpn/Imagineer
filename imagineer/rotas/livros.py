@@ -54,6 +54,7 @@ from imagineer.rotas._comum import (
     buscar_livro as _buscar_livro,
 )
 from imagineer.rotas.configuracao import obter_provedor
+from imagineer.servicos.acesso import buscar_visivel, usuario_ou_dono
 from imagineer.servicos.capa_do_livro import CapaInvalida, capa_de_um_arquivo
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
 from imagineer.servicos.configuracao_ia import obter_ou_criar
@@ -134,7 +135,7 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
             func.coalesce(func.sum(_caracteres_se_ativo()), 0),
         )
         .outerjoin(Capitulo, Capitulo.livro_id == Livro.id)
-        .where(Livro.apagado_em.is_(None))  # LT2: o da lixeira não aparece
+        .where(Livro.apagado_em.is_(None), Livro.usuario_id == usuario_ou_dono(sessao))  # LT2: o da lixeira não aparece; CT6-c: só os da pessoa
         .group_by(Livro.id)
         .order_by(Livro.titulo)
     ).all()
@@ -421,7 +422,7 @@ def ler_capa(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Response
 
     A capa de um livro **na lixeira** também sai (a tela da lixeira mostra a capa dele); por isso não usa ``_buscar_livro``.
     """
-    livro = sessao.get(Livro, livro_id)
+    livro = buscar_visivel(sessao, Livro, livro_id)  # CT6-a
     if livro is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe livro com id {livro_id}.")
     if livro.capa is None:
@@ -468,7 +469,7 @@ def remover_livro(livro_id: int, sessao: Session = Depends(obter_sessao)) -> Non
 
     Mover de novo um livro que já está na lixeira não dá erro.
     """
-    livro = sessao.get(Livro, livro_id)
+    livro = buscar_visivel(sessao, Livro, livro_id)  # CT6-a
     if livro is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe livro com id {livro_id}.")
     if livro.apagado_em is None:
@@ -487,7 +488,7 @@ def _exigir_perfil(sessao: Session, perfil_id: int) -> None:
     Sem isto, a chave estrangeira falharia no commit e o app receberia um 500 em
     vez de uma mensagem que dá para mostrar na tela.
     """
-    if sessao.get(PerfilRenderizacao, perfil_id) is None:
+    if buscar_visivel(sessao, PerfilRenderizacao, perfil_id) is None:  # CT7: só um perfil que a pessoa enxerga
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Não existe perfil de renderização com id {perfil_id}.",

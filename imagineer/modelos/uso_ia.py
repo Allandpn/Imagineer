@@ -43,6 +43,9 @@ class UsoDeIA(Base):
     provedor: Mapped[str] = mapped_column(String(20), default="openrouter", server_default="openrouter")
     """Quem cobrou: ``openrouter``, ``fal`` ou ``replicate`` (CU1)."""
 
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id", ondelete="CASCADE"), index=True)
+    """De quem foi o gasto (CT10). Nulo = de antes das contas, que é do dono."""
+
     livro_id: Mapped[int | None] = mapped_column(ForeignKey("livros.id", ondelete="SET NULL"), index=True)
     """De que livro foi o gasto, quando se sabe (gerar imagem, gerar prompt, analisar); nulo = sem livro (CU3)."""
 

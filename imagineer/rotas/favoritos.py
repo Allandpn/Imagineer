@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.favorito import FavoritoNovo, FavoritoResposta
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import Capitulo, Elemento, Favorito, Frame, Imagem, Livro, TipoDeFavorito, TipoDeFrame
 from imagineer.rotas._comum import buscar_elemento, buscar_frame, buscar_livro, obter_ou_404
 from imagineer.rotas.destaques import _trecho_em_utf16
@@ -73,7 +74,7 @@ def _validar_e_procurar(sessao: Session, livro_id: int, novo: FavoritoNovo) -> t
             _recusar("Só uma cena se favorita por aqui: o retrato de um elemento é favoritado pelo próprio elemento.")
         return {"frame_id": novo.frame_id}, None
     _exigir_so(novo, "imagem_id")
-    imagem = sessao.get(Imagem, novo.imagem_id)
+    imagem = buscar_visivel(sessao, Imagem, novo.imagem_id)
     if imagem is None or imagem.apagada_em is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Imagem {novo.imagem_id} não encontrada.")
     if _livro_da_imagem(imagem) != livro_id:

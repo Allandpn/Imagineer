@@ -17,6 +17,7 @@ from imagineer.esquemas.leitura import (
     PinNovo,
     PinResposta,
 )
+from imagineer.servicos.acesso import buscar_visivel
 from imagineer.modelos import Capitulo, Marcador, Pin
 from imagineer.servicos.posicao_no_texto import tamanho_em_utf16
 from imagineer.rotas._comum import (
@@ -197,7 +198,7 @@ def _conferir_posicao(capitulo: Capitulo, posicao: int) -> None:
 
 def _capitulo_do_livro(sessao: Session, livro_id: int, capitulo_id: int) -> Capitulo:
     """O capítulo, que precisa ser deste livro (422 se não existe ou é de outro)."""
-    capitulo = sessao.get(Capitulo, capitulo_id)
+    capitulo = buscar_visivel(sessao, Capitulo, capitulo_id)
     if capitulo is None or capitulo.livro_id != livro_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

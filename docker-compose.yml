@@ -22,7 +22,9 @@ services:
     ports:
       # A porta de FORA é configurável (PORTA_API no .env; padrão 8000): num Raspberry Pi que já
       # roda outros sistemas, a 8000 pode estar ocupada. A de dentro do container é sempre 8000.
-      - "${PORTA_API:-8000}:8000"
+      # O ENDEREÇO também: no modo de contas (IMAGINEER_AUTENTICACAO=tailscale) a API **tem** que ficar em 127.0.0.1, para só o
+      # `tailscale serve` (que apaga o cabeçalho de identidade falsificado) conseguir alcançá-la. O padrão continua aberto, como antes.
+      - "${ENDERECO_API:-0.0.0.0}:${PORTA_API:-8000}:8000"
     volumes:
       # Volume dedicado ao catálogo: as imagens ficam em arquivo, nunca no
       # banco (o banco guarda só a referência). Por ser um volume, sobrevivem

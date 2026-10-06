@@ -27,6 +27,7 @@ from imagineer.rotas import (
     favoritos,
     elementos,
     estados,
+    eu,
     frame,
     identidade,
     leitura,
@@ -58,6 +59,7 @@ registrar_tratadores(aplicacao)
 aplicacao.add_middleware(GZipMiddleware, minimum_size=1000)
 
 aplicacao.include_router(saude.rotas)
+aplicacao.include_router(eu.rotas)
 aplicacao.include_router(livros.rotas)
 aplicacao.include_router(leitura.rotas_de_livro)
 aplicacao.include_router(leitura.rotas_de_pin)
