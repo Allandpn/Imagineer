@@ -186,8 +186,8 @@ class PromptAjuste(BaseModel):
 
     avaliacao: str | None = Field(default=None, min_length=1)
     oculto: bool | None = None
-    texto: str | None = Field(default=None, min_length=1, max_length=4000)
-    texto_pt: str | None = Field(default=None, min_length=1, max_length=4000)
+    texto: str | None = Field(default=None, min_length=1, max_length=8000)
+    texto_pt: str | None = Field(default=None, min_length=1, max_length=8000)
 
     @model_validator(mode="after")
     def _ao_menos_um(self) -> "PromptAjuste":

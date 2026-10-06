@@ -99,7 +99,7 @@ def teste_o_texto_vazio_ou_enorme_e_recusado(cliente: TestClient, usar_provedor_
     video = _prompt_de_video(cliente, frame["id"])
 
     assert cliente.patch(f"/prompts/{video['id']}", json={"texto": ""}).status_code == 422
-    assert cliente.patch(f"/prompts/{video['id']}", json={"texto": "x" * 4001}).status_code == 422
+    assert cliente.patch(f"/prompts/{video['id']}", json={"texto": "x" * 8001}).status_code == 422
 
 
 def teste_o_portugues_do_prompt_de_video_traduz_e_guarda(cliente: TestClient, usar_provedor_falso) -> None:
