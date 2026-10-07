@@ -211,6 +211,26 @@ class PedidoDeTraducaoParaIngles(BaseModel):
     texto: str = Field(min_length=1, max_length=8000)
 
 
+class PedidoDeCorrecao(BaseModel):
+    """O corpo de ``POST /prompts/{id}/corrigir`` (P6): o que a pessoa quer mudar no prompt."""
+
+    instrucao: str = Field(min_length=1, max_length=1000, description='O que mudar, em linguagem natural: "tire a espada", "deixe a luz mais quente".')
+    texto: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=8000,
+        description="O prompt **como está na tela**, se a pessoa já o editou à mão e ainda não gravou. Ausente: vale o texto gravado do prompt.",
+    )
+
+
+class Correcao(BaseModel):
+    """A proposta de correção (P6): **não foi gravada**; a pessoa a aceita ou descarta."""
+
+    texto: str
+    modelo: str
+    custo: Decimal | None = Field(default=None, description="Quanto a chamada custou, em dólares; nulo = sem custo informado.")
+
+
 class PedidoDeGeracao(BaseModel):
     """O corpo, opcional, de ``POST /prompts/{id}/gerar-imagem``."""
 

@@ -384,3 +384,13 @@ Content-Type: application/json
 
 ### Apaga o video e o arquivo (sem lixeira)
 DELETE {{baseUrl}}/videos/{{videoId}}
+
+
+### Pede à IA que corrija o prompt como a pessoa quer (P6). Devolve uma PROPOSTA: nada é gravado. "texto" (opcional) é o prompt como está na tela.
+POST {{baseUrl}}/prompts/{{promptId}}/corrigir
+Content-Type: application/json
+
+{
+  "instrucao": "tire a espada e deixe a luz mais quente",
+  "texto": null
+}

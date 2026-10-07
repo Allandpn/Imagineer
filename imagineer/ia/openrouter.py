@@ -340,6 +340,13 @@ RETRATO: use exclusivamente a descrição desse elemento e o estilo pedido — n
 mencione, sugira ou implique a presença de mais ninguém. Um retrato NÃO é um sujeito \
 solto num fundo qualquer: ele acontece no lugar onde o elemento está (veja abaixo).
 
+**Num retrato a pose é SEMPRE neutra.** O retrato é a imagem de referência do personagem para \
+todas as cenas, e uma pose ou expressão marcante contaminaria as cenas. Por isso o sujeito fica de pé, \
+com o corpo relaxado, os braços soltos ao lado do corpo, olhando para a câmera, com expressão \
+neutra ("standing in a neutral relaxed pose, arms at sides, facing the camera, neutral expression"). \
+SEM gesto, ação, emoção marcada nem objeto na mão, mesmo que o "Neste instante:" descreva um \
+(dele use só a roupa e o penteado). Só o comentário do usuário pode pedir outra pose.
+
 Se vierem **ELEMENTOS VINCULADOS AO SUJEITO**, o retrato continua sendo do **sujeito \
 principal** (o primeiro da lista de elementos), mas os vinculados **aparecem junto dele, como \
 parte do que se vê** (o objeto que ele carrega, o lugar onde está, a criatura ao lado), com a \
@@ -358,7 +365,7 @@ bloco se não houver informação para ele — nunca invente para preencher):
 low-angle, over-the-shoulder) coerente com a cena ou o retrato.
 2. Sujeito principal, num instante congelado: quem/o que é o foco, numa pose \
 ou gesto específico e parado — nunca uma ação contínua ("ele caminha e olha \
-para trás" vira "mid-stride, glancing back").
+para trás" vira "mid-stride, glancing back"). Num retrato a pose é a neutra (ver acima).
 3. Vestuário, texturas e expressão física de cada elemento presente.
 4. Cenário imediato e objetos ao redor: numa cena, os da cena; num retrato, os do "Onde \
 está:" do elemento (se não houver esse campo, pule — não invente).
@@ -396,6 +403,13 @@ material, textura, luz e enquadramento.
 e postura visíveis.
 - Mantenha fielmente a aparência de cada elemento como foi descrita; não invente \
 elementos que não estão na lista.
+- **Lista fechada de quem aparece.** Aparece na imagem **só** quem está na lista de elementos e o que a \
+descrição da cena escrita pelo usuário cita. O trecho do livro e o contexto do livro servem para \
+confirmar a ação, os objetos que ela usa e a luz, e **nunca** para trazer mais pessoas, criaturas ou \
+objetos de destaque: se o trecho cita alguém que não está na lista nem na descrição, esse alguém NÃO \
+entra no prompt. Quando a descrição da cena não fala de mais ninguém, diga de forma positiva quem está \
+no quadro, ao fim da prosa e antes do bloco de estilo ("only these figures in the frame: a woman and a \
+small glowing creature"), sem multidões, figuras ao fundo ou animais que ninguém pediu.
 - **Fidelidade ao autor, inclusive no que é delicado.** Descreva o corpo, a roupa (ou \
 a falta dela) e a ação exatamente como a descrição informada diz. Se a pessoa está \
 nua, escreva que está nua ("nude"); se a descrição não cita roupa, não invente \
@@ -411,8 +425,8 @@ As palavras de clima do perfil (como "contemplativa", "introspectiva", "onírica
 só no bloco final de estética, traduzidas literalmente, e nunca na prosa da cena.
 - **Um só instante.** A descrição de um elemento pode trazer mais de um momento do \
 livro (por exemplo, vestido e depois sem roupa). Escolha UM instante e descreva só o \
-que vale nele: numa cena, o que a descrição da cena indica; num retrato (sem cena), o \
-"Neste instante:" (ou, sem rótulos, o PRIMEIRO momento descrito). Dos outros momentos use apenas traços permanentes (cabelo, \
+que vale nele: numa cena, o que a descrição da cena indica; num retrato (sem cena), a roupa e o \
+penteado do "Neste instante:" (ou, sem rótulos, do PRIMEIRO momento descrito), com a pose neutra. Dos outros momentos use apenas traços permanentes (cabelo, \
 pele, porte, humor), e NUNCA roupa ou pose que contradigam o instante escolhido: o \
 prompt não pode juntar, por exemplo, "nude" com roupa, nem duas poses incompatíveis. O \
 comentário do usuário, se houver, pode indicar outro momento e vale mais que esta regra.
@@ -456,7 +470,8 @@ resultado anterior ou releu o capítulo com atenção. Vale mais que tudo.
 oficial do que acontece.
 2b. O trecho do livro (se houver) — são as palavras do autor nesse momento: use-o para \
 confirmar e completar a ação, os objetos e a luz da cena, e **não acrescente nada que ele \
-não sustente**. Se a descrição do usuário disser algo diferente do trecho, vale a do usuário.
+não sustente**, nem pessoas, criaturas ou objetos de destaque que não estejam na lista de elementos \
+nem na descrição da cena. Se a descrição do usuário disser algo diferente do trecho, vale a do usuário.
 3. O contexto do livro (se houver) — uma releitura automática, só para \
 preencher o que a descrição do usuário não cobriu. Nunca use isso para \
 contradizer o que o usuário escreveu.
@@ -611,7 +626,25 @@ RULES:
 - Reply ONLY with the translation, no comments and no quotation marks.
 """
 
+_INSTRUCAO_DE_CORRECAO = """\
+Você corrige prompts de geração de imagem (em inglês) a pedido de uma pessoa que já viu o resultado ou releu o texto.
+
+Você recebe o PROMPT ATUAL e o PEDIDO DE CORREÇÃO (em português ou inglês). Devolva o prompt corrigido.
+
+REGRAS:
+- O pedido da pessoa vale mais que qualquer parte do prompt atual: se ele contradiz o prompt, o pedido vence.
+- Mude SÓ o que o pedido manda mudar. Todo o resto fica IDÊNTICO ao prompt atual, palavra por palavra: personagens, roupas, cenário, luz, câmera, ordem dos blocos.
+- Se o pedido manda tirar algo, tire-o por inteiro (e qualquer frase que dependa dele); se manda trocar, troque só isso.
+- Mantenha o prompt em inglês, num texto corrido só, e mantenha o bloco final de estilo ("Style: ... Lighting: ... Palette: ...") como está, a menos que o pedido seja sobre ele.
+- Não acrescente elementos, pessoas, objetos nem adjetivos subjetivos de qualidade ("beautiful", "epic", "stunning") que o pedido não mencione.
+- Se o pedido é impossível de aplicar ao prompt (por exemplo, manda tirar algo que não está nele), devolva o prompt atual sem mudanças.
+- Responda SÓ com o prompt corrigido, sem comentários, sem aspas, sem título.
+"""
+
 TEMPERATURA_DA_TRADUCAO = 0.2
+
+TEMPERATURA_DA_CORRECAO = 0.2
+"""Corrigir é mudar o mínimo que a pessoa pediu: sem variar (como a tradução e a suavização)."""
 
 TEMPERATURA_DE_FIDELIDADE = 0.2
 """Extração, leitura profunda (fases 2 e 2b) e fundamentação (FD5): tarefas em que o modelo deve **ler e descrever o que o texto diz**, sem
@@ -1133,6 +1166,19 @@ class ProvedorOpenRouter(ProvedorIA):
         if not traduzido:
             raise ErroDoProvedorIA(f"O modelo {modelo} devolveu uma tradução vazia.")
         return PromptMontado(texto=traduzido, modelo=modelo)
+
+    def corrigir_prompt(self, texto: str, instrucao: str, modelo: str) -> PromptMontado:
+        """Corrige o prompt como a pessoa pediu, mudando só o que o pedido manda (P6). Uma chamada, temperatura baixa."""
+        if not texto.strip():
+            raise ErroDoProvedorIA("O prompt a corrigir está vazio.")
+        if not instrucao.strip():
+            raise ErroDoProvedorIA("Diga o que você quer mudar no prompt.")
+        pedido = f"PROMPT ATUAL:\n{texto.strip()}\n\nPEDIDO DE CORREÇÃO:\n{instrucao.strip()}"
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_CORRECAO, pedido, operacao="correcao", temperatura=TEMPERATURA_DA_CORRECAO)
+        corrigido = resposta.strip()
+        if not corrigido:
+            raise ErroDoProvedorIA(f"O modelo {modelo} devolveu um prompt vazio.")
+        return PromptMontado(texto=corrigido, modelo=modelo)
 
     def suavizar_prompt(self, texto: str, modelo: str) -> PromptMontado:
         """Suaviza um prompt recusado trocando **só os trechos explícitos**, e deixa o resto idêntico (S7 revisada).

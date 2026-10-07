@@ -549,6 +549,12 @@ class ProvedorIA(ABC):
         """
         raise ErroDoProvedorIA("Este provedor não sabe traduzir prompts.")
 
+    def corrigir_prompt(self, texto: str, instrucao: str, modelo: str) -> PromptMontado:
+        """Corrige o prompt de imagem como a pessoa pediu (P6): muda só o que ``instrucao`` manda e deixa o resto idêntico.
+
+        Não é abstrata: um provedor que não corrige recusa com uma mensagem clara (nenhum quebra por falta dela)."""
+        raise ErroDoProvedorIA("Este provedor não sabe corrigir prompts.")
+
     def listar_modelos_de_imagem(self) -> list[ModeloDeImagemDisponivel]:
         """Os modelos de **imagem** do OpenRouter, para o catálogo (MI1). Não é abstrata: um provedor que não lista devolve vazio."""
         return []

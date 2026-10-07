@@ -549,7 +549,7 @@ def teste_a_instrucao_do_prompt_manda_escolher_um_instante_e_nao_misturar() -> N
 
     assert "Um só instante" in instrucao
     assert "numa cena, o que a descrição da cena indica" in instrucao
-    assert 'num retrato (sem cena), o "Neste instante:"' in instrucao
+    assert 'num retrato (sem cena), a roupa e o penteado do "Neste instante:"' in instrucao  # P2: a pose do retrato é sempre neutra
     assert "NUNCA roupa ou pose que contradigam o instante escolhido" in instrucao
     assert '"nude" com roupa' in instrucao
     assert "comentário do usuário, se houver, pode indicar outro momento e vale mais que esta regra" in instrucao

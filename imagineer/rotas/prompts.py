@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.prompt import (
     CenaComImagens,
+    Correcao,
     ElementoComImagens,
     ElementoParaVincular,
     ElementosParaVincular,
@@ -23,6 +24,7 @@ from imagineer.esquemas.prompt import (
     PromptAjuste,
     PromptDetalhe,
     PedidoDeGeracao,
+    PedidoDeCorrecao,
     PedidoDeTraducaoParaIngles,
     PromptNovo,
     PromptResumo,
@@ -651,6 +653,32 @@ def traduzir_para_ingles(
     ("Inglês que será enviado") e pode ajustar. O inglês só vira prompt quando ela manda gerar a imagem (com `texto` e `texto_pt`)."""
     prompt = _buscar_prompt(sessao, prompt_id)
     return _traduzir(sessao, provedor, prompt, corpo.texto, "en")
+
+
+@rotas.post(
+    "/{prompt_id}/corrigir",
+    response_model=Correcao,
+    summary="A IA corrige o prompt como a pessoa pediu (proposta, não grava)",
+)
+def corrigir_prompt(
+    prompt_id: int,
+    corpo: PedidoDeCorrecao,
+    sessao: Session = Depends(obter_sessao),
+    provedor: ProvedorIA = Depends(obter_provedor),
+) -> Correcao:
+    """P6: a pessoa diz o que quer mudar ("tire a espada") e a IA devolve o prompt corrigido, **mudando só isso**. É uma **proposta**: nada é
+    gravado (como a prévia de tradução, PT3); ela a aceita levando o texto ao fluxo de sempre (`gerar-imagem` com `texto`) ou a descarta.
+    Parte de `texto` (o que está na tela) quando vem, senão do texto gravado. Usa o `modelo_prompt` (senão o de extração); o gasto vai para
+    o livro do prompt (operação `correcao`)."""
+    prompt = _buscar_prompt(sessao, prompt_id)
+    configuracao = obter_ou_criar(sessao)
+    modelo = configuracao.modelo_prompt or configuracao.modelo_extracao
+    if not modelo:
+        raise ModeloNaoEscolhido("Nenhum modelo de texto foi escolhido para corrigir o prompt. Configure um em /configuracao.")
+    livro_id = prompt.frame.capitulo.livro_id if prompt.frame is not None and prompt.frame.capitulo is not None else None
+    with gasto_do_livro(livro_id), coletando_o_custo() as custos:
+        corrigido = provedor.corrigir_prompt(corpo.texto or prompt.texto, corpo.instrucao, modelo)
+    return Correcao(texto=corrigido.texto, modelo=corrigido.modelo, custo=next((c for c in custos if c is not None), None))
 
 
 # --------------------------------------------------------------------------- #
