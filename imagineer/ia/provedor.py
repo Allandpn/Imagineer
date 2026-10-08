@@ -242,6 +242,10 @@ class UsoDaChamada:
     """Quem cobrou (CU1): ``openrouter``, ``fal``, ``replicate`` ou ``openai`` (a narração, NA6)."""
     estimado: bool = False
     """O ``custo`` já vem como **estimativa** de quem chamou (a narração: a OpenAI não informa o custo), e não do fornecedor (CU2)."""
+    tokens_em_cache: int | None = None
+    """Dos ``tokens_entrada``, quantos o provedor leu do **cache de prompt** (4.10, LM7). ``None`` = ele não informou (nunca um zero inventado)."""
+    tokens_de_raciocinio: int | None = None
+    """Dos ``tokens_saida``, quantos foram de **raciocínio** do modelo (4.10, LM7). ``None`` = ele não informou."""
 
 
 @dataclass

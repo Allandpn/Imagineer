@@ -52,5 +52,11 @@ class UsoDeIA(Base):
     estimado: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     """O ``custo`` veio de uma **tabela de preços**, e não do fornecedor (CU2)."""
 
+    tokens_em_cache: Mapped[int | None] = mapped_column()
+    """Dos ``tokens_entrada``, quantos vieram do cache de prompt (4.10, LM7). Nulo = o provedor não informou."""
+
+    tokens_de_raciocinio: Mapped[int | None] = mapped_column()
+    """Dos ``tokens_saida``, quantos foram de raciocínio (4.10, LM7). Nulo = o provedor não informou."""
+
     def __repr__(self) -> str:
         return f"<UsoDeIA id={self.id} operacao={self.operacao!r} modelo={self.modelo!r} custo={self.custo}>"

@@ -79,10 +79,13 @@ def gravar_uso(uso: UsoDaChamada, criador: sessionmaker = CriadorDeSessao, usuar
                 livro_id=_livro_do_gasto.get(),
                 usuario_id=usuario_id,
                 estimado=estimado,
+                tokens_em_cache=uso.tokens_em_cache,
+                tokens_de_raciocinio=uso.tokens_de_raciocinio,
             )
         )
         sessao.commit()
     logging.getLogger(__name__).info(
-        "IA: %s com %s (%s), %s tokens de entrada, %s de saída, custo %s%s",
-        uso.operacao, uso.modelo, uso.provedor, uso.tokens_entrada, uso.tokens_saida, custo, " (estimado)" if estimado else "",
+        "IA: %s com %s (%s), %s tokens de entrada (%s em cache), %s de saída, custo %s%s",
+        uso.operacao, uso.modelo, uso.provedor, uso.tokens_entrada, uso.tokens_em_cache, uso.tokens_saida, custo,
+        " (estimado)" if estimado else "",
     )

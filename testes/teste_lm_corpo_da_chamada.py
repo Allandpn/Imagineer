@@ -418,7 +418,7 @@ def teste_lm2_sessao_e_alternativos_do_conversar_so_vao_com_catalogo(monkeypatch
     monkeypatch.setattr(catalogo_de_texto, "_buscar_na_rede", lambda: catalogo)
     pedidos: list[dict] = []
 
-    _provedor(pedidos)._conversar("x/modelo", "i", "p", operacao="estado", sessao_de_cache="cap-9", alternativos=["a/reserva"])
+    _provedor(pedidos)._conversar("x/modelo", "i", "p", operacao="prompt", sessao_de_cache="cap-9", alternativos=["a/reserva"])
 
     (corpo,) = pedidos
     assert corpo["session_id"] == "cap-9"

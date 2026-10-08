@@ -137,12 +137,14 @@ def _sem_rede_no_catalogo_de_texto(monkeypatch):
 
     Sem isso, a montagem de cada chamada de IA iria à internet para saber as capacidades do modelo. Com o catálogo vazio, ``obter_capacidades``
     devolve ``None`` e o corpo da chamada é o mínimo; os testes que precisam de um catálogo o põem com ``catalogo_de_texto._buscar_na_rede``."""
-    from imagineer.ia import catalogo_de_texto
+    from imagineer.ia import catalogo_de_texto, openrouter
 
     catalogo_de_texto.limpar_cache_do_catalogo()
+    openrouter.limpar_parametros_recusados()  # o que um teste descobre que um modelo recusa não vale para o seguinte (LM4)
     monkeypatch.setattr(catalogo_de_texto, "_buscar_na_rede", lambda: {})
     yield
     catalogo_de_texto.limpar_cache_do_catalogo()
+    openrouter.limpar_parametros_recusados()
 
 
 @pytest.fixture

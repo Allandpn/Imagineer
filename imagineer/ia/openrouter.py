@@ -10,7 +10,9 @@ import binascii
 import json
 import logging
 import re
-from collections.abc import Callable, Mapping, Sequence
+import threading
+import time
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 
@@ -826,7 +828,10 @@ class ProvedorOpenRouter(ProvedorIA):
         cliente: httpx.Client | None = None,
         ao_usar: Callable[[UsoDaChamada], None] | None = None,
         geradores_de_imagem: dict[str, GeradorDeImagemExterno] | None = None,
+        dormir: Callable[[float], None] = time.sleep,
     ):
+        self._dormir = dormir
+        """Como esperar entre uma tentativa e outra (LM5). Os testes injetam um falso, para não esperar de verdade."""
         self._geradores_de_imagem = geradores_de_imagem or {}
         """Os geradores de imagem dos outros fornecedores (fal.ai, Replicate), só dos que têm chave (F2)."""
         self._chave_api = chave_api
@@ -1319,7 +1324,7 @@ class ProvedorOpenRouter(ProvedorIA):
         )
 
         resposta = self._conversar(
-            modelo, _INSTRUCAO_DE_PERFIL, pedido, operacao="perfil", usar_busca_web=True
+            modelo, _INSTRUCAO_DE_PERFIL, pedido, operacao="perfil", usar_busca_web=True, esperar_json=True
         )
         bruto = _extrair_json(resposta)
         if bruto is None:
@@ -1366,6 +1371,7 @@ class ProvedorOpenRouter(ProvedorIA):
         temperatura: float | None = None,
         sessao_de_cache: str | None = None,
         alternativos: Sequence[str] = (),
+        esperar_json: bool | None = None,
     ) -> str:
         """Faz uma chamada de conversa e devolve o texto da resposta.
 
@@ -1376,6 +1382,11 @@ class ProvedorOpenRouter(ProvedorIA):
 
         ``sessao_de_cache`` e ``alternativos`` são do 4.10 (LM2.5 e LM2.6): quem os usa passa, e quem não
         os usa continua como antes.
+
+        A chamada **se defende** (4.10, E2): repete uma vez no erro de rede passageiro (LM5), tira os parâmetros opcionais
+        que o modelo recusar (LM4), repete com mais espaço se a resposta foi cortada (LM6) e **anota o consumo de cada
+        resposta recebida**, inclusive as repetições (LM7). ``esperar_json`` diz que o chamador vai ler JSON: resposta que
+        não é JSON ganha uma segunda tentativa. Sem informar, vale ``True`` para as tarefas que têm esquema no perfil.
 
         ``usar_busca_web`` liga o plugin de busca do OpenRouter — o modelo
         pode consultar a internet antes de responder. Custa mais e só faz
@@ -1397,28 +1408,75 @@ class ProvedorOpenRouter(ProvedorIA):
         perfil = perfil_da(operacao)
         if temperatura is not None:
             perfil = replace(perfil, temperatura=temperatura)
+        capacidades = obter_capacidades(modelo)
         corpo = _corpo_da_chamada(
             modelo,
             instrucao,
             pedido,
             perfil,
-            obter_capacidades(modelo),
+            capacidades,
             sessao_de_cache=sessao_de_cache,
             alternativos=alternativos,
             usar_busca_web=usar_busca_web,
+            nao_aceitos=_parametros_recusados_por(modelo),
         )
+        if esperar_json is None:
+            esperar_json = perfil.esquema is not None
 
-        dados = self._pedir("POST", "/chat/completions", json=corpo, autenticado=True)
-
-        try:
-            texto = dados["choices"][0]["message"]["content"] or ""
-        except (KeyError, IndexError, TypeError) as erro:
-            raise ErroDoProvedorIA(
-                f"O modelo {modelo} respondeu num formato inesperado."
-            ) from erro
-
+        dados, corpo = self._enviar_conversa(modelo, corpo)
+        texto, motivo_do_fim = _ler_resposta(dados, modelo)
         self._avisar_uso(operacao, modelo, dados)
+
+        if motivo_do_fim == "length":
+            # A resposta foi cortada pelo limite: uma segunda tentativa com mais espaço. Nunca se devolve um JSON cortado (LM6).
+            limite = corpo["max_tokens"]
+            novo_limite = int(limite * FATOR_DO_LIMITE_NA_REPETICAO)
+            if capacidades is not None and capacidades.saida_maxima:
+                novo_limite = min(novo_limite, capacidades.saida_maxima)
+            if novo_limite > limite:
+                dados, corpo = self._enviar_conversa(modelo, {**corpo, "max_tokens": novo_limite})
+                texto, motivo_do_fim = _ler_resposta(dados, modelo)
+                self._avisar_uso(operacao, modelo, dados)
+                limite = novo_limite
+            if motivo_do_fim == "length":
+                raise ErroDoProvedorIA(
+                    f"A resposta do modelo {modelo} foi cortada por passar do limite de {limite} tokens. "
+                    "Escolha outro modelo ou um capítulo menor."
+                )
+        elif esperar_json and _extrair_json(texto) is None:
+            # Modelo que respondeu em prosa em vez de JSON: um pedido igual costuma dar certo. Só na segunda falha o chamador
+            # levanta "O modelo não devolveu JSON" (LM6). As duas respostas foram pagas, então as duas são anotadas.
+            dados, corpo = self._enviar_conversa(modelo, corpo)
+            texto, motivo_do_fim = _ler_resposta(dados, modelo)
+            self._avisar_uso(operacao, modelo, dados)
+            if motivo_do_fim == "length":
+                raise ErroDoProvedorIA(
+                    f"A resposta do modelo {modelo} foi cortada por passar do limite de {corpo['max_tokens']} tokens. "
+                    "Escolha outro modelo ou um capítulo menor."
+                )
+
         return texto
+
+    def _enviar_conversa(self, modelo: str, corpo: dict) -> tuple[dict, dict]:
+        """Manda o pedido de conversa e devolve ``(resposta, corpo que de fato foi aceito)``.
+
+        Cobre o caso do **parâmetro opcional que o modelo recusa** (LM4): o catálogo diz que o modelo aceita, mas o
+        provedor responde 400, 404 ou 422 citando ``reasoning``, ``response_format`` etc. Em vez de derrubar a leitura, repete
+        **uma vez** sem nenhum opcional e **memoriza** o que esse modelo recusou, para as próximas chamadas já o omitirem.
+        Outros erros (401, 402, 403, 5xx, ou 4xx sem essas palavras) seguem como sempre: não são culpa de um opcional.
+        """
+        try:
+            return self._pedir("POST", "/chat/completions", json=corpo, autenticado=True, tentar_de_novo=True), corpo
+        except ErroHttpDoProvedor as erro:
+            if erro.codigo not in CODIGOS_DE_PARAMETRO_RECUSADO:
+                raise
+            recusados = _parametros_citados_no_erro(corpo, erro.corpo)
+            if not recusados:
+                raise
+
+        _memorizar_recusa(modelo, recusados)
+        simples = _sem_parametros_opcionais(corpo)
+        return self._pedir("POST", "/chat/completions", json=simples, autenticado=True, tentar_de_novo=True), simples
 
     def _avisar_uso(self, operacao: str, modelo: str, dados: dict) -> None:
         """Passa ao ``ao_usar`` o que a chamada consumiu. **Nunca derruba a chamada.**
@@ -1439,30 +1497,47 @@ class ProvedorOpenRouter(ProvedorIA):
         caminho: str,
         json: dict | None = None,
         autenticado: bool = False,
+        tentar_de_novo: bool = False,
     ) -> dict:
         """Faz a chamada HTTP, traduzindo qualquer falha em ``ErroDoProvedorIA``.
 
         Traduzir aqui é o que permite às rotas responderem com uma mensagem que dá
         para mostrar na tela, em vez de deixar escapar um erro de rede ou um JSON
         inesperado como erro 500.
+
+        ``tentar_de_novo`` (LM5) repete **uma vez** a chamada que falhou por motivo passageiro: conexão que caiu
+        (``Server disconnected``), servidor sobrecarregado (429, 500, 502, 503, 504). Só a conversa liga isto: a
+        geração de imagem cobra por tentativa e tem o seu próprio tratamento.
         """
         cabecalhos = {}
         if autenticado:
             cabecalhos["Authorization"] = f"Bearer {self._chave_api}"
 
-        try:
-            resposta = self._cliente.request(
-                metodo, caminho, json=json, headers=cabecalhos
-            )
-        except httpx.TimeoutException as erro:
-            raise ErroDoProvedorIA(
-                "O OpenRouter não respondeu no tempo esperado. Modelos gratuitos "
-                "ficam em fila; vale tentar de novo."
-            ) from erro
-        except httpx.HTTPError as erro:
-            raise ErroDoProvedorIA(
-                f"Não foi possível falar com o OpenRouter: {erro}"
-            ) from erro
+        tentativas = TENTATIVAS if tentar_de_novo else 1
+        for numero in range(1, tentativas + 1):
+            ainda_ha_tentativa = numero < tentativas
+            try:
+                resposta = self._cliente.request(
+                    metodo, caminho, json=json, headers=cabecalhos
+                )
+            except httpx.HTTPError as erro:
+                if ainda_ha_tentativa and isinstance(erro, ERROS_DE_REDE_QUE_SE_REPETEM):
+                    self._dormir(ESPERA_ENTRE_TENTATIVAS)
+                    continue
+                if isinstance(erro, httpx.TimeoutException):
+                    # Não se repete: já esperou o tempo todo (até 180 s), e dobrar seria esperar 6 minutos.
+                    raise ErroDoProvedorIA(
+                        "O OpenRouter não respondeu no tempo esperado. Modelos gratuitos "
+                        "ficam em fila; vale tentar de novo."
+                    ) from erro
+                raise ErroDoProvedorIA(
+                    f"Não foi possível falar com o OpenRouter: {erro}"
+                ) from erro
+
+            if ainda_ha_tentativa and resposta.status_code in STATUS_QUE_SE_REPETEM:
+                self._dormir(_espera_antes_de_repetir(resposta))
+                continue
+            break
 
         if resposta.status_code == 401:
             raise ChaveDeApiAusente(
@@ -1523,6 +1598,137 @@ ESFORCO_MINIMO_PADRAO = "low"
 """O esforço que se manda quando o raciocínio é obrigatório e o catálogo não lista os esforços aceitos. É o mais aceito pelos modelos."""
 
 
+TENTATIVAS = 2
+"""Quantas vezes a conversa é tentada no erro de rede passageiro: a original e **uma** repetição (LM5)."""
+
+ESPERA_ENTRE_TENTATIVAS = 2.0
+"""Segundos de espera antes da repetição (LM5)."""
+
+ESPERA_MAXIMA_DO_RETRY_AFTER = 10.0
+"""Num 429 o OpenRouter pode pedir uma espera (``Retry-After``); acima disto o servidor não espera (LM5)."""
+
+ERROS_DE_REDE_QUE_SE_REPETEM = (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError, httpx.ConnectTimeout)
+"""A conexão caiu ou não chegou a abrir (o ``Server disconnected`` do ``claude-haiku-4.5``). **Fora** daqui, de propósito, o
+``ReadTimeout``: o servidor já esperou até ``TEMPO_LIMITE`` e dobrar a espera seria 6 minutos (LM5)."""
+
+STATUS_QUE_SE_REPETEM = frozenset({429, 500, 502, 503, 504})
+"""Falhas do lado do provedor que costumam passar sozinhas. 401 e 402 (chave e saldo) e os outros 4xx nunca se repetem (LM5)."""
+
+FATOR_DO_LIMITE_NA_REPETICAO = 1.5
+"""Resposta cortada por ``finish_reason = length``: a repetição ganha 50% a mais de espaço (LM6)."""
+
+CODIGOS_DE_PARAMETRO_RECUSADO = frozenset({400, 404, 422})
+"""Os códigos com que um provedor costuma recusar um parâmetro que não conhece (LM4)."""
+
+_PALAVRAS_DE_PARAMETRO_OPCIONAL = {
+    "reasoning": "reasoning",
+    "response_format": "response_format",
+    "json_schema": "response_format",
+    "structured": "response_format",
+    "require_parameters": "response_format",
+    "session_id": "session_id",
+    "cache_control": "cache_control",
+}
+"""Palavra que aparece na mensagem de erro -> o parâmetro opcional a que ela se refere (LM4). ``provider`` vai junto de ``response_format``."""
+
+_PARAMETROS_OPCIONAIS = ("reasoning", "response_format", "session_id", "models", "cache_control")
+"""Os parâmetros opcionais da conversa (LM4): os que o catálogo diz que o modelo aceita, mas o provedor pode recusar."""
+
+_NAO_ACEITA: dict[str, set[str]] = {}
+_trava_do_nao_aceita = threading.Lock()
+"""Por modelo, os parâmetros opcionais que o provedor já recusou (LM4). Vive no módulo, e não no provedor: o provedor é
+criado a cada pedido, e o que um modelo recusa hoje ele recusa no próximo."""
+
+
+def limpar_parametros_recusados() -> None:
+    """Esquece o que os modelos recusaram. Os testes chamam isto para um teste não herdar a memória do outro."""
+    with _trava_do_nao_aceita:
+        _NAO_ACEITA.clear()
+
+
+def _parametros_recusados_por(modelo: str) -> frozenset[str]:
+    with _trava_do_nao_aceita:
+        return frozenset(_NAO_ACEITA.get(modelo, ()))
+
+
+def _memorizar_recusa(modelo: str, parametros: Collection[str]) -> None:
+    """Guarda que ``modelo`` recusou ``parametros`` e avisa no log **uma vez** por (modelo, parâmetro)."""
+    with _trava_do_nao_aceita:
+        ja_sabidos = _NAO_ACEITA.setdefault(modelo, set())
+        novos = sorted(set(parametros) - ja_sabidos)
+        ja_sabidos.update(novos)
+    for parametro in novos:
+        logging.getLogger(__name__).warning(
+            "O modelo %s recusou o parâmetro opcional %r; as próximas chamadas já o omitem.", modelo, parametro
+        )
+
+
+def _opcionais_presentes(corpo: dict) -> set[str]:
+    """Quais parâmetros opcionais este corpo leva."""
+    presentes = {p for p in ("reasoning", "response_format", "session_id", "models") if p in corpo}
+    for mensagem in corpo.get("messages", []):
+        conteudo = mensagem.get("content")
+        if isinstance(conteudo, list) and any(isinstance(b, dict) and "cache_control" in b for b in conteudo):
+            presentes.add("cache_control")
+    return presentes
+
+
+def _parametros_citados_no_erro(corpo: dict, texto_do_erro: str) -> set[str]:
+    """Os parâmetros opcionais do ``corpo`` a que o erro se refere; **vazio** se o erro não é de parâmetro opcional (LM4).
+
+    O erro é de parâmetro se o texto (em minúsculas) tem alguma das palavras de ``_PALAVRAS_DE_PARAMETRO_OPCIONAL`` ou
+    ``no endpoints found`` (o ``require_parameters`` sem nenhum provedor que aceite tudo). Se ele nomeia o parâmetro, é esse; se
+    não nomeia (o ``no endpoints found``), valem todos os opcionais que o corpo levava.
+    """
+    presentes = _opcionais_presentes(corpo)
+    if not presentes:
+        return set()
+    texto = texto_do_erro.lower()
+    citados = {parametro for palavra, parametro in _PALAVRAS_DE_PARAMETRO_OPCIONAL.items() if palavra in texto}
+    if not citados and "no endpoints found" not in texto:
+        return set()
+    return (citados & presentes) or presentes
+
+
+def _sem_parametros_opcionais(corpo: dict) -> dict:
+    """O corpo só com o essencial: ``model``, ``messages``, ``usage``, ``temperature`` e ``max_tokens`` (e a busca na web, se pedida).
+
+    O ``cache_control`` sai de dentro dos blocos da mensagem; o texto deles fica."""
+    simples = {c: v for c, v in corpo.items() if c not in ("reasoning", "response_format", "provider", "session_id", "models")}
+    simples["messages"] = [
+        {
+            **mensagem,
+            "content": [{c: v for c, v in bloco.items() if c != "cache_control"} for bloco in mensagem["content"]]
+            if isinstance(mensagem.get("content"), list)
+            else mensagem.get("content"),
+        }
+        for mensagem in corpo["messages"]
+    ]
+    return simples
+
+
+def _ler_resposta(dados: dict, modelo: str) -> tuple[str, str | None]:
+    """O texto da resposta e o ``finish_reason`` (``stop``, ``length``...; ``None`` se o provedor não disse)."""
+    try:
+        escolha = dados["choices"][0]
+        texto = escolha["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError) as erro:
+        raise ErroDoProvedorIA(f"O modelo {modelo} respondeu num formato inesperado.") from erro
+    motivo = escolha.get("finish_reason")
+    return texto, motivo if isinstance(motivo, str) else None
+
+
+def _espera_antes_de_repetir(resposta: httpx.Response) -> float:
+    """Quantos segundos esperar antes de repetir. No 429 vale o ``Retry-After`` do provedor, limitado a 10 s (LM5)."""
+    if resposta.status_code == 429:
+        try:
+            segundos = float(resposta.headers.get("Retry-After"))
+        except (TypeError, ValueError):
+            return ESPERA_ENTRE_TENTATIVAS
+        return min(max(segundos, 0.0), ESPERA_MAXIMA_DO_RETRY_AFTER)
+    return ESPERA_ENTRE_TENTATIVAS
+
+
 def _esforco_de_raciocinio(nivel: NivelDeRaciocinio, capacidades: Capacidades) -> str | None:
     """O ``reasoning.effort`` que a chamada deve levar, ou ``None`` se o modelo não tem raciocínio (nenhum campo, LM2.3).
 
@@ -1559,6 +1765,7 @@ def _corpo_da_chamada(
     alternativos: Sequence[str] = (),
     usar_busca_web: bool = False,
     esquemas: Mapping[str, dict] | None = None,
+    nao_aceitos: Collection[str] = (),
 ) -> dict:
     """Monta o corpo do ``POST /chat/completions`` (LM2). Função **pura**: sem rede, para testar sem transporte.
 
@@ -1582,7 +1789,9 @@ def _corpo_da_chamada(
         corpo["temperature"] = perfil.temperatura
 
     limite = perfil.limite_de_saida
-    esforco = _esforco_de_raciocinio(perfil.raciocinio, capacidades) if capacidades is not None else None
+    esforco = None
+    if capacidades is not None and "reasoning" not in nao_aceitos:
+        esforco = _esforco_de_raciocinio(perfil.raciocinio, capacidades)
     if esforco is not None and esforco != "none":
         limite += FOLGA_DE_RACIOCINIO
     if capacidades is not None and capacidades.saida_maxima:
@@ -1594,7 +1803,7 @@ def _corpo_da_chamada(
 
     if capacidades is not None:
         esquema = (esquemas if esquemas is not None else esquemas_json.ESQUEMAS).get(perfil.esquema or "")
-        if esquema is not None and capacidades.estruturado:
+        if esquema is not None and capacidades.estruturado and "response_format" not in nao_aceitos:
             corpo["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {"name": perfil.esquema, "strict": True, "schema": esquema},
@@ -1602,11 +1811,11 @@ def _corpo_da_chamada(
             # Sem isto o roteamento poderia escolher um provedor que ignora o esquema.
             corpo["provider"] = {"require_parameters": True}
 
-        if sessao_de_cache:
+        if sessao_de_cache and "session_id" not in nao_aceitos:
             corpo["session_id"] = sessao_de_cache[:TAMANHO_MAXIMO_DA_SESSAO]
 
         reservas = [m for m in dict.fromkeys(alternativos) if m and m != modelo][:MAXIMO_DE_ALTERNATIVOS]
-        if reservas:
+        if reservas and "models" not in nao_aceitos:
             corpo["models"] = [modelo, *reservas]
 
     if usar_busca_web:
@@ -1711,14 +1920,23 @@ def _interpretar_uso(operacao: str, modelo: str, dados: dict) -> UsoDaChamada:
         except InvalidOperation:
             custo = None
 
+    def inteiro_de(grupo: str, chave: str) -> int | None:
+        detalhes = uso.get(grupo)
+        valor = detalhes.get(chave) if isinstance(detalhes, dict) else None
+        return valor if isinstance(valor, int) and not isinstance(valor, bool) else None
+
     id_da_geracao = dados.get("id")
+    # O modelo que **respondeu** pode ser outro: com ``models`` (LM2.6) o OpenRouter tenta a alternativa e cobra o dela (LM7).
+    modelo_que_respondeu = dados.get("model")
     return UsoDaChamada(
         operacao=operacao,
-        modelo=modelo,
+        modelo=modelo_que_respondeu if isinstance(modelo_que_respondeu, str) and modelo_que_respondeu else modelo,
         tokens_entrada=inteiro("prompt_tokens"),
         tokens_saida=inteiro("completion_tokens"),
         custo=custo,
         id_da_geracao=id_da_geracao if isinstance(id_da_geracao, str) else None,
+        tokens_em_cache=inteiro_de("prompt_tokens_details", "cached_tokens"),
+        tokens_de_raciocinio=inteiro_de("completion_tokens_details", "reasoning_tokens"),
     )
 
 
