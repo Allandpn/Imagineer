@@ -61,11 +61,9 @@ def teste_ct24_quem_nao_usa_o_servidor_ve_servidor_fornece_falso(cliente: TestCl
 
 def teste_ct24_provedor_que_o_servidor_nao_tem_nao_e_fornecido_nem_para_o_dono(cliente: TestClient, monkeypatch) -> None:
     monkeypatch.setenv("CHAVE_API_OPENROUTER", "or-do-servidor")
-    monkeypatch.delenv("FAL_KEY", raising=False)
-    monkeypatch.delenv("REPLICATE_API_TOKEN", raising=False)
-    monkeypatch.delenv("CHAVE_API_FAL", raising=False)
-    monkeypatch.delenv("CHAVE_API_REPLICATE", raising=False)
-    monkeypatch.delenv("IMAGINEER_KEY_FAL_AI", raising=False)
+    # Vazias, e não apagadas: variável ausente deixa valer a chave do ``.env`` de quem roda o teste (que pode ter a do fal.ai).
+    for variavel in ("FAL_KEY", "REPLICATE_API_TOKEN", "CHAVE_API_FAL", "CHAVE_API_REPLICATE", "IMAGINEER_KEY_FAL_AI", "IMAGINEER_KEY_REPLICATE"):
+        monkeypatch.setenv(variavel, "")
     obter_configuracoes.cache_clear()
     try:
         assert [p["servidor_fornece"] for p in cliente.get("/configuracao/provedores").json()] == [True, False, False]
