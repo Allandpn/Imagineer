@@ -10,11 +10,14 @@ import binascii
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 
 import httpx
 
+from imagineer.ia import esquemas_json
+from imagineer.ia.catalogo_de_texto import Capacidades, decimal_ou_nulo as _decimal_ou_nulo, ler_catalogo, obter_capacidades
 from imagineer.ia.fornecedores_de_imagem import (
     NOMES_DOS_FORNECEDORES,
     VARIAVEIS_DA_CHAVE,
@@ -44,6 +47,17 @@ from imagineer.ia.provedor import (
     ProvedorIA,
     TextoLongoDemais,
     UsoDaChamada,
+)
+from imagineer.ia.tarefas import (  # noqa: F401 - as temperaturas são usadas aqui e importadas daqui por quem já as importava
+    ORDEM_DOS_ESFORCOS,
+    TEMPERATURA_DA_CORRECAO,
+    TEMPERATURA_DA_SUAVIZACAO,
+    TEMPERATURA_DA_TRADUCAO,
+    TEMPERATURA_DE_FIDELIDADE,
+    TEMPERATURA_DO_PROMPT,
+    NivelDeRaciocinio,
+    PerfilDaTarefa,
+    perfil_da,
 )
 from imagineer.modelos import CategoriaEstilo, TipoElemento
 
@@ -604,8 +618,6 @@ man" são adultos: não aplique esta regra a eles, e nunca vista alguém só por
 - Não torne a cena mais sensual nem mais violenta do que era.
 """
 
-TEMPERATURA_DA_SUAVIZACAO = 0.2
-
 _INSTRUCAO_DE_TRADUCAO_PARA_PORTUGUES = """\
 Você traduz prompts de geração de imagem do inglês para o português do Brasil, para uma pessoa ler.
 
@@ -640,19 +652,6 @@ REGRAS:
 - Se o pedido é impossível de aplicar ao prompt (por exemplo, manda tirar algo que não está nele), devolva o prompt atual sem mudanças.
 - Responda SÓ com o prompt corrigido, sem comentários, sem aspas, sem título.
 """
-
-TEMPERATURA_DA_TRADUCAO = 0.2
-
-TEMPERATURA_DA_CORRECAO = 0.2
-"""Corrigir é mudar o mínimo que a pessoa pediu: sem variar (como a tradução e a suavização)."""
-
-TEMPERATURA_DE_FIDELIDADE = 0.2
-"""Extração, leitura profunda (fases 2 e 2b) e fundamentação (FD5): tarefas em que o modelo deve **ler e descrever o que o texto diz**, sem
-variar. O padrão dos provedores (~1,0) deixava o mesmo capítulo render descrições diferentes a cada leitura."""
-
-TEMPERATURA_DO_PROMPT = 0.4
-"""Montagem do prompt (FD5): é um texto corrido que ainda precisa de alguma liberdade de redação, mas dentro dos fatos recebidos."""
-"""Baixa de propósito: suavizar é reescrever com o mínimo de mudança, não criar."""
 
 _DESCRICAO_DE_CATEGORIA = {
     CategoriaEstilo.FOTORREALISTA_CINEMATOGRAFICO: (
@@ -852,10 +851,11 @@ class ProvedorOpenRouter(ProvedorIA):
         Modelos que não recebem e devolvem texto são descartados: a lista tem
         modelos de imagem, áudio e música, e nenhum deles serve aqui.
         """
-        dados = self._pedir("GET", "/models")
+        # A mesma leitura que a montagem de cada chamada usa (LM17): no máximo uma ida ao OpenRouter a cada 10 minutos.
+        brutos = ler_catalogo(lambda: self._pedir("GET", "/models"))
 
         modelos = []
-        for bruto in dados.get("data", []):
+        for bruto in brutos:
             if not _e_modelo_de_texto(bruto):
                 continue
             modelos.append(
@@ -1364,11 +1364,18 @@ class ProvedorOpenRouter(ProvedorIA):
         operacao: str,
         usar_busca_web: bool = False,
         temperatura: float | None = None,
+        sessao_de_cache: str | None = None,
+        alternativos: Sequence[str] = (),
     ) -> str:
         """Faz uma chamada de conversa e devolve o texto da resposta.
 
         ``operacao`` diz qual passo do fluxo chamou (``extracao``, ``estado``...): vai junto do
-        consumo informado ao ``ao_usar`` (item 4.3, "Custo das chamadas de IA").
+        consumo informado ao ``ao_usar`` (item 4.3, "Custo das chamadas de IA"), e é a chave do
+        **perfil da tarefa** (``tarefas.PERFIS``, item 4.10): temperatura, limite de saída e raciocínio.
+        Uma ``temperatura`` explícita vence a do perfil.
+
+        ``sessao_de_cache`` e ``alternativos`` são do 4.10 (LM2.5 e LM2.6): quem os usa passa, e quem não
+        os usa continua como antes.
 
         ``usar_busca_web`` liga o plugin de busca do OpenRouter — o modelo
         pode consultar a internet antes de responder. Custa mais e só faz
@@ -1387,19 +1394,19 @@ class ProvedorOpenRouter(ProvedorIA):
                 "CHAVE_API_OPENROUTER no servidor."
             )
 
-        corpo = {
-            "model": modelo,
-            "messages": [
-                {"role": "system", "content": instrucao},
-                {"role": "user", "content": pedido},
-            ],
-            # Pede o bloco "usage" completo, com o custo em dólares (item 4.3).
-            "usage": {"include": True},
-        }
-        if usar_busca_web:
-            corpo["plugins"] = [{"id": "web"}]
+        perfil = perfil_da(operacao)
         if temperatura is not None:
-            corpo["temperature"] = temperatura
+            perfil = replace(perfil, temperatura=temperatura)
+        corpo = _corpo_da_chamada(
+            modelo,
+            instrucao,
+            pedido,
+            perfil,
+            obter_capacidades(modelo),
+            sessao_de_cache=sessao_de_cache,
+            alternativos=alternativos,
+            usar_busca_web=usar_busca_web,
+        )
 
         dados = self._pedir("POST", "/chat/completions", json=corpo, autenticado=True)
 
@@ -1498,6 +1505,113 @@ class ProvedorOpenRouter(ProvedorIA):
         if not resposta.content or "json" in resposta.headers.get("content-type", ""):
             raise ErroDoProvedorIA("O OpenRouter não devolveu um áudio para este trecho.")
         return resposta.content, resposta.headers
+
+
+FOLGA_DE_RACIOCINIO = 4000
+"""Tokens somados ao ``max_tokens`` quando o modelo vai raciocinar (LM3).
+
+Na maioria dos provedores os tokens de raciocínio saem do **mesmo** teto da resposta. Sem folga, o modelo "pensaria" até o limite e
+devolveria uma resposta vazia."""
+
+MAXIMO_DE_ALTERNATIVOS = 2
+"""Quantos modelos reserva o OpenRouter recebe no campo ``models`` (LM2.6)."""
+
+TAMANHO_MAXIMO_DA_SESSAO = 256
+"""O ``session_id`` do OpenRouter aceita até 256 caracteres (LM2.5)."""
+
+ESFORCO_MINIMO_PADRAO = "low"
+"""O esforço que se manda quando o raciocínio é obrigatório e o catálogo não lista os esforços aceitos. É o mais aceito pelos modelos."""
+
+
+def _esforco_de_raciocinio(nivel: NivelDeRaciocinio, capacidades: Capacidades) -> str | None:
+    """O ``reasoning.effort`` que a chamada deve levar, ou ``None`` se o modelo não tem raciocínio (nenhum campo, LM2.3).
+
+    Pede-se um nível, mas **o modelo manda no que aceita**:
+
+    - ``NENHUM``: desliga o raciocínio (``none``) se o modelo deixa; se ele é obrigatório, o **menor** esforço que o catálogo lista.
+    - os outros: o esforço pedido, se o modelo o aceita (ou se o catálogo não diz quais aceita); senão o **mais próximo acima**; e,
+      se não há nenhum acima, o mais alto que ele tem.
+    """
+    if not capacidades.raciocinio_suportado:
+        return None
+
+    aceitos = [e for e in ORDEM_DOS_ESFORCOS if e in capacidades.esforcos]
+
+    if nivel is NivelDeRaciocinio.NENHUM:
+        if not capacidades.raciocinio_obrigatorio:
+            return "none"
+        return aceitos[0] if aceitos else ESFORCO_MINIMO_PADRAO
+
+    if not aceitos or nivel.value in aceitos:
+        return nivel.value
+    acima = [e for e in aceitos if ORDEM_DOS_ESFORCOS.index(e) > ORDEM_DOS_ESFORCOS.index(nivel.value)]
+    return acima[0] if acima else aceitos[-1]
+
+
+def _corpo_da_chamada(
+    modelo: str,
+    instrucao: str,
+    pedido: str | list[dict],
+    perfil: PerfilDaTarefa,
+    capacidades: Capacidades | None,
+    *,
+    sessao_de_cache: str | None = None,
+    alternativos: Sequence[str] = (),
+    usar_busca_web: bool = False,
+    esquemas: Mapping[str, dict] | None = None,
+) -> dict:
+    """Monta o corpo do ``POST /chat/completions`` (LM2). Função **pura**: sem rede, para testar sem transporte.
+
+    O que vai, em ordem: ``model``, ``messages``, ``usage``, ``temperature``, ``max_tokens`` (com a folga do raciocínio, LM3),
+    ``reasoning``, ``response_format`` (com ``provider.require_parameters``), ``session_id``, ``models`` e ``plugins``. Cada parâmetro
+    opcional só entra se o **catálogo diz que o modelo o aceita**: mandar um que ele não conhece é a forma de derrubar a leitura.
+
+    Sem ``capacidades`` (catálogo fora do ar ou modelo desconhecido) o corpo é o **mínimo**: nada opcional, só o limite de saída do
+    perfil. A busca na web (``plugins``) fica, porque não depende do catálogo: é o que a tarefa pediu.
+    """
+    corpo: dict = {
+        "model": modelo,
+        "messages": [
+            {"role": "system", "content": instrucao},
+            {"role": "user", "content": pedido},
+        ],
+        # Pede o bloco "usage" completo, com o custo em dólares (item 4.3).
+        "usage": {"include": True},
+    }
+    if perfil.temperatura is not None:
+        corpo["temperature"] = perfil.temperatura
+
+    limite = perfil.limite_de_saida
+    esforco = _esforco_de_raciocinio(perfil.raciocinio, capacidades) if capacidades is not None else None
+    if esforco is not None and esforco != "none":
+        limite += FOLGA_DE_RACIOCINIO
+    if capacidades is not None and capacidades.saida_maxima:
+        limite = min(limite, capacidades.saida_maxima)
+    corpo["max_tokens"] = limite
+
+    if esforco is not None:
+        corpo["reasoning"] = {"effort": esforco, "exclude": True}  # o servidor nunca usa o texto do raciocínio
+
+    if capacidades is not None:
+        esquema = (esquemas if esquemas is not None else esquemas_json.ESQUEMAS).get(perfil.esquema or "")
+        if esquema is not None and capacidades.estruturado:
+            corpo["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": perfil.esquema, "strict": True, "schema": esquema},
+            }
+            # Sem isto o roteamento poderia escolher um provedor que ignora o esquema.
+            corpo["provider"] = {"require_parameters": True}
+
+        if sessao_de_cache:
+            corpo["session_id"] = sessao_de_cache[:TAMANHO_MAXIMO_DA_SESSAO]
+
+        reservas = [m for m in dict.fromkeys(alternativos) if m and m != modelo][:MAXIMO_DE_ALTERNATIVOS]
+        if reservas:
+            corpo["models"] = [modelo, *reservas]
+
+    if usar_busca_web:
+        corpo["plugins"] = [{"id": "web"}]
+    return corpo
 
 
 def estimar_tokens(texto: str) -> int:
@@ -1622,14 +1736,6 @@ def _numero_ou_nulo(valor: object) -> float | None:
     try:
         return float(valor)  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        return None
-
-
-def _decimal_ou_nulo(valor: object) -> Decimal | None:
-    """O número em ``valor`` como ``Decimal`` (o OpenRouter manda os preços como texto, e dinheiro não se faz com ``float``), ou ``None``."""
-    try:
-        return Decimal(str(valor))
-    except (InvalidOperation, ValueError):
         return None
 
 

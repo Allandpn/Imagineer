@@ -131,6 +131,20 @@ def _sem_rede_nos_precos_de_imagem(monkeypatch):
     precos_de_imagem.limpar_cache()
 
 
+@pytest.fixture(autouse=True)
+def _sem_rede_no_catalogo_de_texto(monkeypatch):
+    """Nenhum teste lê o catálogo de modelos do OpenRouter (LM17): a ida à rede devolve vazio e o cache começa limpo.
+
+    Sem isso, a montagem de cada chamada de IA iria à internet para saber as capacidades do modelo. Com o catálogo vazio, ``obter_capacidades``
+    devolve ``None`` e o corpo da chamada é o mínimo; os testes que precisam de um catálogo o põem com ``catalogo_de_texto._buscar_na_rede``."""
+    from imagineer.ia import catalogo_de_texto
+
+    catalogo_de_texto.limpar_cache_do_catalogo()
+    monkeypatch.setattr(catalogo_de_texto, "_buscar_na_rede", lambda: {})
+    yield
+    catalogo_de_texto.limpar_cache_do_catalogo()
+
+
 @pytest.fixture
 def usar_provedor_falso():
     """Substitui o provedor de IA da aplicação por um falso, e desfaz no fim.
