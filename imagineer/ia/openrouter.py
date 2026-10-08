@@ -7,13 +7,14 @@ por fornecedor na v1 (Etapa 5).
 
 import base64
 import binascii
+import hashlib
 import json
 import logging
 import re
 import threading
 import time
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 
 import httpx
@@ -815,6 +816,25 @@ def _motivo_de_recusa(erro: ErroHttpDoProvedor) -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class PedidoComCapitulo:
+    """Um pedido de **leitura** de um capítulo (4.10, LM9): o capítulo, que é igual em todas as leituras dele, e o que varia.
+
+    Existe para o capítulo ir **primeiro** no pedido. Os provedores guardam em cache o **começo** do pedido, então, com o capítulo antes
+    do que muda (o elemento, a cena), cada leitura depois da primeira paga o capítulo a preço de cache, e não de novo por inteiro.
+    """
+
+    capitulo: str
+    """``Capitulo.texto`` **sem nenhuma normalização**: o prefixo tem de ser idêntico, byte a byte, entre as leituras do mesmo capítulo."""
+
+    variavel: str
+    """O que muda de uma leitura para outra. **Nada disto** pode vir antes do capítulo (nome do elemento, id, hora...)."""
+
+
+RODAPE_DO_CAPITULO = "\n\n---\n"
+"""O que separa o capítulo do que varia, no pedido (LM9)."""
+
+
 class ProvedorOpenRouter(ProvedorIA):
     """Conversa com o OpenRouter.
 
@@ -986,15 +1006,13 @@ class ProvedorOpenRouter(ProvedorIA):
             if elementos_conhecidos
             else "(nenhum elemento cadastrado ainda)"
         )
-        pedido = (
-            f"ELEMENTOS JÁ CADASTRADOS NESTE LIVRO (nome, tipo e quem são):\n{conhecidos}\n\n"
-            f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
-        )
+        variavel = f"ELEMENTOS JÁ CADASTRADOS NESTE LIVRO (nome, tipo e quem são):\n{conhecidos}"
         if orientacao:
-            pedido += (
+            variavel += (
                 "\n\nORIENTAÇÃO DO USUÁRIO (algo que ele acha que a análise anterior deixou passar; "
                 f"é um palpite dele, não um fato):\n{orientacao}"
             )
+        pedido = PedidoComCapitulo(capitulo=texto_capitulo, variavel=variavel)
 
         resposta = self._conversar(modelo, _INSTRUCAO_DE_EXTRACAO, pedido, operacao="extracao", temperatura=TEMPERATURA_DE_FIDELIDADE)
         bruto = _extrair_json(resposta)
@@ -1018,19 +1036,25 @@ class ProvedorOpenRouter(ProvedorIA):
         estado_atual: str | None,
         modelo: str,
         aparencia_anterior: str | None = None,
+        id_do_capitulo: int | None = None,
     ) -> EstadoSugerido:
         """Pede ao modelo a aparência de UM elemento — fase 2 (item 4.4)."""
-        pedido = (
-            f"ELEMENTO A DESCREVER: {nome} ({tipo.name})\n"
-            f"IDENTIDADE JÁ CONHECIDA: {descricao_do_elemento or '(nenhuma)'}\n"
-            f"APARÊNCIA ESTABELECIDA ATÉ AQUI (traços fixos de capítulos anteriores): "
-            f"{aparencia_anterior or '(nenhuma ainda)'}\n"
-            f"ESTADO JÁ REGISTRADO (pode estar desatualizado): "
-            f"{estado_atual or '(nenhum ainda)'}\n\n"
-            f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
+        pedido = PedidoComCapitulo(
+            capitulo=texto_capitulo,
+            variavel=(
+                f"ELEMENTO A DESCREVER: {nome} ({tipo.name})\n"
+                f"IDENTIDADE JÁ CONHECIDA: {descricao_do_elemento or '(nenhuma)'}\n"
+                f"APARÊNCIA ESTABELECIDA ATÉ AQUI (traços fixos de capítulos anteriores): "
+                f"{aparencia_anterior or '(nenhuma ainda)'}\n"
+                f"ESTADO JÁ REGISTRADO (pode estar desatualizado): "
+                f"{estado_atual or '(nenhum ainda)'}"
+            ),
         )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_ESTADO, pedido, operacao="estado", temperatura=TEMPERATURA_DE_FIDELIDADE)
+        resposta = self._conversar(
+            modelo, _INSTRUCAO_DE_ESTADO, pedido, operacao="estado", temperatura=TEMPERATURA_DE_FIDELIDADE,
+            sessao_de_cache=_sessao_de_cache(id_do_capitulo, texto_capitulo),
+        )
         return EstadoSugerido(descricao=_interpretar_estado(resposta), modelo=modelo)
 
     def sugerir_identidade(
@@ -1040,15 +1064,21 @@ class ProvedorOpenRouter(ProvedorIA):
         nome: str,
         identidade_vigente: str | None,
         modelo: str,
+        id_do_capitulo: int | None = None,
     ) -> IdentidadeSugerida:
         """Pede ao modelo o que há de novo na identidade de UM elemento — fase 2b."""
-        pedido = (
-            f"ELEMENTO: {nome} ({tipo.name})\n"
-            f"IDENTIDADE JÁ CONHECIDA: {identidade_vigente or '(nenhuma ainda)'}\n\n"
-            f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
+        pedido = PedidoComCapitulo(
+            capitulo=texto_capitulo,
+            variavel=(
+                f"ELEMENTO: {nome} ({tipo.name})\n"
+                f"IDENTIDADE JÁ CONHECIDA: {identidade_vigente or '(nenhuma ainda)'}"
+            ),
         )
 
-        resposta = self._conversar(modelo, _INSTRUCAO_DE_IDENTIDADE, pedido, operacao="identidade", temperatura=TEMPERATURA_DE_FIDELIDADE)
+        resposta = self._conversar(
+            modelo, _INSTRUCAO_DE_IDENTIDADE, pedido, operacao="identidade", temperatura=TEMPERATURA_DE_FIDELIDADE,
+            sessao_de_cache=_sessao_de_cache(id_do_capitulo, texto_capitulo),
+        )
         return IdentidadeSugerida(descricao=_interpretar_identidade(resposta), modelo=modelo)
 
     def fundamentar_frame(
@@ -1062,24 +1092,26 @@ class ProvedorOpenRouter(ProvedorIA):
         participantes: list[str],
         modelo: str,
         trecho: str | None = None,
+        id_do_capitulo: int | None = None,
     ) -> FrameFundamentado:
         """Pede ao modelo para conferir a cena contra o capítulo (item 4.4)."""
         lista = "\n".join(f"- {p}" for p in participantes) or "(nenhum)"
-        pedido = (
+        variavel = (
             f"O QUE O USUÁRIO ESCREVEU SOBRE A CENA:\n"
             f"Título: {titulo}\n"
             f"Descrição: {descricao or '(nenhuma)'}\n"
             f"Horário: {horario or '(não informado)'}\n"
             f"Clima: {clima or '(não informado)'}\n"
             f"Humor: {humor or '(não informado)'}\n\n"
-            f"PARTICIPANTES, COM A APARÊNCIA JÁ ESTABELECIDA:\n{lista}\n\n"
+            f"PARTICIPANTES, COM A APARÊNCIA JÁ ESTABELECIDA:\n{lista}"
         )
         if trecho:
-            pedido += f"TRECHO DO LIVRO EM QUE A CENA ACONTECE (literal, as palavras do autor):\n{trecho}\n\n"
-        pedido += f"TEXTO DO CAPÍTULO:\n{texto_capitulo}"
+            variavel += f"\n\nTRECHO DO LIVRO EM QUE A CENA ACONTECE (literal, as palavras do autor):\n{trecho}"
+        pedido = PedidoComCapitulo(capitulo=texto_capitulo, variavel=variavel)
 
         resposta = self._conversar(
-            modelo, _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME, pedido, operacao="fundamentacao", temperatura=TEMPERATURA_DE_FIDELIDADE
+            modelo, _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME, pedido, operacao="fundamentacao", temperatura=TEMPERATURA_DE_FIDELIDADE,
+            sessao_de_cache=_sessao_de_cache(id_do_capitulo, texto_capitulo),
         )
         return FrameFundamentado(
             contexto=_interpretar_contexto(resposta), modelo=modelo
@@ -1364,7 +1396,7 @@ class ProvedorOpenRouter(ProvedorIA):
         self,
         modelo: str,
         instrucao: str,
-        pedido: str,
+        pedido: str | PedidoComCapitulo,
         *,
         operacao: str,
         usar_busca_web: bool = False,
@@ -1409,16 +1441,17 @@ class ProvedorOpenRouter(ProvedorIA):
         if temperatura is not None:
             perfil = replace(perfil, temperatura=temperatura)
         capacidades = obter_capacidades(modelo)
+        nao_aceitos = _parametros_recusados_por(modelo)
         corpo = _corpo_da_chamada(
             modelo,
             instrucao,
-            pedido,
+            _mensagem_do_usuario(modelo, pedido, com_cache=perfil.cache_do_capitulo and "cache_control" not in nao_aceitos),
             perfil,
             capacidades,
             sessao_de_cache=sessao_de_cache,
             alternativos=alternativos,
             usar_busca_web=usar_busca_web,
-            nao_aceitos=_parametros_recusados_por(modelo),
+            nao_aceitos=nao_aceitos,
         )
         if esperar_json is None:
             esperar_json = perfil.esquema is not None
@@ -1580,6 +1613,36 @@ class ProvedorOpenRouter(ProvedorIA):
         if not resposta.content or "json" in resposta.headers.get("content-type", ""):
             raise ErroDoProvedorIA("O OpenRouter não devolveu um áudio para este trecho.")
         return resposta.content, resposta.headers
+
+
+def _mensagem_do_usuario(modelo: str, pedido: str | PedidoComCapitulo, *, com_cache: bool) -> str | list[dict]:
+    """O ``content`` da mensagem do usuário (LM9).
+
+    - ``str``: como veio.
+    - ``PedidoComCapitulo``: o capítulo **antes** do que varia. Modelos ``anthropic/...`` precisam de um bloco marcado com
+      ``cache_control`` (o cache deles é explícito; a documentação do OpenRouter indica "book chapters" como o uso certo) e recebem uma
+      **lista de dois blocos**, com **um** ponto de cache no fim do capítulo. Os demais (OpenAI, DeepSeek, Gemini) cacheiam sozinhos o
+      prefixo: recebem um texto único.
+    """
+    if isinstance(pedido, str):
+        return pedido
+    abertura = f"TEXTO DO CAPÍTULO:\n{pedido.capitulo}{RODAPE_DO_CAPITULO}"
+    if com_cache and modelo.startswith("anthropic/"):
+        return [
+            {"type": "text", "text": abertura, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": pedido.variavel},
+        ]
+    return abertura + pedido.variavel
+
+
+def _sessao_de_cache(id_do_capitulo: int | None, texto: str) -> str | None:
+    """A chave de cache das leituras de um capítulo (LM11), ou ``None`` sem id.
+
+    Muda quando o texto do capítulo muda (a leitura nova não pode herdar o cache da velha). A chave **padrão** do OpenRouter é um hash
+    da primeira mensagem do usuário, que aqui varia a cada elemento: fixar a sessão é o que faz as leituras do capítulo se acharem."""
+    if id_do_capitulo is None:
+        return None
+    return f"cap-{id_do_capitulo}-{hashlib.sha1(texto.encode()).hexdigest()[:10]}"
 
 
 FOLGA_DE_RACIOCINIO = 4000

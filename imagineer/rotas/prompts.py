@@ -791,6 +791,8 @@ def _fazer_leitura_profunda(
             modelo=modelo,
             # FD2: o que o elemento já tinha de fixo num capítulo anterior já lido.
             aparencia_anterior=aparencia_fixa_anterior(sessao, estado),
+            # LM11: as leituras de um capítulo vão em rajada, e o provedor reaproveita o cache do capítulo entre elas.
+            id_do_capitulo=capitulo_de_origem.id,
         )
         estado.descricao = sugestao.descricao
         estado.confirmado_pela_leitura_profunda = True
@@ -836,6 +838,7 @@ def _sugerir_identidade_se_necessario(
         nome=estado.elemento.nome,
         identidade_vigente=identidade_ate_aqui,
         modelo=modelo,
+        id_do_capitulo=capitulo_de_origem.id,
     )
     if sugestao.descricao is None:
         return
@@ -893,6 +896,7 @@ def _fundamentar_se_necessario(
         participantes=_elementos_do_frame(sessao, frame),
         modelo=modelo,
         trecho=frame.trecho,
+        id_do_capitulo=frame.capitulo_id,
     )
     frame.contexto_do_livro = fundamentado.contexto
     frame.confirmado_pela_leitura_profunda = True

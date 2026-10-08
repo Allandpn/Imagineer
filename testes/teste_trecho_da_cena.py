@@ -292,7 +292,8 @@ def teste_o_pedido_a_ia_leva_o_trecho_rotulado() -> None:
 
     fundamentacao, com, sem = (p["messages"][1]["content"] for p in pedidos)
     assert "TRECHO DO LIVRO EM QUE A CENA ACONTECE (literal, as palavras do autor):\n" + TRECHO in fundamentacao
-    assert fundamentacao.index("TRECHO DO LIVRO") < fundamentacao.index("TEXTO DO CAP")  # o trecho vem antes do capítulo inteiro
+    # 4.10 (LM9): o capítulo inteiro vem primeiro, para ficar em cache; o trecho, que varia a cada cena, vem depois.
+    assert fundamentacao.index("TEXTO DO CAP") < fundamentacao.index("TRECHO DO LIVRO")
     assert "TRECHO DO LIVRO (o que o autor escreveu neste momento" in com and TRECHO in com
     assert "TRECHO DO LIVRO" not in sem
     sistema = pedidos[0]["messages"][0]["content"]

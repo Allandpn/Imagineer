@@ -397,6 +397,7 @@ class ProvedorIA(ABC):
         estado_atual: str | None,
         modelo: str,
         aparencia_anterior: str | None = None,
+        id_do_capitulo: int | None = None,
     ) -> EstadoSugerido:
         """A leitura profunda de UM elemento num capítulo — fase 2 do item 4.4.
 
@@ -418,6 +419,9 @@ class ProvedorIA(ABC):
             aparencia_anterior: a "Aparência fixa" do estado anterior já lido
                 do mesmo elemento (FD2): os traços que não mudam, para
                 completar o que este capítulo não repete.
+            id_do_capitulo: o id do capítulo em ``texto_capitulo`` (4.10, LM11). Serve para o provedor
+                reaproveitar o **cache** do capítulo entre as leituras de uma mesma rajada; um provedor que não
+                conhece cache o ignora, e sem ele a chamada é como era antes.
         """
 
     @abstractmethod
@@ -428,6 +432,7 @@ class ProvedorIA(ABC):
         nome: str,
         identidade_vigente: str | None,
         modelo: str,
+        id_do_capitulo: int | None = None,
     ) -> IdentidadeSugerida:
         """A leitura profunda de *identidade* de UM elemento — fase 2b (item 4.4).
 
@@ -447,6 +452,7 @@ class ProvedorIA(ABC):
                 anteriores, em ordem — ver ``servicos/identidade_de_elemento.py``),
                 de contexto para a IA não repetir o que já sabe.
             modelo: o identificador do modelo a usar.
+            id_do_capitulo: como em ``sugerir_estado`` (4.10, LM11).
         """
 
     @abstractmethod
@@ -461,6 +467,7 @@ class ProvedorIA(ABC):
         participantes: list[str],
         modelo: str,
         trecho: str | None = None,
+        id_do_capitulo: int | None = None,
     ) -> FrameFundamentado:
         """A leitura profunda de um frame do tipo CENA — item 4.4.
 
@@ -480,6 +487,7 @@ class ProvedorIA(ABC):
                 identidade (entre parênteses) só aparece quando o elemento
                 tem uma registrada.
             modelo: o identificador do modelo a usar.
+            id_do_capitulo: como em ``sugerir_estado`` (4.10, LM11).
         """
 
     @abstractmethod

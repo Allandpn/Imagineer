@@ -191,18 +191,20 @@ class ProvedorFalso(ProvedorIA):
         estado_atual: str | None,
         modelo: str,
         aparencia_anterior: str | None = None,
+        id_do_capitulo: int | None = None,
     ) -> EstadoSugerido:
-        self.chamadas_de_estado.append(
-            {
-                "texto_capitulo": texto_capitulo,
-                "tipo": tipo,
-                "nome": nome,
-                "descricao_do_elemento": descricao_do_elemento,
-                "estado_atual": estado_atual,
-                "aparencia_anterior": aparencia_anterior,
-                "modelo": modelo,
-            }
-        )
+        chamada = {
+            "texto_capitulo": texto_capitulo,
+            "tipo": tipo,
+            "nome": nome,
+            "descricao_do_elemento": descricao_do_elemento,
+            "estado_atual": estado_atual,
+            "aparencia_anterior": aparencia_anterior,
+            "modelo": modelo,
+        }
+        if id_do_capitulo is not None:  # só aparece quando a rota o passa, para os testes de antes não mudarem
+            chamada["id_do_capitulo"] = id_do_capitulo
+        self.chamadas_de_estado.append(chamada)
         if self._erro is not None:
             raise self._erro
         return EstadoSugerido(descricao=self._estado, modelo=modelo)
@@ -214,16 +216,18 @@ class ProvedorFalso(ProvedorIA):
         nome: str,
         identidade_vigente: str | None,
         modelo: str,
+        id_do_capitulo: int | None = None,
     ) -> IdentidadeSugerida:
-        self.chamadas_de_identidade.append(
-            {
-                "texto_capitulo": texto_capitulo,
-                "tipo": tipo,
-                "nome": nome,
-                "identidade_vigente": identidade_vigente,
-                "modelo": modelo,
-            }
-        )
+        chamada = {
+            "texto_capitulo": texto_capitulo,
+            "tipo": tipo,
+            "nome": nome,
+            "identidade_vigente": identidade_vigente,
+            "modelo": modelo,
+        }
+        if id_do_capitulo is not None:
+            chamada["id_do_capitulo"] = id_do_capitulo
+        self.chamadas_de_identidade.append(chamada)
         if self._erro is not None:
             raise self._erro
         return IdentidadeSugerida(descricao=self._identidade, modelo=modelo)
@@ -239,6 +243,7 @@ class ProvedorFalso(ProvedorIA):
         participantes: list[str],
         modelo: str,
         trecho: str | None = None,
+        id_do_capitulo: int | None = None,
     ) -> FrameFundamentado:
         chamada = {
             "texto_capitulo": texto_capitulo,
@@ -252,6 +257,8 @@ class ProvedorFalso(ProvedorIA):
         }
         if trecho:  # só aparece quando há trecho, para os testes de antes não mudarem
             chamada["trecho"] = trecho
+        if id_do_capitulo is not None:
+            chamada["id_do_capitulo"] = id_do_capitulo
         self.chamadas_de_fundamentacao.append(chamada)
         if self._erro is not None:
             raise self._erro
