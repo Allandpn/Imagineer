@@ -94,7 +94,9 @@ PERFIS: dict[str, PerfilDaTarefa] = {
     "extracao": _leitura(8000, "extracao"),
     "estado": _leitura(3000, "estado"),
     "identidade": _leitura(800, "identidade"),
-    "fundamentacao": _leitura(3500, "dossie"),
+    # O LM1 cita aqui o esquema ``dossie``, mas o dossiê é do item 4.9 (etapa 3): enquanto a instrução da fundamentação pede só
+    # ``{"contexto": ...}``, o esquema é o de hoje. Quem implementar o dossiê troca o nome junto com a instrução.
+    "fundamentacao": _leitura(3500, "fundamentacao"),
     "prompt": _redacao(TEMPERATURA_DO_PROMPT, 1500),
     "prompt_de_video": _redacao(TEMPERATURA_DO_PROMPT, 1500),
     "traducao": _redacao(TEMPERATURA_DA_TRADUCAO, 2000),

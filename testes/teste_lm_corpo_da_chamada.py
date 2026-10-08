@@ -77,7 +77,7 @@ def teste_lm1_a_tabela_de_perfis_tem_os_valores_da_especificacao() -> None:
         "prompt": 1500, "prompt_de_video": 1500, "traducao": 2000, "correcao": 2000, "suavizacao": 2000, "perfil": 3000,
     }
     assert {nome: perfil.esquema for nome, perfil in PERFIS.items()} == {
-        "extracao": "extracao", "estado": "estado", "identidade": "identidade", "fundamentacao": "dossie",
+        "extracao": "extracao", "estado": "estado", "identidade": "identidade", "fundamentacao": "fundamentacao",
         "prompt": None, "prompt_de_video": None, "traducao": None, "correcao": None, "suavizacao": None, "perfil": None,
     }
 
@@ -219,8 +219,8 @@ def teste_lm2_perfil_sem_esquema_nao_leva_response_format_mesmo_com_suporte() ->
 
 
 def teste_lm2_esquema_que_ainda_nao_existe_nao_leva_response_format() -> None:
-    """Na E1 ``ESQUEMAS`` está vazio (os esquemas são a E4): o perfil cita o nome, mas nada é mandado."""
-    corpo = _corpo(_perfil(esquema="estado"), _capacidades(estruturado=True))
+    """O perfil cita um nome que não está em ``ESQUEMAS``: nada é mandado (e a chamada não quebra)."""
+    corpo = _corpo(_perfil(esquema="esquema-que-nao-existe"), _capacidades(estruturado=True))
 
     assert "response_format" not in corpo
 
