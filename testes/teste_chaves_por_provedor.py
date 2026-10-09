@@ -112,7 +112,7 @@ def teste_ct24_a_rota_repassa_os_tres_headers(cliente: TestClient, monkeypatch) 
 
     recebidos: list[tuple] = []
 
-    def falso(cabecalho=None, usuario=None, chave_fal=None, chave_replicate=None):
+    def falso(cabecalho=None, usuario=None, chave_fal=None, chave_replicate=None, modelo_reserva=None):
         recebidos.append((cabecalho, chave_fal, chave_replicate))
         return ProvedorFalso()
 

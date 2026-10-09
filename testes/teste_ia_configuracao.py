@@ -1437,7 +1437,7 @@ def teste_a_rota_repassa_o_header_para_o_provedor(
 
     recebidos: list[str | None] = []
 
-    def falso(cabecalho: str | None = None, usuario=None, chave_fal=None, chave_replicate=None) -> ProvedorFalso:
+    def falso(cabecalho: str | None = None, usuario=None, chave_fal=None, chave_replicate=None, modelo_reserva=None) -> ProvedorFalso:
         recebidos.append(cabecalho)
         return ProvedorFalso()
 

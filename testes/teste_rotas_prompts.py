@@ -361,10 +361,10 @@ def teste_fase_2b_manda_a_identidade_vigente_como_contexto(
     assert TEXTO_LONGO in chamada["texto_capitulo"]
 
 
-def teste_criar_prompt_sem_modelo_de_extracao_para_leitura_profunda_responde_422(
+def teste_criar_prompt_sem_nenhum_modelo_para_a_leitura_profunda_responde_422(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
-    """A leitura profunda também precisa de um modelo configurado."""
+    """A leitura profunda também precisa de um modelo configurado: o de leitura, o de extração ou, na falta deles, o de prompt (4.10, LM12)."""
     usar_provedor_falso(ProvedorFalso())
     livro = _livro(cliente)
     capitulo = livro["capitulos"][0]
@@ -372,8 +372,7 @@ def teste_criar_prompt_sem_modelo_de_extracao_para_leitura_profunda_responde_422
     frame = _frame(cliente, capitulo["id"], [ned["estados"][0]["id"]])
     perfil = _perfil(cliente)
     cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
-    # Só o modelo de prompt é configurado — falta o de extração/leitura profunda.
-    cliente.put("/configuracao", json={"modelo_prompt": MODELO_FALSO})
+    # Nenhum modelo de texto configurado.
 
     resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={})
 

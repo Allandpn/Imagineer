@@ -47,6 +47,21 @@ Content-Type: application/json
   "modelo_traducao": "google/gemini-2.5-flash-lite"
 }
 
+### Escolhe o modelo que LÊ o capítulo e o modelo reserva (item 4.10, LM12 e LM13)
+# "modelo_leitura" descreve cada elemento (estado e identidade) e fundamenta cada cena: uma chamada por
+# elemento e por cena, em rajada. Pede um modelo barato, rápido e de contexto longo. Vazio = usa o
+# "modelo_extracao" e, depois, o "modelo_prompt".
+# "modelo_reserva" é o modelo a que o OpenRouter recorre se o principal falhar (contexto, moderação,
+# limite de taxa, queda); vale para todas as chamadas de texto. Vazio = sem reserva.
+# String vazia apaga o campo.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "modelo_leitura": "google/gemini-2.5-flash-lite",
+  "modelo_reserva": "openai/gpt-4o-mini"
+}
+
 ### Prioridade de custo vs. qualidade na releitura do livro (item 4.4, fases 2 e 3)
 # Vale tanto para a leitura profunda do elemento quanto para a fundamentação
 # do frame do tipo CENA. ECONOMIA (padrão): relê só na primeira vez por

@@ -51,6 +51,20 @@ def obter_ou_criar(sessao: Session) -> Configuracao:
     return configuracao
 
 
+def modelo_de_leitura(configuracao: Configuracao) -> str | None:
+    """O modelo que **lê o capítulo** para descrever um elemento ou uma cena (item 4.10, LM12).
+
+    A cadeia: ``modelo_leitura`` → ``modelo_extracao`` → ``modelo_prompt``. Quem ainda não escolheu um modelo só para a leitura continua
+    com o de extração, como era antes dele existir; e quem só tem o de prompt, com ele. ``None`` = nenhum dos três foi escolhido."""
+    return configuracao.modelo_leitura or configuracao.modelo_extracao or configuracao.modelo_prompt
+
+
+def ler_modelo_reserva(sessao: Session, usuario_id: int) -> str | None:
+    """O ``modelo_reserva`` da pessoa, ou ``None``. **Só lê**: não cria a linha de configuração (quem nunca configurou nada não ganha uma)."""
+    configuracao = sessao.get(Configuracao, usuario_id)
+    return configuracao.modelo_reserva if configuracao is not None else None
+
+
 def resolver_chave(cabecalho: str | None = None, usuario: Usuario | None = None) -> ChaveResolvida:
     """Decide qual chave usar, e informa a origem sem revelar o valor.
 
@@ -88,6 +102,7 @@ def construir_provedor(
     usuario: Usuario | None = None,
     chave_fal: str | None = None,
     chave_replicate: str | None = None,
+    modelo_reserva: str | None = None,
 ) -> ProvedorIA:
     """Monta o provedor de IA com a chave que vale para esta chamada.
 
@@ -98,10 +113,13 @@ def construir_provedor(
 
     ``cabecalho``, ``chave_fal`` e ``chave_replicate`` são as chaves que o app mandou, uma por provedor (CT24); cada uma tem precedência sobre a do
     servidor. Com ``usuario``: o gasto de cada chamada é gravado **no nome dele** (CT10), e a chave do servidor só entra se ele a pode usar (CT9).
+
+    ``modelo_reserva`` (4.10, LM13) é o modelo a que o OpenRouter recorre quando o principal de uma chamada de texto falha.
     """
     configuracoes = obter_configuracoes()
     return ProvedorOpenRouter(
         chave_api=resolver_chave(cabecalho, usuario).valor,
+        modelo_reserva=modelo_reserva,
         ao_usar=gravar_uso if usuario is None else partial(gravar_uso, usuario_id=usuario.id),
         geradores_de_imagem=montar_geradores(
             _chave_de_imagem(chave_fal, configuracoes.chave_api_fal, usuario),

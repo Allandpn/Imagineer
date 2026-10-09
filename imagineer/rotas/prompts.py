@@ -70,7 +70,7 @@ from imagineer.servicos.catalogo_imagens import (
     salvar_imagem,
     tipo_da_imagem,
 )
-from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.configuracao_ia import modelo_de_leitura, obter_ou_criar
 from imagineer.servicos.limites import BYTES_POR_MB, exigir_espaco, obter_limites
 from imagineer.servicos.uso_de_ia import coletando_o_custo, gasto_do_livro
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
@@ -755,9 +755,8 @@ def _fazer_leitura_profunda(
     passo 7 — diferente da descrição do frame em si (ver ``_fundamentar_se_necessario``),
     onde quem tem prioridade é o usuário.
 
-    Usa o modelo de **extração** (``modelo_extracao``), não o de prompt: ler e
-    entender o capítulo é a mesma tarefa da fase 1, não a de escrever texto
-    criativo que ``montar_prompt`` faz.
+    Usa o modelo de **leitura** (``modelo_leitura``; vazio, o de extração e, depois, o de prompt — 4.10, LM12), não o de
+    escrever texto criativo que ``montar_prompt`` usa: ler e entender o capítulo é outra tarefa.
     """
     # V6: os vinculados também são relidos, para a aparência deles valer neste capítulo.
     estados = list(frame.estados_elemento) + list(frame.estados_vinculados)
@@ -770,11 +769,11 @@ def _fazer_leitura_profunda(
     if not a_reler:
         return
 
-    modelo = configuracao.modelo_extracao
+    modelo = modelo_de_leitura(configuracao)
     if not modelo:
         raise ModeloNaoEscolhido(
-            "Nenhum modelo de extração foi escolhido — ele também é usado na "
-            "leitura profunda dos estados do frame. Configure um em /configuracao."
+            "Nenhum modelo de leitura foi escolhido — ele lê o capítulo para descrever os estados do "
+            "frame (na falta dele, vale o de extração e, depois, o de prompt). Configure um em /configuracao."
         )
 
     for estado in a_reler:
@@ -879,11 +878,11 @@ def _fundamentar_se_necessario(
     ):
         return frame.contexto_do_livro
 
-    modelo = configuracao.modelo_extracao
+    modelo = modelo_de_leitura(configuracao)
     if not modelo:
         raise ModeloNaoEscolhido(
-            "Nenhum modelo de extração foi escolhido — ele também é usado na "
-            "leitura profunda do frame. Configure um em /configuracao."
+            "Nenhum modelo de leitura foi escolhido — ele lê o capítulo para fundamentar a cena "
+            "(na falta dele, vale o de extração e, depois, o de prompt). Configure um em /configuracao."
         )
 
     fundamentado = provedor.fundamentar_frame(

@@ -849,7 +849,10 @@ class ProvedorOpenRouter(ProvedorIA):
         ao_usar: Callable[[UsoDaChamada], None] | None = None,
         geradores_de_imagem: dict[str, GeradorDeImagemExterno] | None = None,
         dormir: Callable[[float], None] = time.sleep,
+        modelo_reserva: str | None = None,
     ):
+        self._modelo_reserva = modelo_reserva
+        """O modelo a que o OpenRouter recorre se o principal de uma chamada de texto falhar (4.10, LM13). Nulo = sem reserva."""
         self._dormir = dormir
         """Como esperar entre uma tentativa e outra (LM5). Os testes injetam um falso, para não esperar de verdade."""
         self._geradores_de_imagem = geradores_de_imagem or {}
@@ -1449,7 +1452,8 @@ class ProvedorOpenRouter(ProvedorIA):
             perfil,
             capacidades,
             sessao_de_cache=sessao_de_cache,
-            alternativos=alternativos,
+            # O reserva da configuração vai em toda chamada de texto; o corpo tira o repetido e o igual ao principal (LM2.6, LM13).
+            alternativos=(*alternativos, *([self._modelo_reserva] if self._modelo_reserva else [])),
             usar_busca_web=usar_busca_web,
             nao_aceitos=nao_aceitos,
         )

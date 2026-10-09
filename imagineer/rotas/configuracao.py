@@ -16,6 +16,7 @@ from imagineer.modelos import ModoDeNarracao, MotorDeNarracao, PrioridadeIA, Usu
 from imagineer.servicos.catalogo_de_modelos_de_imagem import chave_do_modelo_de_imagem, montar_catalogo, testar_modelo_de_imagem
 from imagineer.servicos.configuracao_ia import (
     construir_provedor,
+    ler_modelo_reserva,
     obter_ou_criar,
     resolver_chave,
 )
@@ -37,14 +38,18 @@ def obter_provedor(
         default=None, alias="X-Chave-API-Replicate", description="Chave pessoal do Replicate (CT24). Nunca é gravada."
     ),
     usuario: Usuario = Depends(obter_usuario),
+    sessao: Session = Depends(obter_sessao),
 ) -> ProvedorIA:
     """Dependência que entrega o provedor de IA já configurado.
 
     Existe como dependência do FastAPI, e não como objeto global, para os testes
     poderem substituí-la por um provedor falso — e para uma troca de chave valer
-    no pedido seguinte, sem reiniciar o serviço.
+    no pedido seguinte, sem reiniciar o serviço. Lê também o **modelo reserva** da pessoa (4.10, LM13),
+    com a sessão do próprio pedido (o FastAPI não abre outra).
     """
-    return construir_provedor(chave_api_openrouter, usuario, chave_api_fal, chave_api_replicate)
+    return construir_provedor(
+        chave_api_openrouter, usuario, chave_api_fal, chave_api_replicate, modelo_reserva=ler_modelo_reserva(sessao, usuario.id)
+    )
 
 
 class ConfiguracaoAtual(BaseModel):
@@ -63,6 +68,18 @@ class ConfiguracaoAtual(BaseModel):
     )
     modelo_extracao: str | None
     modelo_prompt: str | None
+    modelo_leitura: str | None = Field(
+        description=(
+            "Modelo que **lê o capítulo** para descrever um elemento ou uma cena (estado, identidade e fundamentação; item 4.10). "
+            "Vazio = usa o `modelo_extracao`, senão o `modelo_prompt`."
+        )
+    )
+    modelo_reserva: str | None = Field(
+        description=(
+            "Modelo a que o OpenRouter recorre quando o principal falha (item 4.10). Vazio = sem reserva. "
+            "Vale para todas as chamadas de texto."
+        )
+    )
     modelo_perfil: str | None = Field(
         description=(
             "Modelo para sugerir perfil de renderização (item 6.5) — separado dos "
@@ -145,6 +162,8 @@ class ConfiguracaoNova(BaseModel):
 
     modelo_extracao: str | None = Field(default=None, max_length=200)
     modelo_prompt: str | None = Field(default=None, max_length=200)
+    modelo_leitura: str | None = Field(default=None, max_length=200)
+    modelo_reserva: str | None = Field(default=None, max_length=200)
     modelo_perfil: str | None = Field(default=None, max_length=200)
     modelo_imagem: str | None = Field(default=None, max_length=200)
     modelos_de_imagem: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=20)
@@ -253,6 +272,8 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao), usuario: Usuario =
         origem_da_chave=chave.origem,
         modelo_extracao=configuracao.modelo_extracao,
         modelo_prompt=configuracao.modelo_prompt,
+        modelo_leitura=configuracao.modelo_leitura,
+        modelo_reserva=configuracao.modelo_reserva,
         modelo_perfil=configuracao.modelo_perfil,
         modelo_imagem=configuracao.modelo_imagem,
         fornecedores_de_imagem={

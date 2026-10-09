@@ -127,6 +127,17 @@ class Configuracao(Base):
     modelo_prompt: Mapped[str | None] = mapped_column(String(200))
     """Modelo usado para montar o prompt de imagem (passo 8 do fluxo)."""
 
+    modelo_leitura: Mapped[str | None] = mapped_column(String(200))
+    """Modelo que **lê o capítulo** para descrever um elemento ou uma cena: o estado, a identidade e a fundamentação (item 4.10, LM12).
+
+    Separado de ``modelo_extracao`` porque as tarefas pedem coisas diferentes: identificar elementos é uma chamada por capítulo e aceita um
+    modelo mais caro; a leitura é uma chamada **por elemento e por cena**, em rajada, e pede um modelo barato, rápido e com contexto longo.
+    Vazio = cai em ``modelo_extracao`` e, depois, em ``modelo_prompt`` (como a tradução cai na suavização)."""
+
+    modelo_reserva: Mapped[str | None] = mapped_column(String(200))
+    """Modelo a que o OpenRouter recorre quando o principal falha (limite de contexto, moderação, limite de taxa, queda) — item 4.10, LM13.
+    Vai em **todas** as chamadas de texto, menos naquelas em que ele é o próprio modelo principal. O custo é o do modelo que respondeu."""
+
     modelo_perfil: Mapped[str | None] = mapped_column(String(200))
     """Modelo usado para sugerir um perfil de renderização (item 6.5).
 
