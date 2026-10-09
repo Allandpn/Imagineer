@@ -282,6 +282,24 @@ class ExtracaoDeElementos:
 
 
 @dataclass
+class MomentoSugerido:
+    """Um momento do elemento dentro do capítulo (item 4.9, FL3): o que mudou e onde começa.
+
+    Todos os campos de conteúdo são ``None`` quando o texto não os sustenta (nunca inventados). ``ancora`` é a citação **literal** de onde o
+    momento começa; é com ela que o servidor calcula a posição (``EstadoElemento.momentos``).
+    """
+
+    ancora: str | None = None
+    roupa: str | None = None
+    estado_fisico: str | None = None
+    """Ferimentos, sujeira, cansaço."""
+    expressao_e_postura: str | None = None
+    humor: str | None = None
+    """O humor que **se vê**."""
+    lugar: str | None = None
+
+
+@dataclass
 class EstadoSugerido:
     """O resultado da leitura profunda de um elemento (item 4.4, fase 2).
 
@@ -292,6 +310,8 @@ class EstadoSugerido:
 
     descricao: str
     modelo: str = ""
+    momentos: list[MomentoSugerido] | None = None
+    """A linha do tempo do elemento no capítulo, em ordem do texto (item 4.9, FL3). ``None`` = o modelo devolveu o formato antigo (um instante só)."""
 
 
 @dataclass

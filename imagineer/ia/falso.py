@@ -32,6 +32,7 @@ from imagineer.ia.provedor import (
     IdentidadeSugerida,
     ImagemGerada,
     ModeloDisponivel,
+    MomentoSugerido,
     PerfilRenderizacaoSugerido,
     PromptMontado,
     ProvedorIA,
@@ -88,6 +89,7 @@ class ProvedorFalso(ProvedorIA):
         cenas_sugeridas: list[CenaSugerida] | None = None,
         modelos: list[ModeloDisponivel] | None = None,
         estado: str = "watercolor-ready appearance description",
+        momentos: list[MomentoSugerido] | None = None,
         identidade: str | None = None,
         contexto: str = "the book confirms this happens in the guard room",
         prompt: str = "watercolor painting of a snowy courtyard at dusk",
@@ -114,6 +116,8 @@ class ProvedorFalso(ProvedorIA):
         self._cenas_sugeridas = cenas_sugeridas if cenas_sugeridas is not None else []
         self._modelos = list(MODELOS_FALSOS) if modelos is None else modelos
         self._estado = estado
+        self._momentos = momentos
+        """A linha do tempo que ``sugerir_estado`` devolve (item 4.9, FL3); ``None`` por padrão: o formato antigo, de um instante só."""
         self._identidade = identidade
         """O incremento de identidade a devolver — ``None`` por padrão (o
         caso comum: nada de novo), como ``sugerir_identidade`` documenta."""
@@ -207,7 +211,7 @@ class ProvedorFalso(ProvedorIA):
         self.chamadas_de_estado.append(chamada)
         if self._erro is not None:
             raise self._erro
-        return EstadoSugerido(descricao=self._estado, modelo=modelo)
+        return EstadoSugerido(descricao=self._estado, modelo=modelo, momentos=self._momentos)
 
     def sugerir_identidade(
         self,

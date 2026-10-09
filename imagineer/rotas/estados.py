@@ -159,6 +159,10 @@ def ajustar_estado(
     if campos.get("imagem_ancora_id") is not None:
         exigir_imagem(sessao, campos["imagem_ancora_id"])
 
+    if "descricao" in campos and campos["descricao"] != estado.descricao:
+        # FL4: a descrição escrita à mão passa a valer sozinha; a linha do tempo que a IA leu já não descreve este texto.
+        estado.momentos = None
+
     for campo, valor in campos.items():
         setattr(estado, campo, valor)
 

@@ -92,7 +92,7 @@ def _redacao(temperatura: float | None, limite_de_saida: int) -> PerfilDaTarefa:
 
 PERFIS: dict[str, PerfilDaTarefa] = {
     "extracao": _leitura(8000, "extracao"),
-    "estado": _leitura(3000, "estado"),
+    "estado": _leitura(3000, "estado_com_momentos"),  # item 4.9, FL3: o formato com a linha do tempo do elemento (o `estado` de antes continua em ESQUEMAS)
     "identidade": _leitura(800, "identidade"),
     # O LM1 cita aqui o esquema ``dossie``, mas o dossiê é do item 4.9 (etapa 3): enquanto a instrução da fundamentação pede só
     # ``{"contexto": ...}``, o esquema é o de hoje. Quem implementar o dossiê troca o nome junto com a instrução.

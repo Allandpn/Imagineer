@@ -51,6 +51,7 @@ from imagineer.ia.provedor import (
     ImagemGerada,
     ModeloDisponivel,
     ModeloNaoEscolhido,
+    MomentoSugerido,
     ParticipanteSugerido,
     PerfilRenderizacaoSugerido,
     PromptMontado,
@@ -219,7 +220,7 @@ baixo, ombros curvados").
 específico do capítulo, como se fosse um fotograma parado — não "ele entra, \
 pega o livro e sai", mas o momento em que a mão toca a página.
 
-Você devolve TRÊS partes, porque cada uma tem um papel diferente na imagem:
+Você devolve QUATRO partes, porque cada uma tem um papel diferente na imagem:
 
 1. "aparencia_fixa": os traços que NÃO mudam ao longo do livro — idade aparente, porte, \
 pele, rosto, cor, comprimento e tipo do cabelo, marcas permanentes. Pode vir de QUALQUER \
@@ -253,6 +254,21 @@ num prato"), e o nome só junto disso. Só o que o texto diz ou \
 implica com segurança: se ele não diz onde o elemento está, devolva null em vez de inventar \
 um cenário. Para um elemento que é o próprio lugar (AMBIENTE, EDIFICACAO), devolva null.
 
+4. "momentos": a LINHA DO TEMPO do elemento neste capítulo, em ORDEM DO TEXTO. O "instante" acima é só o \
+primeiro; aqui você diz como o elemento está em cada ponto, porque uma cena do fim do capítulo precisa da \
+roupa e do estado de LÁ, e não dos do começo. Cada momento tem: "ancora" (uma citação LITERAL de até uns 80 \
+caracteres, copiada palavra por palavra do capítulo, do ponto em que o momento COMEÇA; null se não tiver certeza \
+de achar um trecho exato), "roupa", "estado_fisico" (ferimentos, sujeira, cansaço), "expressao_e_postura", \
+"humor" (só o que se vê) e "lugar" (onde está nesse momento). Regras:
+- Um NOVO momento só existe quando ALGO MUDOU para este elemento (trocou de roupa, se feriu, mudou de humor ou \
+de lugar). Um capítulo em que nada muda tem UM momento só.
+- O primeiro momento é o mesmo do "instante" (e o "lugar" dele, o "ambiente").
+- Nunca duas versões contraditórias no mesmo momento (de camisola e de armadura ao mesmo tempo).
+- Os detalhes que COMPLETAM um momento podem vir de QUALQUER ponto do capítulo, inclusive DEPOIS de onde ele \
+começa (o autor abre a cena e vai preenchendo): eles entram no momento a que pertencem, e a "ancora" marca só onde o \
+momento COMEÇA.
+- Cada campo sem sustentação no texto é null. Nada de inventar para completar.
+
 Regras de fidelidade ao texto (mais importantes que o estilo de escrita acima):
 - Descreva só o que o texto diz ou implica com segurança. Não invente detalhes \
 que o texto não sustenta, mesmo que pareçam plausíveis para o gênero da obra.
@@ -271,8 +287,8 @@ que ESTE capítulo não repete (a cor do cabelo dita no primeiro capítulo conti
 mas o texto deste capítulo vence se disser que algo mudou. Dela, nunca copie roupa, pose \
 ou humor.
 - Se o elemento pedido não aparecer de forma clara neste capítulo, ou se o \
-texto não descrever sua aparência, devolva o estado já registrado (nas três \
-partes acima), sem inventar nada novo e sem deduzir a partir do gênero ou tom do \
+texto não descrever sua aparência, devolva o estado já registrado (nas partes \
+acima, com um só momento), sem inventar nada novo e sem deduzir a partir do gênero ou tom do \
 livro.
 
 Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
@@ -280,7 +296,17 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 {
   "aparencia_fixa": "os traços que não mudam, seguindo as regras acima",
   "instante": "o primeiro instante: roupa, pose, expressão e humor",
-  "ambiente": "onde está nesse instante, ou null se o texto não diz"
+  "ambiente": "onde está nesse instante, ou null se o texto não diz",
+  "momentos": [
+    {
+      "ancora": "citação literal de onde o momento começa, ou null",
+      "roupa": "a roupa e o penteado nesse momento, ou null",
+      "estado_fisico": "ferimentos, sujeira, cansaço, ou null",
+      "expressao_e_postura": "a expressão e a postura visíveis, ou null",
+      "humor": "o humor que se vê, ou null",
+      "lugar": "onde está nesse momento, ou null"
+    }
+  ]
 }
 
 Escreva em português.
@@ -474,6 +500,10 @@ expressão ou a ação** quando a cena diz o que a pessoa ou o objeto está faze
 estar clara no prompt** (no bloco do sujeito, num instante congelado) e não pode ser trocada por uma pose parada de um \
 elemento: se a cena diz que Auri pinga gotas em Foxen, o prompt mostra isso, e não "Auri parada ao lado". Um elemento \
 acrescentado à cena contribui com a **aparência** dele, e não muda o que a cena conta.
+- **O "Neste instante:" de uma cena pode vir em partes rotuladas** ("clothing/hairstyle:", "physical \
+state:", "expression and posture:", "visible mood:"): é o momento do capítulo em que a cena acontece. Use só a roupa \
+e o penteado e o estado físico (ferimentos, sujeira, cansaço); a expressão, a postura e o humor da cena vêm \
+da descrição da cena, como sempre.
 - **O lugar vem da cena.** Numa cena, o cenário é o da descrição da cena; o "Onde está:" dos \
 elementos só preenche o que a cena não diz, e nunca a contradiz. Num retrato não há lugar: o fundo é \
 liso e neutro, e vem do sistema.
@@ -1076,7 +1106,7 @@ class ProvedorOpenRouter(ProvedorIA):
             modelo, _INSTRUCAO_DE_ESTADO, pedido, operacao="estado", temperatura=TEMPERATURA_DE_FIDELIDADE,
             sessao_de_cache=_sessao_de_cache(id_do_capitulo, texto_capitulo),
         )
-        return EstadoSugerido(descricao=_interpretar_estado(resposta), modelo=modelo)
+        return EstadoSugerido(descricao=_interpretar_estado(resposta), modelo=modelo, momentos=_interpretar_momentos(resposta))
 
     def sugerir_identidade(
         self,
@@ -2157,6 +2187,33 @@ def _interpretar_estado(resposta: str) -> str:
     if ambiente:
         linhas.append(f"{ROTULO_DO_AMBIENTE} {ambiente}")
     return "\n".join(linhas)
+
+
+def _interpretar_momentos(resposta: str) -> list[MomentoSugerido] | None:
+    """Lê a lista ``momentos`` da leitura de um elemento (item 4.9, FL3); ``None`` se a resposta não a traz (formato antigo: um instante só).
+
+    Tolerante como as outras: o que não é objeto, ou não diz nada (todos os campos vazios), é descartado em silêncio — é sugestão, e uma
+    entrada ruim não derruba as outras. Os campos de conteúdo que o modelo deixa nulo ou escreve como "null" ficam ``None`` (``_texto_ou_nulo``).
+    """
+    bruto = _extrair_json(resposta)
+    if not isinstance(bruto, dict) or not isinstance(bruto.get("momentos"), list):
+        return None
+
+    momentos = []
+    for entrada in bruto["momentos"]:
+        if not isinstance(entrada, dict):
+            continue
+        momento = MomentoSugerido(
+            ancora=_texto_ou_nulo(entrada.get("ancora")),
+            roupa=_texto_ou_nulo(entrada.get("roupa")),
+            estado_fisico=_texto_ou_nulo(entrada.get("estado_fisico")),
+            expressao_e_postura=_texto_ou_nulo(entrada.get("expressao_e_postura")),
+            humor=_texto_ou_nulo(entrada.get("humor")),
+            lugar=_texto_ou_nulo(entrada.get("lugar")),
+        )
+        if any((momento.roupa, momento.estado_fisico, momento.expressao_e_postura, momento.humor, momento.lugar)):
+            momentos.append(momento)
+    return momentos or None
 
 
 def _interpretar_identidade(resposta: str) -> str | None:

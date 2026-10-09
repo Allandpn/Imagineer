@@ -76,6 +76,7 @@ from imagineer.servicos.uso_de_ia import coletando_o_custo, gasto_do_livro
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.aparencia_de_elemento import aparencia_fixa_anterior, e_rascunho_de_identidade, sem_o_lugar
+from imagineer.servicos.momentos_do_elemento import descricao_para_a_cena, momentos_com_posicao
 from imagineer.servicos.identidade_de_elemento import LIMITE_DA_IDENTIDADE_NO_PROMPT, identidade_vigente, resumir_texto
 from imagineer.servicos.lixeira import mover_para_a_lixeira
 from imagineer.servicos.imagens_reduzidas import (
@@ -805,6 +806,8 @@ def _fazer_leitura_profunda(
             id_do_capitulo=capitulo_de_origem.id,
         )
         estado.descricao = sugestao.descricao
+        # FL3, FL4: a linha do tempo do elemento no capítulo, com a posição de cada momento achada no texto.
+        estado.momentos = momentos_com_posicao(sugestao.momentos, capitulo_de_origem.texto)
         estado.confirmado_pela_leitura_profunda = True
         sessao.add(estado)
 
@@ -1023,10 +1026,13 @@ def _elementos_do_frame(sessao: Session, frame: Frame, sem_lugar: bool = False) 
     só a leitura profunda de UM estado (``sugerir_estado``) recebia (item 4.4).
     Omitida quando o elemento não tem identidade registrada. ``sem_lugar`` tira o "Onde está:" (o retrato neutro não tem lugar, item 4.9, FL1).
     """
-    return _linhas_de_estados(sessao, frame.estados_elemento, frame.capitulo.ordem, sem_lugar)
+    # FL7: numa CENA, cada elemento entra no momento que cobre o trecho dela (não o primeiro do capítulo); no retrato vale o estado como está.
+    return _linhas_de_estados(
+        sessao, frame.estados_elemento, frame.capitulo.ordem, sem_lugar, frame=frame if frame.tipo == TipoDeFrame.CENA else None
+    )
 
 
-def _linhas_de_estados(sessao: Session, estados, ordem_do_capitulo: int, sem_lugar: bool = False) -> list[str]:
+def _linhas_de_estados(sessao: Session, estados, ordem_do_capitulo: int, sem_lugar: bool = False, frame: Frame | None = None) -> list[str]:
     """"Nome (identidade): aparência" para cada estado, por tipo e nome.
 
     A identidade é a **vigente até o capítulo do frame** (FD3), e não só a inicial: o que o livro revelou depois (idade, gênero, origem)
@@ -1036,7 +1042,8 @@ def _linhas_de_estados(sessao: Session, estados, ordem_do_capitulo: int, sem_lug
     for estado in sorted(estados, key=lambda e: (e.elemento.tipo.name, e.elemento.nome)):
         nome = estado.elemento.nome
         identidade = resumir_texto(identidade_vigente(sessao, estado.elemento, ordem_do_capitulo), LIMITE_DA_IDENTIDADE_NO_PROMPT)
-        descricao = sem_o_lugar(estado.descricao) if sem_lugar else estado.descricao
+        descricao = descricao_para_a_cena(estado, frame) if frame is not None else estado.descricao
+        descricao = sem_o_lugar(descricao) if sem_lugar else descricao
         if identidade:
             partes.append(f"{nome} ({identidade}): {descricao}")
         else:

@@ -167,7 +167,7 @@ def teste_lm8_todo_esquema_citado_por_um_perfil_existe() -> None:
 
 def teste_lm8_as_quatro_tarefas_de_leitura_usam_esquema() -> None:
     assert {o: PERFIS[o].esquema for o in ("extracao", "estado", "identidade", "fundamentacao")} == {
-        "extracao": "extracao", "estado": "estado", "identidade": "identidade", "fundamentacao": "fundamentacao",
+        "extracao": "extracao", "estado": "estado_com_momentos", "identidade": "identidade", "fundamentacao": "fundamentacao",
     }
 
 
@@ -294,7 +294,11 @@ def teste_lm8_modelo_com_structured_outputs_recebe_o_esquema_estrito_da_tarefa(m
     _provedor(corpos, json.dumps(EXEMPLOS["estado"])).sugerir_estado("capítulo", TipoElemento.PERSONAGEM, "Ned", None, None, "x/modelo")
 
     (corpo,) = corpos
-    assert corpo["response_format"] == {"type": "json_schema", "json_schema": {"name": "estado", "strict": True, "schema": ESQUEMAS["estado"]}}
+    # Item 4.9 (FL3): a leitura do estado pede a linha do tempo; o esquema `estado` (um instante só) fica em ESQUEMAS para o formato antigo.
+    assert corpo["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "estado_com_momentos", "strict": True, "schema": ESQUEMAS["estado_com_momentos"]},
+    }
     assert corpo["provider"] == {"require_parameters": True}
 
 

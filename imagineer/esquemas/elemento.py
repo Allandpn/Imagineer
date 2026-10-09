@@ -8,6 +8,21 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from imagineer.modelos import TipoElemento
 
 
+class MomentoDoEstado(BaseModel):
+    """Um momento do elemento dentro do capítulo de origem do estado (item 4.9, FL3, FL4). Só leitura."""
+
+    ancora: str | None = Field(default=None, description="A citação literal de onde o momento começa.")
+    roupa: str | None = None
+    estado_fisico: str | None = Field(default=None, description="Ferimentos, sujeira, cansaço.")
+    expressao_e_postura: str | None = None
+    humor: str | None = Field(default=None, description="O humor que se vê.")
+    lugar: str | None = None
+    posicao: int | None = Field(
+        default=None,
+        description="Onde o momento começa no texto do capítulo (UTF-16, como `posicao_no_texto`). Ausente = a âncora não foi achada no texto.",
+    )
+
+
 class EstadoResumo(BaseModel):
     """Um estado de elemento como a API o devolve."""
 
@@ -27,6 +42,13 @@ class EstadoResumo(BaseModel):
     descricao: str
     imagem_ancora_id: int | None
     data_criacao: datetime
+    momentos: list[MomentoDoEstado] | None = Field(
+        default=None,
+        description=(
+            "A linha do tempo do elemento no capítulo, em ordem do texto (item 4.9, FL3). Nulo = estado antigo ou digitado à mão: "
+            "vale só a `descricao`, como sempre. Editar a `descricao` à mão apaga os momentos."
+        ),
+    )
 
 
 class EstadoComIdentidadeDoElemento(EstadoResumo):

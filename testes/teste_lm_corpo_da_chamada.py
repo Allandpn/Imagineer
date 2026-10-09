@@ -77,7 +77,7 @@ def teste_lm1_a_tabela_de_perfis_tem_os_valores_da_especificacao() -> None:
         "prompt": 1500, "prompt_de_video": 1500, "traducao": 2000, "correcao": 2000, "suavizacao": 2000, "perfil": 3000,
     }
     assert {nome: perfil.esquema for nome, perfil in PERFIS.items()} == {
-        "extracao": "extracao", "estado": "estado", "identidade": "identidade", "fundamentacao": "fundamentacao",
+        "extracao": "extracao", "estado": "estado_com_momentos", "identidade": "identidade", "fundamentacao": "fundamentacao",
         "prompt": None, "prompt_de_video": None, "traducao": None, "correcao": None, "suavizacao": None, "perfil": None,
     }
 

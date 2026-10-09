@@ -14,6 +14,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Enum,
@@ -202,6 +203,14 @@ class EstadoElemento(Base):
     montagem de um novo prompt reaproveita esta descrição em vez de relê-la —
     só volta a ``False`` se o estado for apagado e recriado.
     """
+
+    momentos: Mapped[list[dict] | None] = mapped_column(JSON)
+    """A **linha do tempo** do elemento dentro do capítulo de origem (item 4.9, FL3, FL4): uma lista, em ordem do texto, de momentos, cada um com
+    ``ancora`` (a citação literal de onde ele começa), ``roupa``, ``estado_fisico``, ``expressao_e_postura``, ``humor``, ``lugar`` e ``posicao``
+    (deslocamento em UTF-16, calculado pelo servidor achando a âncora no capítulo; ausente se não achou — nunca inventada).
+
+    Antes, o estado guardava **um instante só** (o primeiro): uma cena do fim do capítulo recebia a roupa do começo. ``descricao`` continua sendo
+    a descrição do primeiro momento. **Nulo = estado antigo** (ou digitado à mão): se comporta exatamente como antes."""
 
     elemento: Mapped["Elemento"] = relationship(back_populates="estados")
     capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
