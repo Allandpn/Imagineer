@@ -29,3 +29,7 @@ dictdata.tgz
 
 # Dicionarios StarDict do Allan (centenas de MB, nao versionar)
 dictdata/
+
+# Casos de avaliação dos modelos de leitura (LM19): trechos de livros reais, com direitos autorais (nao versionar).
+# O repositório leva só scripts/exemplos/, com texto inventado.
+avaliacao/

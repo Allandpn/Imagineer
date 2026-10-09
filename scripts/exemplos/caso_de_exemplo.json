@@ -1,0 +1,33 @@
+{
+  "livro": "Livro de Exemplo (texto inventado)",
+  "capitulo": 1,
+  "tipo": "estado",
+  "texto": "Maren acordou antes do sol, na cabana de pedra à beira do rio. Era uma mulher alta, de cabelos negros presos numa trança grossa, e tinha uma cicatriz fina na sobrancelha esquerda. Vestia a camisola de linho cinza que a avó lhe deixara. Lá fora, a neblina cobria a água. Ela calçou as botas, vestiu o casaco de couro marrom sobre a camisola e saiu para buscar lenha. Mais tarde, já no vilarejo, trocou o casaco por um manto verde de lã, pois ia ao mercado. Os ombros estavam caídos, e os olhos, vermelhos de sono.",
+  "elemento": {
+    "nome": "Maren",
+    "tipo": "PERSONAGEM",
+    "identidade": "uma aldeã que mora sozinha perto do rio"
+  },
+  "esperado": {
+    "fixos": [
+      "mulher alta",
+      "cabelos negros presos numa trança grossa",
+      "cicatriz fina na sobrancelha esquerda"
+    ],
+    "momentos": [
+      {
+        "comeca_em": "Maren acordou antes do sol",
+        "fatos": ["camisola de linho cinza", "ombros caídos", "olhos vermelhos de sono"]
+      },
+      {
+        "comeca_em": "trocou o casaco por um manto verde de lã",
+        "fatos": ["manto verde de lã"]
+      }
+    ]
+  },
+  "proibido": [
+    "olhos azuis",
+    "armadura",
+    "cabelos loiros"
+  ]
+}
