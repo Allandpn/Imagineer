@@ -47,6 +47,8 @@ from imagineer.modelos import TipoElemento  # noqa: E402
 from imagineer.servicos.posicao_no_texto import posicao_da_citacao  # noqa: E402
 
 TAREFAS = ("estado", "dossie", "extracao")
+TIPOS_DO_SCRIPT_DE_FIDELIDADE = ("cena", "retrato")
+"""Os casos de ``avaliar_fidelidade.py`` (item 4.9, FL13.3) podem estar na mesma pasta: este script os ignora."""
 LIMITE_DE_LENTO = 15.0
 """Segundos de p95 acima dos quais o modelo é marcado "lento" (LM18, LM20)."""
 
@@ -128,6 +130,8 @@ def carregar_casos(pasta: Path, tarefas: Sequence[str]) -> list[Caso]:
             dados = json.loads(caminho.read_text(encoding="utf-8"))
         except json.JSONDecodeError as erro:
             raise CasoInvalido(f"{caminho.name}: não é um JSON válido ({erro})") from erro
+        if isinstance(dados, dict) and dados.get("tipo") in TIPOS_DO_SCRIPT_DE_FIDELIDADE:
+            continue  # é caso do outro script
         caso = validar_caso(dados, caminho.name)
         if caso.tipo in tarefas:
             casos.append(caso)

@@ -1,0 +1,25 @@
+{
+  "livro": "Livro de Exemplo (texto inventado)",
+  "capitulo": 1,
+  "tipo": "retrato",
+  "texto": "Maren acordou antes do sol, na cabana de pedra à beira do rio. Era uma mulher alta, de cabelos negros presos numa trança grossa, e tinha uma cicatriz fina na sobrancelha esquerda. Vestia a camisola de linho cinza que a avó lhe deixara.",
+  "elemento": {
+    "nome": "Maren",
+    "tipo": "PERSONAGEM",
+    "identidade": "uma aldeã que mora sozinha perto do rio",
+    "aparencia": "Aparência fixa: mulher alta, cabelos negros, cicatriz fina na sobrancelha esquerda\nNeste instante: camisola de linho cinza\nOnde está: cabana de pedra à beira do rio"
+  },
+  "deve_aparecer": [
+    "uma mulher alta de cabelos negros",
+    "camisola de linho cinza",
+    "fundo liso cinza-claro",
+    "luz suave e uniforme",
+    "olhando para a câmera, expressão neutra"
+  ],
+  "nao_deve_aparecer": [
+    "a cabana de pedra",
+    "o rio",
+    "outra pessoa",
+    "um objeto na mão"
+  ]
+}

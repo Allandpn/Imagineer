@@ -44,6 +44,8 @@ class Capacidades:
     preco_cache_escrita: Decimal | None
     gratuito: bool
     moderado: bool
+    aceita_imagem: bool = True
+    """O modelo **lê imagens** (``architecture.input_modalities`` traz ``image``). Verdadeiro também quando o catálogo não diz (não se bloqueia por falta de dado)."""
 
 
 def decimal_ou_nulo(valor: object) -> Decimal | None:
@@ -67,6 +69,8 @@ def capacidades_de(bruto: dict) -> Capacidades:
     raciocinio = bruto.get("reasoning") if isinstance(bruto.get("reasoning"), dict) else {}
     provedor = bruto.get("top_provider") if isinstance(bruto.get("top_provider"), dict) else {}
     parametros = {p for p in (bruto.get("supported_parameters") or []) if isinstance(p, str)}
+    arquitetura = bruto.get("architecture") if isinstance(bruto.get("architecture"), dict) else {}
+    entradas = arquitetura.get("input_modalities")
 
     preco_entrada = decimal_ou_nulo(preco.get("prompt"))
     return Capacidades(
@@ -83,6 +87,7 @@ def capacidades_de(bruto: dict) -> Capacidades:
         preco_cache_escrita=decimal_ou_nulo(preco.get("input_cache_write")),
         gratuito=preco_entrada == 0,
         moderado=bool(provedor.get("is_moderated")),
+        aceita_imagem="image" in entradas if isinstance(entradas, list) and entradas else True,
     )
 
 

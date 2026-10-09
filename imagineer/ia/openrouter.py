@@ -48,6 +48,7 @@ from imagineer.ia.provedor import (
     ExtracaoDeElementos,
     FrameFundamentado,
     IdentidadeSugerida,
+    ImagemConferida,
     ImagemGerada,
     ModeloDisponivel,
     ModeloNaoEscolhido,
@@ -341,37 +342,64 @@ Escreva em português.
 """
 
 _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME = """\
-Você lê um capítulo de livro para conferir uma cena que o usuário já descreveu \
-com as próprias palavras — você é uma segunda opinião, não a palavra final.
+Você lê um capítulo de livro INTEIRO, do começo ao fim, para montar o DOSSIÊ de uma cena que o usuário já \
+descreveu com as próprias palavras: a lista FECHADA de QUEM e O QUE está presente naquele momento, com as \
+características de cada coisa naquele momento, como o autor escreveu. Você é uma segunda opinião, não a palavra final.
 
-Você recebe como o usuário descreveu a cena (título, descrição, horário, clima, \
-humor) e quem participa dela, cada um já com a aparência estabelecida. Pode vir também \
-o "TRECHO DO LIVRO EM QUE A CENA ACONTECE": as palavras do autor nesse momento. Se vier, \
-é ali que a cena está: foque nele (e no que o cerca, para o contexto) e ignore outras \
-passagens do capítulo com os mesmos personagens. Releia o capítulo e escreva um parágrafo curto (até 3 frases) confirmando, com base só \
-no texto:
-- Onde a cena acontece: o ambiente ou construção, com detalhes físicos que o \
-texto sustente.
-- O que fisicamente acontece nesse momento específico: uma ação ou gesto \
-concreto, não uma sequência de eventos.
-- Qualquer detalhe visual do ambiente (iluminação, clima, objetos presentes) \
-que o texto mostre e a descrição do usuário não tenha coberto.
+Você recebe como o usuário descreveu a cena (título, descrição, horário, clima, humor) e os participantes já \
+cadastrados, cada um com a aparência estabelecida. Pode vir também o "TRECHO DO LIVRO EM QUE A CENA ACONTECE": as \
+palavras do autor no momento da cena. O trecho diz QUAL é o momento (o instante parado que vai virar imagem). Sem \
+trecho, o momento é o que a descrição do usuário conta, e você marca "momento_incerto": true.
+
+**O capítulo inteiro vale.** Os detalhes de uma cena costumam vir ESPALHADOS: o autor abre a cena e vai completando \
+o que se vê ao longo do texto. Por isso leia o capítulo todo ANTES de descrever e reúna, de QUALQUER ponto (antes ou \
+depois do trecho), tudo o que o texto diz sobre AQUELE momento. O dossiê é para quem lê o próprio livro: você não precisa \
+esconder o que o capítulo revela adiante, mas só o que SE VÊ vira item. A única separação que você mantém é a de MOMENTO: \
+um detalhe que o texto mostra CLARAMENTE como de outro momento (depois de a pessoa trocar de roupa, de um ferimento novo, \
+de mudar de lugar, de a cena já ter acabado) NÃO entra, porque contradiria a cena (a mesma pessoa de camisola e de \
+armadura). Na dúvida entre "completa a cena" e "é outro momento", INCLUA o item com "incerto": true e deixe a pessoa decidir; \
+não omita nem suponha.
+
+O que você devolve:
+- "momento_incerto": true se não havia trecho ou se não dá para dizer com segurança qual é o momento.
+- "presentes": a lista FECHADA de quem e do que está presente no quadro naquele momento. Cada item: "nome" (como o \
+autor diz), "tipo" (PESSOA, CRIATURA, OBJETO ou LUGAR), "elemento" (o nome EXATO do participante cadastrado, se o item \
+é um deles; null se não é, como um prato ou um cão que ninguém cadastrou), "caracteristicas" (o que SE VÊ naquele \
+momento, só do que o texto diz: roupa, estado, cor, material, posição) e "incerto" (true se você não tem certeza de que \
+o item pertence a este momento). Só entra quem ou o que está PRESENTE: não entra quem só é mencionado, lembrado ou está \
+em outro lugar. Objetos: só os de peso visual na cena (os que a ação usa ou o autor destaca); o cenário comum vai em "onde".
+- "onde": o lugar, com os detalhes físicos reunidos de qualquer ponto do capítulo; null se o texto não diz.
+- "luz_e_clima": a luz, o clima e o que há no ar que o texto sustenta; null se não diz.
+- "acao": o que acontece nesse momento, UM instante parado (um gesto concreto, não uma sequência); null se não é claro.
+- "faltou": o que o texto NÃO deixa claro e faria falta para desenhar a cena (em vez de supor). Lista vazia se nada.
 
 Regras:
-- Você NÃO substitui a descrição do usuário. Se o que você lê parecer \
-contradizer o que ele escreveu, não corrija — apenas registre o que o texto \
-mostra; quem monta o prompt final decide, e a palavra do usuário vale mais que \
-a sua (ele já leu o capítulo; você pode estar enganado ou lendo o trecho errado).
-- Não invente. Se o capítulo não deixar algo claro, diga que não é claro em vez \
-de supor.
-- Não repita a aparência física dos participantes — isso já foi estabelecido \
-em outra etapa. Foque em local, ação e ambiente.
+- Você NÃO substitui a descrição do usuário. Se o que você lê parecer contradizê-la, não corrija: registre o que o texto \
+mostra; a palavra do usuário vale mais que a sua (ele já leu o capítulo; você pode estar lendo o trecho errado).
+- Não invente. O que o capítulo não deixa claro vai em "faltou", não em "caracteristicas".
+- Dos participantes cadastrados, não repita a aparência estabelecida (rosto, cabelo, pele, porte): ela já está em \
+outro lugar. Escreva só o que o texto diz deles NESTE momento.
+- Nomes inventados pelo livro (de lugares, criaturas, objetos) não dizem nada a quem vai desenhar: escreva o que SE VÊ \
+("um filhote de luz azul num prato") e o nome só junto disso.
 - Escreva em português.
 
 Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
 
 {
-  "contexto": "o parágrafo de confirmação, seguindo as regras acima"
+  "momento_incerto": false,
+  "presentes": [
+    {
+      "nome": "como o autor chama",
+      "tipo": "PESSOA",
+      "elemento": "nome exato do participante cadastrado, ou null",
+      "caracteristicas": "o que se vê, naquele momento",
+      "incerto": false
+    }
+  ],
+  "onde": "o lugar, ou null",
+  "luz_e_clima": "a luz e o clima, ou null",
+  "acao": "o que acontece, num instante parado, ou null",
+  "faltou": ["o que o texto não deixa claro"]
 }
 """
 
@@ -521,11 +549,23 @@ presente na cena) tem gênero claro pela identidade/aparência informada, isso \
 aparece marcado sem ambiguidade em algum lugar do texto? Se a resposta for \
 não, corrija antes de responder — não devolva o prompt sem essa checagem.
 
+Se vier **O QUE APARECE NA CENA** (a lista que a pessoa confirmou), ela é a lista fechada: aparece SÓ isso, mais o \
+que a descrição da cena citar. Então: (1) escreva UMA frase por figura (cada pessoa ou criatura, e cada objeto de \
+destaque), cada uma com as características DELA e só as dela, para não misturar atributos entre as figuras (a roupa de \
+um nunca vai para o outro); (2) diga quantas pessoas e criaturas são ("exactly two figures: ..."), usando a contagem \
+que veio; (3) o item marcado [incerto] só entra se a descrição da cena o sustenta, e sem afirmar mais do que se sabe; \
+(4) a ordem do texto é: câmera, a AÇÃO e as figuras (o mais importante vem primeiro, porque os modelos de imagem dão \
+menos peso ao fim do texto), o lugar, a luz e, por último, o bloco de estilo; (5) a prosa fica em até uns 150 palavras, \
+sem repetir o mesmo elemento. O LUGAR, a LUZ E CLIMA e a AÇÃO que vierem junto são o cenário, a luz e a ação da cena. \
+Os itens de tipo "lugar" da lista são o cenário, e não uma figura.
+
 Ordem de prioridade quando houver conflito entre as fontes abaixo:
 1. Comentário do usuário (se houver) — é uma correção de quem já viu o \
 resultado anterior ou releu o capítulo com atenção. Vale mais que tudo.
 2. A descrição da cena escrita pelo usuário — ele já leu o capítulo; é a conta \
 oficial do que acontece.
+2a. O que aparece na cena (se vier), com o lugar, a luz e a ação do dossiê: a lista que a pessoa viu e confirmou. \
+Vale logo depois da descrição escrita por ela, e antes do trecho.
 2b. O trecho do livro (se houver) — são as palavras do autor nesse momento: use-o para \
 confirmar e completar a ação, os objetos e a luz da cena, e **não acrescente nada que ele \
 não sustente**, nem pessoas, criaturas ou objetos de destaque que não estejam na lista de elementos \
@@ -741,6 +781,30 @@ _DESCRICAO_DE_CATEGORIA = {
         "nem 2D chapada. Não cite nome de estúdio"
     ),
 }
+
+_INSTRUCAO_DE_CONFERENCIA_DA_IMAGEM = """\
+Você confere uma imagem gerada por IA contra a lista do que deveria aparecer nela. Você recebe a imagem e a lista \
+confirmada pela pessoa: quem e o que aparece (com as características de cada um), quantas pessoas e criaturas são, \
+o lugar, a luz e a ação.
+
+Aponte só DIVERGÊNCIAS que você VÊ na imagem:
+- pessoas, criaturas ou objetos de destaque a mais ou a menos do que a lista diz (CONTE as pessoas e criaturas);
+- uma característica que contradiz a lista (a cor da roupa, um objeto que não é o dito, um ferimento que falta);
+- o lugar, a luz ou a ação que não batem com o pedido;
+- atributos misturados entre as figuras (a roupa de uma na outra).
+
+Não julgue estilo, qualidade nem beleza. Não aponte o que a lista não diz. Se você não tem certeza do que vê, não aponte. \
+Escreva uma frase curta por divergência, em português, no formato "Deveria: ... / A imagem mostra: ...".
+
+Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
+
+{
+  "conforme": true,
+  "divergencias": ["Deveria: ... / A imagem mostra: ..."]
+}
+
+"conforme" só é verdadeiro se "divergencias" está vazia.
+"""
 
 _INSTRUCAO_DE_PERFIL = """\
 Você sugere um estilo visual (perfil de renderização) para adaptar um livro em \
@@ -1164,9 +1228,8 @@ class ProvedorOpenRouter(ProvedorIA):
             modelo, _INSTRUCAO_DE_FUNDAMENTACAO_DE_FRAME, pedido, operacao="fundamentacao", temperatura=TEMPERATURA_DE_FIDELIDADE,
             sessao_de_cache=_sessao_de_cache(id_do_capitulo, texto_capitulo),
         )
-        return FrameFundamentado(
-            contexto=_interpretar_contexto(resposta), modelo=modelo
-        )
+        contexto, dossie = _interpretar_dossie(resposta)
+        return FrameFundamentado(contexto=contexto, modelo=modelo, dossie=dossie)
 
     def montar_prompt(
         self,
@@ -1178,8 +1241,9 @@ class ProvedorOpenRouter(ProvedorIA):
         comentario_do_usuario: str | None = None,
         elementos_vinculados: list[str] | None = None,
         trecho_do_livro: str | None = None,
+        dossie: dict | None = None,
     ) -> PromptMontado:
-        """Pede ao modelo o prompt de imagem (passo 8)."""
+        """Pede ao modelo o prompt de imagem (passo 8). Com ``dossie`` (item 4.9, FL9, FL12), a lista confirmada é a lista fechada da cena."""
         lista = "\n".join(f"- {elemento}" for elemento in elementos) or "(nenhum)"
         pedido = (
             f"CENA (escrita pelo usuário; vazio significa retrato solo):\n"
@@ -1190,6 +1254,8 @@ class ProvedorOpenRouter(ProvedorIA):
         if elementos_vinculados:
             vinculados = "\n".join(f"- {elemento}" for elemento in elementos_vinculados)
             pedido += f"\n\nELEMENTOS VINCULADOS AO SUJEITO (aparecem junto dele neste retrato):\n{vinculados}"
+        if dossie:
+            pedido += f"\n\n{texto_dos_presentes(dossie)}"
         if trecho_do_livro:
             pedido += f"\n\nTRECHO DO LIVRO (o que o autor escreveu neste momento; confira com ele a ação, os objetos e a luz):\n{trecho_do_livro}"
         if contexto_do_livro:
@@ -1383,6 +1449,19 @@ class ProvedorOpenRouter(ProvedorIA):
                 logging.getLogger(__name__).exception("Não foi possível anotar o consumo da chamada à IA.")
         return imagem
 
+    def conferir_imagem(self, imagem: bytes, tipo_de_midia: str, titulo_da_cena: str, dossie: dict, modelo: str) -> ImagemConferida:
+        """Pede a um modelo **com visão** que compare a imagem com a lista do que deveria aparecer (item 4.9, FL13.1)."""
+        if not imagem:
+            raise ErroDoProvedorIA("Não há imagem para conferir.")
+        texto = f"CENA: {titulo_da_cena}\n\n{texto_dos_presentes(dossie)}"
+        codificada = base64.b64encode(imagem).decode("ascii")
+        pedido = [
+            {"type": "text", "text": texto},
+            {"type": "image_url", "image_url": {"url": f"data:{tipo_de_midia};base64,{codificada}"}},
+        ]
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_CONFERENCIA_DA_IMAGEM, pedido, operacao="conferencia")
+        return ImagemConferida(divergencias=_interpretar_conferencia(resposta), modelo=modelo)
+
     def sugerir_perfil_renderizacao(
         self,
         titulo: str,
@@ -1447,7 +1526,7 @@ class ProvedorOpenRouter(ProvedorIA):
         self,
         modelo: str,
         instrucao: str,
-        pedido: str | PedidoComCapitulo,
+        pedido: str | list[dict] | PedidoComCapitulo,
         *,
         operacao: str,
         usar_busca_web: bool = False,
@@ -1667,16 +1746,16 @@ class ProvedorOpenRouter(ProvedorIA):
         return resposta.content, resposta.headers
 
 
-def _mensagem_do_usuario(modelo: str, pedido: str | PedidoComCapitulo, *, com_cache: bool) -> str | list[dict]:
+def _mensagem_do_usuario(modelo: str, pedido: str | list[dict] | PedidoComCapitulo, *, com_cache: bool) -> str | list[dict]:
     """O ``content`` da mensagem do usuário (LM9).
 
-    - ``str``: como veio.
+    - ``str`` ou uma **lista de blocos** (texto e imagem, na conferência de uma imagem): como veio.
     - ``PedidoComCapitulo``: o capítulo **antes** do que varia. Modelos ``anthropic/...`` precisam de um bloco marcado com
       ``cache_control`` (o cache deles é explícito; a documentação do OpenRouter indica "book chapters" como o uso certo) e recebem uma
       **lista de dois blocos**, com **um** ponto de cache no fim do capítulo. Os demais (OpenAI, DeepSeek, Gemini) cacheiam sozinhos o
       prefixo: recebem um texto único.
     """
-    if isinstance(pedido, str):
+    if isinstance(pedido, (str, list)):
         return pedido
     abertura = f"TEXTO DO CAPÍTULO:\n{pedido.capitulo}{RODAPE_DO_CAPITULO}"
     if com_cache and modelo.startswith("anthropic/"):
@@ -2216,6 +2295,16 @@ def _interpretar_momentos(resposta: str) -> list[MomentoSugerido] | None:
     return momentos or None
 
 
+def _interpretar_conferencia(resposta: str) -> list[str]:
+    """Lê as divergências da conferência de uma imagem (item 4.9, FL13.1). Resposta que não é JSON é erro em português; item que não é texto é descartado."""
+    bruto = _extrair_json(resposta)
+    if bruto is None or not isinstance(bruto.get("divergencias"), list):
+        raise ErroDoProvedorIA(
+            "O modelo não devolveu a conferência no formato esperado. Escolha, em modelo_conferencia, um modelo que leia imagens e siga o formato."
+        )
+    return [d for d in (_texto_ou_nulo(item) for item in bruto["divergencias"] if isinstance(item, str)) if d]
+
+
 def _interpretar_identidade(resposta: str) -> str | None:
     """Lê o JSON da leitura profunda de identidade (fase 2b, item 4.4).
 
@@ -2229,6 +2318,87 @@ def _interpretar_identidade(resposta: str) -> str | None:
             "pequenos não seguem bem instruções de formato."
         )
     return _texto_ou_nulo(bruto.get("descricao"))
+
+
+TIPOS_DE_PRESENTE = ("PESSOA", "CRIATURA", "OBJETO", "LUGAR")
+
+ROTULOS_DO_DOSSIE = (("onde", "LUGAR"), ("luz_e_clima", "LUZ E CLIMA"), ("acao", "AÇÃO (um instante parado)"))
+
+
+def presentes_incluidos(dossie: dict) -> list[dict]:
+    """Os presentes que a pessoa deixou na cena (``incluir`` verdadeiro; o que não diz nada conta como incluído)."""
+    return [p for p in dossie.get("presentes") or [] if p.get("incluir", True)]
+
+
+def texto_dos_presentes(dossie: dict) -> str:
+    """O bloco "O QUE APARECE NA CENA" que a montagem do prompt recebe (item 4.9, FL9, FL12): a lista fechada, a contagem e o lugar, a luz e a ação."""
+    incluidos = presentes_incluidos(dossie)
+    linhas = []
+    for numero, presente in enumerate(incluidos, start=1):
+        cadastrado = f' (é o elemento cadastrado "{presente["elemento"]}")' if presente.get("elemento") else ""
+        incerto = " [incerto]" if presente.get("incerto") else ""
+        detalhes = presente.get("caracteristicas") or "(sem detalhes)"
+        linhas.append(f"{numero}. {presente['nome']} [{str(presente.get('tipo', 'OBJETO')).lower()}]{cadastrado}: {detalhes}{incerto}")
+
+    figuras = sum(1 for presente in incluidos if presente.get("tipo") in ("PESSOA", "CRIATURA"))
+    partes = [
+        "O QUE APARECE NA CENA (lista fechada, confirmada pela pessoa; aparece SÓ isto, mais o que a descrição da cena citar):",
+        "\n".join(linhas) or "(nada além do que a descrição da cena cita)",
+        f"Pessoas e criaturas no quadro: {figuras}",
+    ]
+    partes += [f"{rotulo}: {dossie[campo]}" for campo, rotulo in ROTULOS_DO_DOSSIE if dossie.get(campo)]
+    return "\n".join(partes)
+
+
+def contexto_do_dossie(dossie: dict) -> str:
+    """O texto de apoio que o dossiê deixa em ``Frame.contexto_do_livro`` (FL8): o lugar, a luz e a ação, uma linha para cada."""
+    rotulos = (("onde", "Onde"), ("luz_e_clima", "Luz e clima"), ("acao", "Ação"))
+    return "\n".join(f"{rotulo}: {dossie[campo]}" for campo, rotulo in rotulos if dossie.get(campo))
+
+
+def _interpretar_dossie(resposta: str) -> tuple[str, dict | None]:
+    """Lê a resposta da leitura da cena (item 4.9, FL5): ``(contexto, dossiê)``.
+
+    O formato antigo, de um parágrafo só (``{"contexto": ...}``), ainda vale: devolve o contexto e **sem** dossiê. No novo, cada presente é
+    normalizado (tipo conhecido, ``incluir`` verdadeiro) e o que não é objeto, ou não tem nome, é descartado em silêncio: é sugestão, e uma entrada
+    ruim não derruba as outras. Um dossiê sem presentes, lugar, luz nem ação é erro (nada foi lido).
+    """
+    bruto = _extrair_json(resposta)
+    if bruto is None:
+        raise ErroDoProvedorIA("O modelo não devolveu JSON. Tente outro modelo: alguns modelos pequenos não seguem bem instruções de formato.")
+    if "presentes" not in bruto and "onde" not in bruto and "acao" not in bruto:
+        return _interpretar_contexto(resposta), None
+
+    presentes = []
+    for entrada in bruto.get("presentes") or []:
+        if not isinstance(entrada, dict):
+            continue
+        nome = _texto_ou_nulo(entrada.get("nome"))
+        if nome is None:
+            continue
+        tipo = str(entrada.get("tipo") or "").strip().upper()
+        presentes.append(
+            {
+                "nome": nome,
+                "tipo": tipo if tipo in TIPOS_DE_PRESENTE else "OBJETO",
+                "elemento": _texto_ou_nulo(entrada.get("elemento")),
+                "caracteristicas": _texto_ou_nulo(entrada.get("caracteristicas")) or "",
+                "incerto": entrada.get("incerto") is True,
+                "incluir": True,
+            }
+        )
+    faltou = [t for t in (_texto_ou_nulo(f) for f in (bruto.get("faltou") or []) if isinstance(f, str)) if t]
+    dossie = {
+        "momento_incerto": bruto.get("momento_incerto") is True,
+        "presentes": presentes,
+        "onde": _texto_ou_nulo(bruto.get("onde")),
+        "luz_e_clima": _texto_ou_nulo(bruto.get("luz_e_clima")),
+        "acao": _texto_ou_nulo(bruto.get("acao")),
+        "faltou": faltou,
+    }
+    if not presentes and not (dossie["onde"] or dossie["luz_e_clima"] or dossie["acao"]):
+        raise ErroDoProvedorIA("O modelo devolveu um dossiê sem nenhum presente, lugar, luz nem ação.")
+    return contexto_do_dossie(dossie), dossie
 
 
 def _interpretar_contexto(resposta: str) -> str:

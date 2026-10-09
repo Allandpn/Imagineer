@@ -15,7 +15,11 @@ from sqlalchemy.orm import Session
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.prompt import (
     CenaComImagens,
+    ConferenciaDaImagem,
     Correcao,
+    DossieConfirmado,
+    DossieDaCena,
+    DossieLido,
     ElementoComImagens,
     ElementoParaVincular,
     ElementosParaVincular,
@@ -33,7 +37,10 @@ from imagineer.esquemas.prompt import (
     Traducao,
 )
 from imagineer.ia.blocos_tecnicos import com_bloco_de_retrato, com_bloco_tecnico
+from imagineer.ia.catalogo_de_texto import obter_capacidades
+from imagineer.ia.openrouter import presentes_incluidos
 from imagineer.ia.provedor import (
+    ErroDoProvedorIA,
     ModeloNaoEscolhido,
     ProvedorIA,
 )
@@ -76,13 +83,16 @@ from imagineer.servicos.uso_de_ia import coletando_o_custo, gasto_do_livro
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.aparencia_de_elemento import aparencia_fixa_anterior, e_rascunho_de_identidade, sem_o_lugar
-from imagineer.servicos.momentos_do_elemento import descricao_para_a_cena, momentos_com_posicao
+from imagineer.servicos.referencias_da_cena import ancoras_da_cena, presentes_do_dossie
+from imagineer.servicos.dossie_da_cena import confirmar_dossie, dossie_esta_velho, entrada_dos_participantes, guardar_dossie
+from imagineer.servicos.momentos_do_elemento import descricao_para_a_cena, momento_usado, momentos_com_posicao
 from imagineer.servicos.identidade_de_elemento import LIMITE_DA_IDENTIDADE_NO_PROMPT, identidade_vigente, resumir_texto
 from imagineer.servicos.lixeira import mover_para_a_lixeira
 from imagineer.servicos.imagens_reduzidas import (
     TamanhoDeImagem,
     arquivo_no_tamanho,
     ler_dimensoes,
+    preparar_referencia,
     remover_derivadas,
 )
 from imagineer.servicos.upload import ler_com_limite
@@ -142,7 +152,8 @@ def referencias_candidatas(frame_id: int, sessao: Session = Depends(obter_sessao
                 imagens=_imagens_candidatas(elemento, estado.imagem_ancora or elemento.imagem_ancora_padrao),
             )
         )
-    return ReferenciasCandidatas(elementos=elementos)
+    marcadas = ancoras_da_cena(frame, presentes_do_dossie(frame)) if frame.tipo == TipoDeFrame.CENA else []
+    return ReferenciasCandidatas(elementos=elementos, marcadas=marcadas)
 
 
 def _imagens_candidatas(elemento: Elemento, ancora: Imagem | None) -> list[ImagemCandidata]:
@@ -361,7 +372,7 @@ def criar_prompt(
     # Os erros do provedor sobem como estão: o tratador global os traduz para HTTP (imagineer/erros.py).
     with gasto_do_livro(livro.id):  # CU3: as chamadas daqui valem como gasto deste livro
         _fazer_leitura_profunda(sessao, provedor, frame, configuracao)
-        contexto_do_livro = _fundamentar_se_necessario(sessao, provedor, frame, configuracao)
+        contexto_do_livro, dossie = _dossie_se_necessario(sessao, provedor, frame, configuracao)
         if eh_video:
             resultado = provedor.montar_prompt_de_video(
                 descricao_do_frame=_descricao_do_frame(frame),
@@ -385,10 +396,12 @@ def criar_prompt(
                 elementos=_elementos_do_frame(sessao, frame, sem_lugar=retrato),
                 perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo, sem_iluminacao=retrato),
                 modelo=modelo_prompt,
-                contexto_do_livro=contexto_do_livro,
+                contexto_do_livro=None if dossie else contexto_do_livro,
                 comentario_do_usuario=corpo.comentario,
                 elementos_vinculados=vinculados or None,
                 trecho_do_livro=frame.trecho,
+                # FL9, FL12: com o dossiê (confirmado ou lido agora), a lista de presentes é a lista fechada da cena e ele já substitui o contexto antigo.
+                dossie=dossie,
             )
 
     texto_final = resultado.texto
@@ -411,6 +424,7 @@ def criar_prompt(
         ),
         tipo=corpo.tipo,
         imagem_partida_id=partida.id if partida is not None else None,
+        ficha=None if eh_video or frame.tipo != TipoDeFrame.CENA else _ficha_do_prompt(frame, dossie),
     )
     sessao.add(prompt)
     sessao.commit()
@@ -734,6 +748,69 @@ def baixar_imagem(
     )
 
 
+@rotas_de_imagem.post(
+    "/{imagem_id}/conferir",
+    response_model=ConferenciaDaImagem,
+    summary="Confere a imagem contra a lista do que deveria aparecer (gasta IA)",
+)
+def conferir_imagem(
+    imagem_id: int,
+    sessao: Session = Depends(obter_sessao),
+    provedor: ProvedorIA = Depends(obter_provedor),
+) -> ConferenciaDaImagem:
+    """Um modelo **com visão** compara a imagem com a lista que valeu para o prompt dela (quantas pessoas, objetos, roupa, luz) e devolve as
+    divergências (item 4.9, FL13.1). **Gasta IA** e usa a chave da pessoa; **não grava nada**: é uma opinião para a pessoa decidir se gera de novo.
+
+    Só vale para a imagem de uma **cena** cujo prompt guardou a lista de presentes (a `ficha`). O modelo é o `modelo_conferencia` da configuração, que precisa ler imagens;
+    sem ele, 422. A imagem vai reduzida: a conferência não precisa dela inteira."""
+    imagem = _buscar_imagem(sessao, imagem_id)
+    if imagem.apagada_em is not None:  # LX4: a da lixeira não serve (e conferir gastaria à toa)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Esta imagem está na lixeira.")
+    prompt = imagem.prompt
+    frame = prompt.frame if prompt is not None else None
+    if frame is None or frame.tipo != TipoDeFrame.CENA:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Só dá para conferir a imagem de uma cena: um retrato não tem lista do que aparece.")
+    presentes = (prompt.ficha or {}).get("presentes") or []
+    if not presentes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="O prompt desta imagem não guardou a lista do que deveria aparecer (ela vem do dossiê da cena): leia o dossiê e gere o prompt de novo.",
+        )
+
+    configuracao = obter_ou_criar(sessao)
+    modelo = configuracao.modelo_conferencia
+    if not modelo:
+        raise ModeloNaoEscolhido("Nenhum modelo de conferência foi escolhido. Escolha, em /configuracao, um modelo que leia imagens (modelo_conferencia).")
+    capacidades = obter_capacidades(modelo)
+    if capacidades is not None and not capacidades.aceita_imagem:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"O modelo {modelo} não lê imagens. Escolha, em modelo_conferencia, um modelo com visão.",
+        )
+
+    caminho = caminho_absoluto(imagem.caminho_arquivo)
+    if not caminho.is_file():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="O arquivo desta imagem não está mais no disco.")
+    conteudo, tipo = preparar_referencia(caminho)
+
+    lista = {
+        "presentes": presentes,
+        "onde": (frame.dossie or {}).get("onde"),
+        "luz_e_clima": (frame.dossie or {}).get("luz_e_clima"),
+        "acao": (frame.dossie or {}).get("acao"),
+    }
+    with gasto_do_livro(frame.capitulo.livro_id), coletando_o_custo() as custos:
+        conferida = provedor.conferir_imagem(conteudo, tipo, frame.titulo, lista, modelo)
+    informados = [c for c in custos if c is not None]
+    return ConferenciaDaImagem(
+        conforme=conferida.conforme,
+        divergencias=conferida.divergencias,
+        itens_conferidos=len(presentes),
+        modelo=conferida.modelo or modelo,
+        custo=sum(informados) if informados else None,
+    )
+
+
 @rotas_de_imagem.delete(
     "/{imagem_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -865,33 +942,14 @@ def _sugerir_identidade_se_necessario(
     )
 
 
-def _fundamentar_se_necessario(
-    sessao: Session,
-    provedor: ProvedorIA,
-    frame: Frame,
-    configuracao: Configuracao,
-) -> str | None:
-    """A leitura profunda de um frame do tipo CENA — item 4.4.
+def _nomes_dos_elementos(frame: Frame) -> list[str]:
+    return [estado.elemento.nome for estado in frame.estados_elemento]
 
-    Só se aplica a ``TipoDeFrame.CENA`` com pelo menos um elemento — um
-    PERSONAGEM não tem "quem, onde, o quê" para conferir, e um frame sem
-    ninguém ligado ainda não tem o que verificar. Respeita a mesma cache de
-    ``prioridade_ia`` do item 4.4: em modo ``ECONOMIA``, reaproveita
-    ``Frame.contexto_do_livro`` se já foi lido uma vez.
 
-    **Não sobrescreve** ``titulo``/``descricao`` do frame — só grava o contexto
-    obtido, que ``montar_prompt`` usa com prioridade menor que o que o usuário
-    escreveu (a diferença central em relação a ``_fazer_leitura_profunda``).
-    """
-    if frame.tipo != TipoDeFrame.CENA or not frame.estados_elemento:
-        return None
-
-    if (
-        configuracao.prioridade_ia == PrioridadeIA.ECONOMIA
-        and frame.confirmado_pela_leitura_profunda
-    ):
-        return frame.contexto_do_livro
-
+def _ler_o_dossie(
+    sessao: Session, provedor: ProvedorIA, frame: Frame, configuracao: Configuracao, participantes: list[str]
+) -> tuple[str, dict | None]:
+    """Chama a IA para ler o capítulo e guarda o resultado no frame: devolve ``(contexto, dossiê)``. O dossiê é ``None`` se o modelo respondeu no formato antigo."""
     modelo = modelo_de_leitura(configuracao)
     if not modelo:
         raise ModeloNaoEscolhido(
@@ -906,15 +964,155 @@ def _fundamentar_se_necessario(
         horario=frame.horario,
         clima=frame.clima,
         humor=frame.humor,
-        participantes=_elementos_do_frame(sessao, frame),
+        participantes=participantes,
         modelo=modelo,
         trecho=frame.trecho,
         id_do_capitulo=frame.capitulo_id,
     )
-    frame.contexto_do_livro = fundamentado.contexto
-    frame.confirmado_pela_leitura_profunda = True
+    if fundamentado.dossie is not None:
+        guardado = guardar_dossie(frame, fundamentado.dossie, fundamentado.contexto, entrada_dos_participantes(frame), _nomes_dos_elementos(frame))
+    else:
+        # O modelo respondeu no formato antigo (um parágrafo): vale só o contexto, como era antes do dossiê.
+        guardado = None
+        frame.contexto_do_livro = fundamentado.contexto
+        frame.confirmado_pela_leitura_profunda = True
     sessao.add(frame)
-    return fundamentado.contexto
+    return frame.contexto_do_livro, guardado
+
+
+def _dossie_se_necessario(
+    sessao: Session,
+    provedor: ProvedorIA,
+    frame: Frame,
+    configuracao: Configuracao,
+) -> tuple[str | None, dict | None]:
+    """A leitura da cena (o **dossiê**, item 4.9, FL5 a FL9): devolve ``(contexto, dossiê)``; ``(None, None)`` fora de uma ``CENA``.
+
+    Substitui a fundamentação de três frases (item 4.4, fase 3) e funciona com qualquer número de elementos, **inclusive nenhum** (FL5). Quando lê:
+
+    - **Dossiê confirmado pela pessoa e ainda atual:** nunca relê (nem em ``QUALIDADE``): a lista que ela viu e aceitou é a decisão dela (FL9).
+    - ``ECONOMIA``: relê só se não há dossiê, ou se ele está **velho** (as entradas mudaram, FL8). Um frame **antigo**, lido pela fundamentação de
+      três frases e sem dossiê, continua reaproveitando o contexto que já tinha (nada existente é reescrito de uma vez, FL15).
+    - ``QUALIDADE``: relê sempre que o dossiê não está confirmado.
+    - Cena **sem elementos** e **sem** modelo de leitura escolhido: não lê (segue como antes do dossiê); com modelo, lê só pelo texto do autor.
+
+    **Não sobrescreve** ``titulo``/``descricao`` do frame: o dossiê é apoio; a palavra do usuário vale mais (item 4.4).
+    """
+    if frame.tipo != TipoDeFrame.CENA:
+        return None, None
+
+    atual = frame.dossie is not None and not dossie_esta_velho(frame, entrada_dos_participantes(frame))
+
+    if atual and (frame.dossie.get("confirmado") or configuracao.prioridade_ia == PrioridadeIA.ECONOMIA):
+        return frame.contexto_do_livro, frame.dossie
+    if (
+        frame.dossie is None
+        and configuracao.prioridade_ia == PrioridadeIA.ECONOMIA
+        and frame.confirmado_pela_leitura_profunda
+    ):
+        return frame.contexto_do_livro, None
+    if not frame.estados_elemento and not modelo_de_leitura(configuracao):
+        # Cena sem elementos e sem nenhum modelo de leitura escolhido: não há o que ler, e quem monta o prompt só com o modelo do pedido segue como antes.
+        return None, None
+
+    return _ler_o_dossie(sessao, provedor, frame, configuracao, _elementos_do_frame(sessao, frame))
+
+
+def _ficha_do_prompt(frame: Frame, dossie: dict | None) -> dict:
+    """O registro do que entrou no prompt de uma cena (item 4.9, FL13.2): a lista de presentes, o momento usado de cada elemento e as referências.
+
+    Serve para o app mostrar "de onde veio" e para regerar igual. ``referencias`` começa vazia e é preenchida quando a imagem é gerada.
+    """
+    presentes = [
+        {campo: presente.get(campo) for campo in ("nome", "tipo", "elemento", "caracteristicas", "incerto")}
+        for presente in (presentes_incluidos(dossie) if dossie else [])
+    ]
+    momentos = [m for m in (momento_usado(estado, frame) for estado in frame.estados_elemento) if m is not None]
+    return {
+        "dossie": {"confirmado": bool(dossie.get("confirmado")), "momento_incerto": bool(dossie.get("momento_incerto"))} if dossie else None,
+        "presentes": presentes,
+        "momentos": momentos,
+        "referencias": [],
+    }
+
+
+def _dossie_para_a_api(sessao: Session, frame: Frame) -> DossieDaCena | None:
+    """O dossiê guardado como a API o devolve, com ``desatualizado`` calculado agora; ``None`` se o frame não tem dossiê."""
+    if frame.dossie is None:
+        return None
+    desatualizado = dossie_esta_velho(frame, entrada_dos_participantes(frame))
+    return DossieDaCena(**{**frame.dossie, "desatualizado": desatualizado})
+
+
+def _exigir_cena(frame: Frame) -> None:
+    if frame.tipo != TipoDeFrame.CENA:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Só uma cena tem dossiê: um retrato é a imagem neutra de um elemento, sem lista do que aparece.",
+        )
+
+
+@rotas_de_frame.get(
+    "/{frame_id}/dossie",
+    response_model=DossieDaCena | None,
+    summary="O dossiê guardado da cena (quem e o que aparece), sem chamar a IA",
+)
+def ver_dossie(frame_id: int, sessao: Session = Depends(obter_sessao)) -> DossieDaCena | None:
+    """O que a leitura do capítulo já confirmou sobre a cena (item 4.9, FL9). **Não gasta**: devolve o guardado, ou `null` se a cena ainda não foi lida."""
+    frame = _buscar_frame(sessao, frame_id)
+    _exigir_cena(frame)
+    return _dossie_para_a_api(sessao, frame)
+
+
+@rotas_de_frame.post(
+    "/{frame_id}/dossie",
+    response_model=DossieLido,
+    summary="Lê o capítulo e refaz o dossiê da cena (gasta IA)",
+)
+def ler_dossie(
+    frame_id: int,
+    sessao: Session = Depends(obter_sessao),
+    provedor: ProvedorIA = Depends(obter_provedor),
+) -> DossieLido:
+    """Lê o capítulo **inteiro** e refaz o dossiê da cena (item 4.9, FL9): quem e o que está presente naquele momento, com as características de cada um.
+
+    **Gasta IA** (uma chamada, com o modelo de leitura; mais a leitura dos estados dos participantes, se ainda não foram lidos) e **substitui** o dossiê
+    guardado, inclusive o que a pessoa já confirmou: é o botão de "ler de novo". Devolve o dossiê e o custo total; o gasto vai para o livro da cena."""
+    frame = _buscar_frame(sessao, frame_id)
+    _exigir_cena(frame)
+    configuracao = obter_ou_criar(sessao)
+
+    with gasto_do_livro(frame.capitulo.livro_id), coletando_o_custo() as custos:
+        # Os participantes chegam ao dossiê já lidos (como no prompt): sem isto a IA veria o rascunho de identidade no lugar da aparência.
+        _fazer_leitura_profunda(sessao, provedor, frame, configuracao)
+        _, dossie = _ler_o_dossie(sessao, provedor, frame, configuracao, _elementos_do_frame(sessao, frame))
+    if dossie is None:
+        raise ErroDoProvedorIA("O modelo não devolveu a lista de quem aparece na cena. Tente outro modelo.")
+
+    sessao.commit()
+    modelo = modelo_de_leitura(configuracao)
+    custos_informados = [c for c in custos if c is not None]
+    return DossieLido(**{**dossie, "desatualizado": False}, modelo=modelo, custo=sum(custos_informados) if custos_informados else None)
+
+
+@rotas_de_frame.put(
+    "/{frame_id}/dossie",
+    response_model=DossieDaCena,
+    summary="Grava a lista que a pessoa confirmou (não gasta IA)",
+)
+def confirmar_o_dossie(frame_id: int, corpo: DossieConfirmado, sessao: Session = Depends(obter_sessao)) -> DossieDaCena:
+    """A pessoa viu a lista "O que vai aparecer" e a deixou como quer (item 4.9, FL9): tirou presentes (`incluir: false` ou deixando de fora),
+    acrescentou outros e editou o lugar, a luz e a ação. Marca o dossiê como `confirmado`. **Não gasta IA.**
+
+    A lista confirmada é a **lista fechada** do próximo prompt: aparece só ela, mais o que a descrição da cena citar. Sem dossiê lido antes, a pessoa
+    pode escrever a lista do zero. `onde`, `luz_e_clima` e `acao` ausentes ficam como estavam."""
+    frame = _buscar_frame(sessao, frame_id)
+    _exigir_cena(frame)
+    novo = corpo.model_dump()
+    confirmar_dossie(frame, novo, set(corpo.model_fields_set), entrada_dos_participantes(frame), _nomes_dos_elementos(frame))
+    sessao.commit()
+    sessao.refresh(frame)
+    return _dossie_para_a_api(sessao, frame)
 
 
 def _resolver_imagem_de_partida(sessao: Session, frame: Frame, corpo: PromptNovo) -> Imagem | None:
@@ -1152,6 +1350,7 @@ def _resumo(prompt: Prompt, total_de_imagens: int) -> PromptResumo:
         modelo_imagem=prompt.modelo_imagem,
         sem_filtro_de_seguranca=prompt.sem_filtro_de_seguranca,
         imagens_de_referencia=list(prompt.imagens_de_referencia or []),
+        ficha=prompt.ficha,
     )
 
 

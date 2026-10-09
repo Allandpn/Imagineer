@@ -83,6 +83,16 @@ Content-Type: application/json
   "modelo_reserva": "openai/gpt-4o-mini"
 }
 
+### Escolhe o modelo que CONFERE a imagem gerada (item 4.9, FL13.1)
+# Precisa ENXERGAR imagens (um modelo de texto puro dá 422 em POST /imagens/{id}/conferir). Não tem reserva nem entra no preset.
+# String vazia apaga: sem ele, a conferência não está disponível.
+PUT {{baseUrl}}/configuracao
+Content-Type: application/json
+
+{
+  "modelo_conferencia": "google/gemini-2.5-flash"
+}
+
 ### Prioridade de custo vs. qualidade na releitura do livro (item 4.4, fases 2 e 3)
 # Vale tanto para a leitura profunda do elemento quanto para a fundamentação
 # do frame do tipo CENA. ECONOMIA (padrão): relê só na primeira vez por

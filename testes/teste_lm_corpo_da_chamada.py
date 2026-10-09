@@ -70,15 +70,16 @@ def _corpo(perfil=None, capacidades="comum", **argumentos) -> dict:
 
 def teste_lm1_a_tabela_de_perfis_tem_os_valores_da_especificacao() -> None:
     assert set(PERFIS) == {
-        "extracao", "estado", "identidade", "fundamentacao", "prompt", "prompt_de_video", "traducao", "correcao", "suavizacao", "perfil",
+        "extracao", "estado", "identidade", "fundamentacao", "prompt", "prompt_de_video", "traducao", "correcao", "suavizacao", "perfil", "conferencia",
     }
     assert {nome: perfil.limite_de_saida for nome, perfil in PERFIS.items()} == {
         "extracao": 8000, "estado": 3000, "identidade": 800, "fundamentacao": 3500,
-        "prompt": 1500, "prompt_de_video": 1500, "traducao": 2000, "correcao": 2000, "suavizacao": 2000, "perfil": 3000,
+        "prompt": 1500, "prompt_de_video": 1500, "traducao": 2000, "correcao": 2000, "suavizacao": 2000, "perfil": 3000, "conferencia": 1500,
     }
     assert {nome: perfil.esquema for nome, perfil in PERFIS.items()} == {
-        "extracao": "extracao", "estado": "estado_com_momentos", "identidade": "identidade", "fundamentacao": "fundamentacao",
+        "extracao": "extracao", "estado": "estado_com_momentos", "identidade": "identidade", "fundamentacao": "dossie",
         "prompt": None, "prompt_de_video": None, "traducao": None, "correcao": None, "suavizacao": None, "perfil": None,
+        "conferencia": "conferencia",
     }
 
 

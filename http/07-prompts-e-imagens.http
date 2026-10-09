@@ -1,11 +1,12 @@
 ### Monta o prompt de imagem a partir do frame (passo 8)
 # Precisa de frameId (04-frames-e-perfis.http), de chave, modelo_extracao e
 # modelo_prompt configurados (05-configuracao-ia.http). Para um frame do tipo
-# CENA, modelo_extracao também é usado na fundamentação do frame (item 4.4,
-# fase 3) — a IA relê o capítulo e monta um "contexto do livro" que apoia o
-# prompt, mas nunca substitui o que foi digitado à mão nem o estado dos
-# elementos. Para um frame do tipo PERSONAGEM não há fundamentação: é retrato
-# solo, só a descrição do próprio elemento. Sem perfil_renderizacao_id no
+# CENA, o modelo de leitura (modelo_leitura, senão modelo_extracao) lê o capítulo
+# inteiro e monta o DOSSIÊ da cena (item 4.9): a lista de quem e do que aparece,
+# que vira a lista fechada do prompt (use o dossiê confirmado, se houver, abaixo).
+# O prompt de uma cena traz uma "ficha": o que entrou (presentes, momento de cada
+# elemento, referências). Para um frame do tipo PERSONAGEM não há dossiê: é retrato
+# solo, neutro (fundo liso, luz uniforme), só o próprio elemento. Sem perfil_renderizacao_id no
 # corpo, usa o perfil padrão do livro — defina um em 04-frames-e-perfis.http
 # antes.
 POST {{baseUrl}}/frames/1/prompts
@@ -35,6 +36,38 @@ POST {{baseUrl}}/frames/4/prompts
 Content-Type: application/json
 
 {}
+
+### O DOSSIÊ DA CENA (item 4.9, FL5 a FL9): quem e o que aparece naquele momento, com as características de cada um.
+### Só vale para uma CENA (um retrato dá 422). Lê o capítulo INTEIRO, inclusive o que vem depois do trecho.
+
+### O dossiê guardado, SEM chamar a IA. Nulo se a cena ainda não foi lida.
+# "confirmado" = a pessoa já viu a lista e a aceitou. "desatualizado" = a descrição da cena, o trecho ou os participantes mudaram depois da leitura:
+# o próximo prompt o refaz (a não ser que esteja confirmado e atual).
+GET {{baseUrl}}/frames/{{frameId}}/dossie
+
+### Lê o capítulo e refaz o dossiê. GASTA IA (o modelo de leitura) e substitui o guardado, inclusive o que já estava confirmado.
+# Devolve o dossiê, o modelo e o custo (os estados dos participantes ainda não lidos entram na conta).
+POST {{baseUrl}}/frames/{{frameId}}/dossie
+
+### Grava a lista que a pessoa confirmou ("O que vai aparecer"). NÃO gasta IA.
+# Tirar um presente: mandá-lo com "incluir": false (ou deixá-lo de fora). Acrescentar: mandar um novo. "onde", "luz_e_clima" e "acao" ausentes
+# ficam como estavam; mandar null apaga. A lista confirmada é a lista fechada do próximo prompt.
+PUT {{baseUrl}}/frames/{{frameId}}/dossie
+Content-Type: application/json
+
+{
+  "presentes": [
+    {"nome": "Auri", "tipo": "PESSOA", "elemento": "Auri", "caracteristicas": "camisola de linho cinza, descalça", "incluir": true},
+    {"nome": "o cão", "tipo": "CRIATURA", "caracteristicas": "cinzento, deitado sob a mesa", "incluir": false},
+    {"nome": "uma vela", "tipo": "OBJETO", "caracteristicas": "de cera, acesa no castiçal", "incluir": true}
+  ],
+  "acao": "Auri espera sentada à mesa"
+}
+
+### As imagens que podem ir como referência (e as MARCADAS por padrão, item 4.9, FL10)
+# "marcadas" são os ids que o app mostra marcados numa cena: a âncora de cada elemento da lista dela (no máximo 4; ambiente e edificação não).
+# Ao gerar a imagem, "imagens_de_referencia" AUSENTE usa essas; "[]" = nenhuma; uma lista = só aquelas.
+GET {{baseUrl}}/frames/{{frameId}}/referencias-candidatas
 
 ### Gera de novo com um comentário — prioridade máxima sobre tudo
 # Não existe rota separada de "refinar" (item 4.4): é a mesma chamada, com um
@@ -143,6 +176,11 @@ Content-Type: application/json
 
 ### Baixa o arquivo da imagem
 GET {{baseUrl}}/imagens/{{imagemId}}/arquivo
+
+### Confere a imagem de uma CENA contra a lista do que deveria aparecer (item 4.9, FL13.1). GASTA IA
+# Precisa de "modelo_conferencia" (um modelo que ENXERGA imagens; 05-configuracao-ia.http) e de uma imagem de uma cena cujo prompt guardou a lista (a ficha,
+# que vem do dossiê). Devolve conforme, divergencias ("Deveria: ... / A imagem mostra: ..."), itens_conferidos, modelo e custo. Não grava nada.
+POST {{baseUrl}}/imagens/{{imagemId}}/conferir
 
 ### Baixa o arquivo de uma imagem por id manual — troque pelo id que quiser
 # Veja os ids em GET /prompts/{{promptId}} (campo imagens[].id) acima.

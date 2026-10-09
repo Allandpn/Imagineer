@@ -315,6 +315,19 @@ class EstadoSugerido:
 
 
 @dataclass
+class ImagemConferida:
+    """O resultado de conferir uma imagem gerada contra a lista do que deveria aparecer (item 4.9, FL13.1)."""
+
+    divergencias: list[str] = field(default_factory=list)
+    """O que a imagem mostra de diferente do que a lista pedia, uma frase por item, em português. Vazia = nada a apontar."""
+    modelo: str = ""
+
+    @property
+    def conforme(self) -> bool:
+        return not self.divergencias
+
+
+@dataclass
 class IdentidadeSugerida:
     """O resultado da leitura profunda de identidade (item 4.4, fase 2b).
 
@@ -343,6 +356,10 @@ class FrameFundamentado:
 
     contexto: str
     modelo: str = ""
+    dossie: dict | None = None
+    """O dossiê da cena (item 4.9, FL5): ``momento_incerto``, ``presentes`` (cada um com ``nome``, ``tipo``, ``elemento``, ``caracteristicas``, ``incerto``
+    e ``incluir``), ``onde``, ``luz_e_clima``, ``acao`` e ``faltou``. ``contexto`` é o texto dele (lugar, luz e ação). ``None`` = o modelo respondeu no
+    formato antigo, de um parágrafo só."""
 
 
 @dataclass
@@ -563,6 +580,8 @@ class ProvedorIA(ABC):
         contexto_do_livro: str | None = None,
         comentario_do_usuario: str | None = None,
         elementos_vinculados: list[str] | None = None,
+        trecho_do_livro: str | None = None,
+        dossie: dict | None = None,
     ) -> PromptMontado:
         """Monta o prompt de imagem a partir do que foi escolhido (passo 8).
 
@@ -579,6 +598,27 @@ class ProvedorIA(ABC):
                 prioridade sobre tudo o mais (item 4.4).
             elementos_vinculados: só num retrato (V5): as linhas "Nome (identidade): aparência" dos elementos que
                 aparecem **junto** do sujeito (o objeto que ele carrega, o lugar onde está).
+            trecho_do_livro: o trecho literal do capítulo em que a cena acontece (FD7).
+            dossie: só numa cena (item 4.9, FL9, FL12): o dossiê **confirmado**. A lista de presentes que ele traz é a lista fechada de quem e do
+                que aparece, e o prompt é escrito uma frase por figura. Com ele, o ``contexto_do_livro`` não vai (o dossiê já o substitui).
+        """
+
+    @abstractmethod
+    def conferir_imagem(
+        self,
+        imagem: bytes,
+        tipo_de_midia: str,
+        titulo_da_cena: str,
+        dossie: dict,
+        modelo: str,
+    ) -> ImagemConferida:
+        """Compara a ``imagem`` gerada com a lista do que deveria aparecer (item 4.9, FL13.1) e devolve as divergências.
+
+        Args:
+            imagem, tipo_de_midia: os bytes e o tipo (``image/png``...). Quem chama os reduz antes (a conferência não precisa da imagem inteira).
+            titulo_da_cena: para a IA saber de que cena se trata.
+            dossie: ``presentes`` (os que a pessoa deixou na cena), ``onde``, ``luz_e_clima`` e ``acao``.
+            modelo: um modelo **com visão**.
         """
 
     @abstractmethod

@@ -29,6 +29,7 @@ from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao, TipoDePr
 from imagineer.servicos.acesso import buscar_visivel
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, salvar_imagem
 from imagineer.servicos.imagens_reduzidas import ler_dimensoes, preparar_referencia
+from imagineer.servicos.referencias_da_cena import referencias_automaticas
 from imagineer.servicos.sinais_de_menor import sinal_de_menor
 from imagineer.servicos.uso_de_ia import gasto_do_livro
 
@@ -116,7 +117,8 @@ def _gerar_imagem_do_prompt(
     do pedido (o original, o suavizado, o editado) usam o mesmo modelo.
 
     ``imagens_de_referencia`` (W1 a W7) são ids de imagens do catálogo enviadas **junto**; valem para todas as tentativas do
-    pedido (inclusive a segunda, depois de suavizar). ``PedidoDeGeracaoInvalido`` se alguma regra falhar.
+    pedido (inclusive a segunda, depois de suavizar). ``PedidoDeGeracaoInvalido`` se alguma regra falhar. **Ausente (``None``)**, a cena leva
+    por padrão a âncora de cada elemento da lista dela (item 4.9, FL10); **vazia**, não leva nenhuma.
 
     ``sem_filtro_de_seguranca`` (F12 a F18) é **outro caminho**: uma única chamada direta, com o filtro do modelo
     desligado, sem suavizar. Antes dela, ``_validar_sem_filtro`` confere todas as regras e levanta
@@ -128,7 +130,11 @@ def _gerar_imagem_do_prompt(
         raise PedidoDeGeracaoInvalido("Este é um prompt de vídeo: ele vai ao gerador de vídeo (Gemini), não gera imagem.")
     if prompt.so_imagem and not texto:  # PI2: ele só guarda a imagem importada
         raise PedidoDeGeracaoInvalido("Este prompt só guarda uma imagem importada; gere um prompt primeiro.")
-    referencias = _preparar_referencias(sessao, configuracao, modelo_de_imagem, imagens_de_referencia or [])
+    if imagens_de_referencia is None:
+        # FL10: o pedido não disse quais referências: a cena leva por padrão a âncora de cada elemento da lista dela (se o modelo as aceita).
+        # Lista vazia, mandada de propósito, é "nenhuma": a pessoa tirou todas no seletor.
+        imagens_de_referencia = referencias_automaticas(prompt, configuracao, modelo_de_imagem)
+    referencias = _preparar_referencias(sessao, configuracao, modelo_de_imagem, imagens_de_referencia)
 
     if sem_filtro_de_seguranca:
         _validar_sem_filtro(sessao, prompt, configuracao, (modelo or "").strip(), texto)
@@ -280,6 +286,14 @@ def _prompt_derivado(sessao: Session, origem: Prompt, texto: str, modelo_ia: str
     return novo
 
 
+def _anotar_referencias_na_ficha(prompt: Prompt, ids: list[int]) -> None:
+    """Põe na ficha do prompt (item 4.9, FL13.2) as referências enviadas nesta tentativa. Prompt sem ficha fica sem ficha.
+
+    Reatribui o dicionário inteiro: o SQLAlchemy não percebe a mudança dentro de um JSON mutável."""
+    if prompt.ficha is not None:
+        prompt.ficha = {**prompt.ficha, "referencias": list(ids)}
+
+
 def _tentar(
     sessao: Session,
     provedor: ProvedorIA,
@@ -306,6 +320,7 @@ def _tentar(
         prompt.modelo_imagem = modelo  # Z1: a tentativa recusada também guarda o modelo
         prompt.sem_filtro_de_seguranca = sem_filtro
         prompt.imagens_de_referencia = ids_das_referencias
+        _anotar_referencias_na_ficha(prompt, ids_das_referencias)
         prompt.situacao_da_geracao = SituacaoDaGeracao.RECUSADO
         prompt.motivo_da_recusa = recusa.motivo
         sessao.commit()
@@ -315,6 +330,7 @@ def _tentar(
     prompt.modelo_imagem = modelo
     prompt.sem_filtro_de_seguranca = sem_filtro
     prompt.imagens_de_referencia = ids_das_referencias
+    _anotar_referencias_na_ficha(prompt, ids_das_referencias)
     prompt.situacao_da_geracao = SituacaoDaGeracao.COM_SUCESSO
     prompt.motivo_da_recusa = None
     sessao.commit()

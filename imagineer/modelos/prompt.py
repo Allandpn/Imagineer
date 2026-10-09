@@ -111,6 +111,10 @@ class Prompt(Base):
     texto_pt: Mapped[str | None] = mapped_column(Text)
     """A versão em **português** do prompt (PT1): uma tradução para a pessoa ler e editar. O prompt de verdade, o que vai à imagem, é
     sempre o ``texto`` em inglês. Nulo = ainda sem tradução."""
+
+    ficha: Mapped[dict | None] = mapped_column(JSON)
+    """O registro **do que entrou** neste prompt (item 4.9, FL13.2): a lista de presentes da cena, o momento usado de cada elemento e as referências
+    enviadas. Serve para o app mostrar "de onde veio" e para regerar igual. Nulo = prompt de antes da ficha, ou sem cena."""
     """O prompt em si, exatamente como foi copiado.
 
     Guarda o texto final, e não os ingredientes para remontá-lo: assim o

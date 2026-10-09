@@ -77,6 +77,12 @@ class ConfiguracaoAtual(BaseModel):
             "Vazio = usa o `modelo_extracao`, senão o `modelo_prompt`."
         )
     )
+    modelo_conferencia: str | None = Field(
+        description=(
+            "Modelo **com visão** que confere uma imagem gerada contra a lista do que deveria aparecer (`POST /imagens/{id}/conferir`, item 4.9). "
+            "Vazio = a conferência não está disponível."
+        )
+    )
     modelo_reserva: str | None = Field(
         description=(
             "Modelo a que o OpenRouter recorre quando o principal falha (item 4.10). Vazio = sem reserva. "
@@ -166,6 +172,7 @@ class ConfiguracaoNova(BaseModel):
     modelo_extracao: str | None = Field(default=None, max_length=200)
     modelo_prompt: str | None = Field(default=None, max_length=200)
     modelo_leitura: str | None = Field(default=None, max_length=200)
+    modelo_conferencia: str | None = Field(default=None, max_length=200)
     modelo_reserva: str | None = Field(default=None, max_length=200)
     modelo_perfil: str | None = Field(default=None, max_length=200)
     modelo_imagem: str | None = Field(default=None, max_length=200)
@@ -288,6 +295,7 @@ def ver_configuracao(sessao: Session = Depends(obter_sessao), usuario: Usuario =
         modelo_extracao=configuracao.modelo_extracao,
         modelo_prompt=configuracao.modelo_prompt,
         modelo_leitura=configuracao.modelo_leitura,
+        modelo_conferencia=configuracao.modelo_conferencia,
         modelo_reserva=configuracao.modelo_reserva,
         modelo_perfil=configuracao.modelo_perfil,
         modelo_imagem=configuracao.modelo_imagem,

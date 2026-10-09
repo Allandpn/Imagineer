@@ -12,6 +12,7 @@ antemão. O que ele imita fielmente é o **contrato** — os mesmos tipos, os me
 erros.
 """
 
+import copy
 import io
 from decimal import Decimal
 
@@ -30,6 +31,7 @@ from imagineer.ia.provedor import (
     ExtracaoDeElementos,
     FrameFundamentado,
     IdentidadeSugerida,
+    ImagemConferida,
     ImagemGerada,
     ModeloDisponivel,
     MomentoSugerido,
@@ -92,6 +94,8 @@ class ProvedorFalso(ProvedorIA):
         momentos: list[MomentoSugerido] | None = None,
         identidade: str | None = None,
         contexto: str = "the book confirms this happens in the guard room",
+        dossie: dict | None = None,
+        divergencias: list[str] | None = None,
         prompt: str = "watercolor painting of a snowy courtyard at dusk",
         perfil_sugerido: PerfilRenderizacaoSugerido | None = None,
         erro: Exception | None = None,
@@ -122,12 +126,17 @@ class ProvedorFalso(ProvedorIA):
         """O incremento de identidade a devolver — ``None`` por padrão (o
         caso comum: nada de novo), como ``sugerir_identidade`` documenta."""
         self._contexto = contexto
+        self._dossie = dossie
+        self._divergencias = divergencias or []
+        """O que ``conferir_imagem`` aponta; vazio por padrão: a imagem confere."""
+        """O dossiê que ``fundamentar_frame`` devolve (item 4.9, FL5); ``None`` por padrão: o formato antigo, de um parágrafo só."""
         self._prompt = prompt
         self._perfil_sugerido = perfil_sugerido or PerfilRenderizacaoSugerido(
             estilo="aquarela, traços soltos", iluminacao="luz de vela", paleta="tons terrosos"
         )
         self._erro = erro
         self.chamadas_de_extracao: list[dict] = []
+        self.chamadas_de_conferencia: list[dict] = []
         self.chamadas_de_estado: list[dict] = []
         self.chamadas_de_identidade: list[dict] = []
         self.chamadas_de_fundamentacao: list[dict] = []
@@ -266,7 +275,7 @@ class ProvedorFalso(ProvedorIA):
         self.chamadas_de_fundamentacao.append(chamada)
         if self._erro is not None:
             raise self._erro
-        return FrameFundamentado(contexto=self._contexto, modelo=modelo)
+        return FrameFundamentado(contexto=self._contexto, modelo=modelo, dossie=copy.deepcopy(self._dossie) if self._dossie is not None else None)
 
     def montar_prompt(
         self,
@@ -278,6 +287,7 @@ class ProvedorFalso(ProvedorIA):
         comentario_do_usuario: str | None = None,
         elementos_vinculados: list[str] | None = None,
         trecho_do_livro: str | None = None,
+        dossie: dict | None = None,
     ) -> PromptMontado:
         chamada = {
             "descricao_do_frame": descricao_do_frame,
@@ -291,10 +301,20 @@ class ProvedorFalso(ProvedorIA):
             chamada["elementos_vinculados"] = elementos_vinculados
         if trecho_do_livro:
             chamada["trecho_do_livro"] = trecho_do_livro
+        if dossie is not None:  # só aparece quando a rota o passa, para os testes de antes não mudarem
+            chamada["dossie"] = dossie
         self.chamadas_de_prompt.append(chamada)
         if self._erro is not None:
             raise self._erro
         return PromptMontado(texto=self._prompt, modelo=modelo)
+
+    def conferir_imagem(self, imagem: bytes, tipo_de_midia: str, titulo_da_cena: str, dossie: dict, modelo: str) -> ImagemConferida:
+        self.chamadas_de_conferencia.append(
+            {"tamanho_da_imagem": len(imagem), "tipo_de_midia": tipo_de_midia, "titulo_da_cena": titulo_da_cena, "dossie": dossie, "modelo": modelo}
+        )
+        if self._erro is not None:
+            raise self._erro
+        return ImagemConferida(divergencias=list(self._divergencias), modelo=modelo)
 
     def montar_prompt_de_video(
         self,

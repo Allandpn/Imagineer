@@ -123,6 +123,14 @@ class PromptResumo(BaseModel):
         default_factory=list,
         description="Os ids das imagens enviadas como referência na última tentativa; vazia = nenhuma (W7).",
     )
+    ficha: dict | None = Field(
+        default=None,
+        description=(
+            "O registro do que entrou neste prompt de **cena** (item 4.9, FL13.2): `dossie` (se foi confirmado), `presentes` (a lista que valeu), `momentos` "
+            "(o momento usado de cada elemento) e `referencias` (as imagens enviadas na geração). Para mostrar \"de onde veio\" e regerar igual. Nulo = "
+            "prompt de antes da ficha, de retrato ou de vídeo."
+        ),
+    )
 
 
 class PromptDetalhe(PromptResumo):
@@ -256,13 +264,15 @@ class PedidoDeGeracao(BaseModel):
             "configuração. Não muda o padrão do servidor."
         ),
     )
-    imagens_de_referencia: list[int] = Field(
-        default_factory=list,
+    imagens_de_referencia: list[int] | None = Field(
+        default=None,
         max_length=4,
         description=(
             "Ids de imagens do catálogo enviadas **como referência visual** neste pedido (W3), no máximo 4. Só vale se "
             "o `modelo` do pedido (ou o padrão) está em `modelos_com_referencia` da configuração, e não no fal.ai; senão, "
-            "422. O texto enviado ganha uma frase dizendo qual imagem é de quem (W5); o prompt guardado não muda."
+            "422. O texto enviado ganha uma frase dizendo que elas valem **só para a identidade** e qual imagem é de quem "
+            "(W5, FL11); o prompt guardado não muda. **Ausente**, uma cena leva por padrão a âncora de cada elemento da "
+            "lista dela (item 4.9, FL10), se o modelo aceita referências; **`[]`** (mandada de propósito) = nenhuma."
         ),
     )
     sem_filtro_de_seguranca: bool = Field(
@@ -339,6 +349,14 @@ class ReferenciasCandidatas(BaseModel):
     """O que o modal de referências mostra para um frame (W2, W9)."""
 
     elementos: list[ElementoComImagens]
+    marcadas: list[int] = Field(
+        default_factory=list,
+        description=(
+            "Os ids das imagens que vêm **marcadas por padrão** numa cena (item 4.9, FL10): a âncora de cada elemento da lista dela, "
+            "no máximo 4, o sujeito principal primeiro; ambiente e edificação não entram. A pessoa pode tirar qualquer uma. "
+            "Vazia num retrato, ou quando nenhum elemento tem âncora."
+        ),
+    )
 
 
 class ElementoParaVincular(ElementoComImagens):
@@ -384,3 +402,65 @@ class ElementosParaVincular(BaseModel):
             "A cena em edição entra também. Vazia onde o seletor não vale (retrato de personagem)."
         ),
     )
+
+
+TipoDePresente = Literal["PESSOA", "CRIATURA", "OBJETO", "LUGAR"]
+
+
+class PresenteDaCena(BaseModel):
+    """Quem ou o que aparece na cena naquele momento, com as características (item 4.9, FL5, FL9)."""
+
+    nome: str = Field(min_length=1, max_length=200, description="Como o autor chama.")
+    tipo: TipoDePresente
+    elemento: str | None = Field(
+        default=None,
+        max_length=300,
+        description="O nome do elemento **cadastrado** a que este presente corresponde; nulo se não é um (um prato, um cão que ninguém cadastrou).",
+    )
+    caracteristicas: str = Field(default="", max_length=2000, description="O que se vê, naquele momento.")
+    incerto: bool = Field(default=False, description="A IA não tem certeza de que pertence a este momento.")
+    incluir: bool = Field(default=True, description="A pessoa o deixou na cena. `false` = ela o tirou: não aparece no prompt.")
+
+
+class DossieDaCena(BaseModel):
+    """O dossiê da cena: o que a leitura do capítulo inteiro confirmou sobre aquele momento (item 4.9, FL5)."""
+
+    momento_incerto: bool = Field(default=False, description="Não havia trecho, ou não dá para dizer com segurança qual é o momento: vale selecionar o trecho (FD7).")
+    presentes: list[PresenteDaCena]
+    onde: str | None = None
+    luz_e_clima: str | None = None
+    acao: str | None = Field(default=None, description="O que acontece, num instante parado.")
+    faltou: list[str] = Field(default_factory=list, description="O que o texto não deixa claro (em vez de a IA supor).")
+    confirmado: bool = Field(default=False, description="A pessoa viu a lista e a aceitou (`PUT /frames/{id}/dossie`).")
+    desatualizado: bool = Field(
+        default=False,
+        description="O que entrou na leitura mudou depois dela (a descrição da cena, o trecho, os participantes ou os estados): o próximo prompt a refaz.",
+    )
+
+
+class DossieLido(DossieDaCena):
+    """O dossiê recém-lido, com o que a leitura custou (`POST /frames/{id}/dossie`)."""
+
+    modelo: str
+    custo: Decimal | None = Field(default=None, description="Quanto a leitura custou, em dólares; nulo = sem custo informado.")
+
+
+class DossieConfirmado(BaseModel):
+    """O que a pessoa grava depois de ver a lista (`PUT /frames/{id}/dossie`, FL9). Só o que vier é trocado; `onde`, `luz_e_clima` e `acao` ausentes ficam como estavam."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    presentes: list[PresenteDaCena] = Field(max_length=40, description="A lista inteira como a pessoa a deixou: tirar um presente é mandá-lo com `incluir: false` ou deixá-lo de fora; acrescentar é mandar um novo.")
+    onde: str | None = Field(default=None, max_length=2000)
+    luz_e_clima: str | None = Field(default=None, max_length=2000)
+    acao: str | None = Field(default=None, max_length=2000)
+
+
+class ConferenciaDaImagem(BaseModel):
+    """O resultado de conferir uma imagem gerada contra a lista do que deveria aparecer (`POST /imagens/{id}/conferir`, item 4.9, FL13.1)."""
+
+    conforme: bool = Field(description="Nada a apontar: a imagem mostra o que a lista pedia.")
+    divergencias: list[str] = Field(description="Uma frase por divergência que o modelo viu, em português: o que deveria aparecer e o que a imagem mostra.")
+    itens_conferidos: int = Field(description="Quantos presentes da lista (os que a pessoa deixou na cena) entraram na conferência.")
+    modelo: str
+    custo: Decimal | None = Field(default=None, description="Quanto a conferência custou, em dólares; nulo = sem custo informado.")

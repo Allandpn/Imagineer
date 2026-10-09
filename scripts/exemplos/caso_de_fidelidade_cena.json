@@ -1,0 +1,30 @@
+{
+  "livro": "Livro de Exemplo (texto inventado)",
+  "capitulo": 2,
+  "tipo": "cena",
+  "texto": "A taverna do Corvo Torto cheirava a fumaça e a cerveja velha. No centro, uma mesa redonda de carvalho, marcada por facadas, sustentava duas canecas de estanho e um castiçal com uma única vela. Tobias, o taverneiro, um homem gordo de avental manchado, limpava o balcão. À mesa, Maren esperava de costas para a lareira, com o manto verde ainda úmido. Só depois de muito tempo, quando a porta bateu, é que se notou o cão cinzento deitado sob a mesa, imóvel. Na sexta-feira seguinte, Maren partiria para o norte.",
+  "cena": {
+    "titulo": "A espera na taverna",
+    "descricao": "Maren espera alguém na mesa da taverna.",
+    "trecho": "À mesa, Maren esperava de costas para a lareira, com o manto verde ainda úmido."
+  },
+  "participantes": [
+    {
+      "nome": "Maren",
+      "tipo": "PERSONAGEM",
+      "aparencia": "Aparência fixa: mulher alta, cabelos negros presos numa trança grossa\nNeste instante: manto verde de lã, úmido"
+    }
+  ],
+  "deve_aparecer": [
+    "Maren, de manto verde",
+    "uma mesa redonda de carvalho",
+    "o cão cinzento deitado sob a mesa",
+    "uma vela acesa num castiçal",
+    "exatamente uma pessoa sentada à mesa"
+  ],
+  "nao_deve_aparecer": [
+    "Tobias, o taverneiro",
+    "Maren viajando para o norte",
+    "uma espada"
+  ]
+}

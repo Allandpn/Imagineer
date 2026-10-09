@@ -134,6 +134,10 @@ class Configuracao(Base):
     modelo mais caro; a leitura é uma chamada **por elemento e por cena**, em rajada, e pede um modelo barato, rápido e com contexto longo.
     Vazio = cai em ``modelo_extracao`` e, depois, em ``modelo_prompt`` (como a tradução cai na suavização)."""
 
+    modelo_conferencia: Mapped[str | None] = mapped_column(String(200))
+    """Modelo **com visão** que confere uma imagem gerada contra a lista do que deveria aparecer (item 4.9, FL13.1). Sem cadeia: um modelo de texto
+    puro não lê imagem, então vazio = a conferência não está disponível (a pessoa escolhe um modelo que leia imagens)."""
+
     modelo_reserva: Mapped[str | None] = mapped_column(String(200))
     """Modelo a que o OpenRouter recorre quando o principal falha (limite de contexto, moderação, limite de taxa, queda) — item 4.10, LM13.
     Vai em **todas** as chamadas de texto, menos naquelas em que ele é o próprio modelo principal. O custo é o do modelo que respondeu."""

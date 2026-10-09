@@ -166,6 +166,16 @@ class Frame(Base):
     ``prioridade_ia`` reaproveita em vez de reler — item 4.4, mesmo mecanismo
     de ``EstadoElemento.confirmado_pela_leitura_profunda``)."""
 
+    dossie: Mapped[dict | None] = mapped_column(JSON)
+    """O **dossiê da cena** (item 4.9, FL5, FL8): o que a leitura do capítulo inteiro confirmou sobre **quem e o que está presente naquele momento**,
+    com as características de cada um, mais ``onde``, ``luz_e_clima``, ``acao`` e ``faltou``. Cada presente leva ``incluir`` (a pessoa pode tirar) e o
+    dossiê leva ``confirmado`` (a pessoa já o viu e aceitou). Substitui a fundamentação de três frases; ``contexto_do_livro`` continua, preenchido com
+    o texto dele. Nulo = frame antigo, ou nunca lido: se comporta como antes."""
+
+    dossie_entrada: Mapped[str | None] = mapped_column(String(40))
+    """Um resumo (hash) do que entrou no dossiê quando ele foi lido: trecho, descrição, horário, clima, humor e os participantes com os estados (FL8).
+    Mudou qualquer um, o dossiê é considerado **velho** e o próximo prompt o refaz."""
+
     capitulo: Mapped["Capitulo"] = relationship()  # noqa: F821
 
     estados_elemento: Mapped[list["EstadoElemento"]] = relationship(  # noqa: F821

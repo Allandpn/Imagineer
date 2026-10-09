@@ -69,6 +69,20 @@ def indice_do_momento(estado: EstadoElemento, posicao_da_cena: int | None, capit
     return escolhido
 
 
+def momento_usado(estado: EstadoElemento, frame: Frame) -> dict | None:
+    """Qual momento do ``estado`` vale para a cena ``frame``, para a ficha do prompt (FL13.2); ``None`` se o estado não tem momentos."""
+    if not estado.momentos:
+        return None
+    indice = indice_do_momento(estado, posicao_do_frame(frame), frame.capitulo_id)
+    return {
+        "elemento": estado.elemento.nome,
+        "estado_id": estado.id,
+        "indice": indice,
+        "total": len(estado.momentos),
+        "momento": estado.momentos[indice],
+    }
+
+
 def descricao_para_a_cena(estado: EstadoElemento, frame: Frame) -> str:
     """A descrição do ``estado`` que a IA recebe ao montar a **cena** ``frame``: a do momento que cobre o trecho dela.
 

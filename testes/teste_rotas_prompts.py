@@ -621,10 +621,29 @@ def teste_fundamentacao_em_modo_qualidade_roda_toda_vez(
     assert len(provedor.chamadas_de_fundamentacao) == 2
 
 
-def teste_frame_de_cena_sem_participantes_nao_fundamenta(
+def teste_frame_de_cena_sem_participantes_e_sem_modelo_de_leitura_nao_fundamenta(
     cliente: TestClient, usar_provedor_falso
 ) -> None:
-    """Nada para confirmar "quem, onde, o quê" quando ninguém está ligado ainda."""
+    """Sem elementos e sem nenhum modelo de leitura escolhido, não há o que ler (item 4.9, FL5): segue como antes do dossiê.
+
+    O pedido manda o `modelo` à mão; a configuração não tem modelo nenhum."""
+    provedor = ProvedorFalso()
+    usar_provedor_falso(provedor)
+    livro = _livro(cliente)
+    frame = _frame(cliente, livro["capitulos"][0]["id"], tipo="CENA")
+    perfil = _perfil(cliente)
+    cliente.patch(f"/livros/{livro['id']}", json={"perfil_renderizacao_padrao_id": perfil["id"]})
+
+    resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={"modelo": MODELO_FALSO})
+
+    assert resposta.status_code == 201, resposta.text
+    assert provedor.chamadas_de_fundamentacao == []
+
+
+def teste_frame_de_cena_sem_participantes_mas_com_modelo_le_o_dossie_so_pelo_texto_do_autor(
+    cliente: TestClient, usar_provedor_falso
+) -> None:
+    """FL5: o dossiê funciona com qualquer número de elementos, inclusive nenhum: a cena sai só do que o autor escreveu."""
     provedor = ProvedorFalso()
     usar_provedor_falso(provedor)
     livro = _livro(cliente)
@@ -636,7 +655,8 @@ def teste_frame_de_cena_sem_participantes_nao_fundamenta(
     resposta = cliente.post(f"/frames/{frame['id']}/prompts", json={})
 
     assert resposta.status_code == 201, resposta.text
-    assert provedor.chamadas_de_fundamentacao == []
+    assert len(provedor.chamadas_de_fundamentacao) == 1
+    assert provedor.chamadas_de_fundamentacao[0]["participantes"] == []
 
 
 # --------------------------------------------------------------------------- #

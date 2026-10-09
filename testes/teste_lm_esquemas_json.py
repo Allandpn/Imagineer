@@ -167,7 +167,7 @@ def teste_lm8_todo_esquema_citado_por_um_perfil_existe() -> None:
 
 def teste_lm8_as_quatro_tarefas_de_leitura_usam_esquema() -> None:
     assert {o: PERFIS[o].esquema for o in ("extracao", "estado", "identidade", "fundamentacao")} == {
-        "extracao": "extracao", "estado": "estado_com_momentos", "identidade": "identidade", "fundamentacao": "fundamentacao",
+        "extracao": "extracao", "estado": "estado_com_momentos", "identidade": "identidade", "fundamentacao": "dossie",
     }
 
 
@@ -307,7 +307,7 @@ def teste_lm8_modelo_com_structured_outputs_recebe_o_esquema_estrito_da_tarefa(m
     [
         ("extracao", lambda p: p.extrair_elementos("c", [], "x/modelo"), EXEMPLOS["extracao"]),
         ("identidade", lambda p: p.sugerir_identidade("c", TipoElemento.PERSONAGEM, "Ned", None, "x/modelo"), EXEMPLOS["identidade"]),
-        ("fundamentacao", lambda p: p.fundamentar_frame("c", "Cena", None, None, None, None, [], "x/modelo"), EXEMPLOS["fundamentacao"]),
+        ("fundamentacao", lambda p: p.fundamentar_frame("c", "Cena", None, None, None, None, [], "x/modelo"), EXEMPLOS["dossie"]),  # 4.9: a fundamentação é o dossiê
     ],
 )
 def teste_lm8_cada_tarefa_de_leitura_manda_o_seu_esquema(monkeypatch, operacao, chamada, resposta) -> None:

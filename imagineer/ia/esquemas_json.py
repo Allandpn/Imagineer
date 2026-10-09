@@ -61,6 +61,8 @@ ESQUEMAS: dict[str, dict] = {
     "identidade": _objeto(descricao=_TEXTO_OU_NULO),
     # A fundamentação da cena (fase 3), no formato **de hoje**: um contexto só.
     "fundamentacao": _objeto(contexto=_TEXTO),
+    # A conferência de uma imagem gerada (item 4.9, FL13.1): conforme, ou a lista das divergências que o modelo viu.
+    "conferencia": _objeto(conforme={"type": "boolean"}, divergencias=_lista(_TEXTO)),
     # --- Os formatos novos do item 4.9. Ficam prontos aqui, mas **nenhum perfil os usa ainda**: quem implementar as etapas 2 e 3
     # do 4.9 troca o esquema junto com a instrução (a instrução de hoje não pede ``momentos`` nem ``presentes``, e um esquema
     # estrito os exigiria do modelo).
