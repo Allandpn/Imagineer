@@ -16,6 +16,8 @@ from decimal import Decimal, InvalidOperation
 
 import httpx
 
+from imagineer.ia.tarefas import ORDEM_DOS_ESFORCOS
+
 TEMPO_DE_VIDA_DO_CATALOGO = 600.0
 """Segundos que a leitura do catálogo vale. Os preços mudam por semana, não por minuto."""
 
@@ -82,6 +84,26 @@ def capacidades_de(bruto: dict) -> Capacidades:
         gratuito=preco_entrada == 0,
         moderado=bool(provedor.get("is_moderated")),
     )
+
+
+def e_rapido(capacidades: Capacidades) -> bool:
+    """Se o modelo responde rápido: sem raciocínio, ou com um que se desliga ou fica no mínimo.
+
+    O item 4.10 define "rápido" como *não ter raciocínio obrigatório ou aceitar* ``none``/``minimal``/``low``, mas a própria seção diz (LM24)
+    que ``gemini-3.8-flash`` e ``claude-sonnet-5.5`` (obrigatórios, mínimo ``low``) **não** são rápidos para ler, e que o
+    ``deepseek-v4-flash`` (que só aceita ``high`` e ``xhigh``) leva 20 a 33 s. Vale o que a seção **quer dizer**:
+
+    - sem raciocínio: rápido;
+    - raciocínio **obrigatório**: só se o esforço mínimo é ``minimal`` (``low`` já é lento o bastante para uma rajada);
+    - raciocínio **opcional**: rápido, a menos que o catálogo liste esforços e o menor deles seja maior que ``low`` (não dá para desligá-lo).
+    """
+    if not capacidades.raciocinio_suportado:
+        return True
+    aceitos = [e for e in ORDEM_DOS_ESFORCOS if e in capacidades.esforcos]
+    menor = aceitos[0] if aceitos else None
+    if capacidades.raciocinio_obrigatorio:
+        return menor == "minimal"
+    return menor is None or menor in ("minimal", "low")
 
 
 _relogio: Callable[[], float] = time.monotonic

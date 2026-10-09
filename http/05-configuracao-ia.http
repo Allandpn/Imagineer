@@ -19,6 +19,27 @@ GET {{baseUrl}}/configuracao/modelos?somente_nao_moderados=true
 ### Ordenados por custo de saída, o mais barato primeiro
 GET {{baseUrl}}/configuracao/modelos?ordenar_por_custo=true
 
+### Só os modelos rápidos (sem raciocínio, ou com um que se desliga) — item 4.10, LM16
+# Os de raciocínio obrigatório são lentos e caros para ler um capítulo em rajada. Cada modelo traz também
+# preco_entrada, preco_cache_leitura, raciocinio_obrigatorio, esforcos, rapido e saida_maxima.
+GET {{baseUrl}}/configuracao/modelos?somente_rapidos=true&contexto_minimo=32000
+
+### Os modelos recomendados em cada nível — Econômico, Equilibrado, Qualidade (item 4.10, LM14)
+# Não gasta IA e não precisa de chave. Por nível e papel: o modelo, o motivo, se existe no catálogo agora
+# (disponivel), preço por milhão de tokens, se é rápido e o custo de ler um capítulo típico (com e sem cache).
+GET {{baseUrl}}/configuracao/modelos-recomendados
+
+### Aplica um nível: grava os modelos recomendados nos papéis de texto (item 4.10, LM14)
+# nivel: ECONOMICO, EQUILIBRADO ou QUALIDADE. Troca extração, leitura, prompt, tradução, suavização, vídeo e
+# reserva — só os que existem no catálogo agora (os outros vêm em "papeis_nao_aplicados" e ficam como estavam).
+# Não mexe em imagem, narração, perfil de renderização nem na prioridade de IA.
+PUT {{baseUrl}}/configuracao/preset
+Content-Type: application/json
+
+{
+  "nivel": "ECONOMICO"
+}
+
 ### Escolhe o modelo de extração, o de montagem de prompt e o de sugestão de perfil
 # Troque o id abaixo por um da lista da requisição anterior. Modelos gratuitos
 # às vezes respondem 429 (limite de uso) por estarem sobrecarregados no

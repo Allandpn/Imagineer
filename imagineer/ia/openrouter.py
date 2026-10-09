@@ -20,7 +20,14 @@ from decimal import Decimal, InvalidOperation
 import httpx
 
 from imagineer.ia import esquemas_json
-from imagineer.ia.catalogo_de_texto import Capacidades, decimal_ou_nulo as _decimal_ou_nulo, ler_catalogo, obter_capacidades
+from imagineer.ia.catalogo_de_texto import (
+    Capacidades,
+    capacidades_de,
+    decimal_ou_nulo as _decimal_ou_nulo,
+    e_rapido,
+    ler_catalogo,
+    obter_capacidades,
+)
 from imagineer.ia.fornecedores_de_imagem import (
     NOMES_DOS_FORNECEDORES,
     VARIAVEIS_DA_CHAVE,
@@ -886,6 +893,7 @@ class ProvedorOpenRouter(ProvedorIA):
         for bruto in brutos:
             if not _e_modelo_de_texto(bruto):
                 continue
+            capacidades = capacidades_de(bruto)  # LM16: o que decide a escolha de um modelo para ler um livro
             modelos.append(
                 ModeloDisponivel(
                     id=bruto.get("id", ""),
@@ -895,6 +903,12 @@ class ProvedorOpenRouter(ProvedorIA):
                     suporta_json=_suporta_json(bruto),
                     custo_saida=_custo_de_saida(bruto),
                     moderado=_e_moderado(bruto),
+                    preco_entrada=float(capacidades.preco_entrada or 0),
+                    preco_cache_leitura=None if capacidades.preco_cache_leitura is None else float(capacidades.preco_cache_leitura),
+                    raciocinio_obrigatorio=capacidades.raciocinio_obrigatorio,
+                    esforcos=list(capacidades.esforcos),
+                    rapido=e_rapido(capacidades),
+                    saida_maxima=capacidades.saida_maxima,
                 )
             )
 

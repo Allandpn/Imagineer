@@ -113,6 +113,26 @@ class ModeloDisponivel:
     Texto narrativo (violência, fantasia) pode ser rejeitado por modelos
     mais restritivos — item 4.3."""
 
+    # Item 4.10, LM16: o que decide a escolha de um modelo para **ler** um livro. Todos com padrão seguro, para um provedor que não
+    # modela esses detalhes (o falso, nos testes) continuar valendo.
+    preco_entrada: float = 0.0
+    """Preço por token de entrada (``pricing.prompt``), em US$. É o que pesa na leitura: o capítulo inteiro entra a cada chamada."""
+
+    preco_cache_leitura: float | None = None
+    """Preço por token de entrada **lido do cache** (``pricing.input_cache_read``). Nulo = o modelo não informa (ou não tem cache)."""
+
+    raciocinio_obrigatorio: bool = False
+    """O modelo sempre raciocina e não dá para desligar: lento e caro para uma rajada de leituras."""
+
+    esforcos: list[str] = field(default_factory=list)
+    """Os esforços de raciocínio que o modelo aceita (``minimal`` a ``max``). Vazia = o catálogo não diz."""
+
+    rapido: bool = True
+    """Se responde rápido: sem raciocínio, ou com um que se desliga ou fica no mínimo (``catalogo_de_texto.e_rapido``)."""
+
+    saida_maxima: int | None = None
+    """O teto de tokens de saída do modelo (``top_provider.max_completion_tokens``). Nulo = o catálogo não diz."""
+
 
 @dataclass
 class ModeloDeVoz:

@@ -10,10 +10,13 @@ from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao, obter_usuario
 from imagineer.configuracao import obter_configuracoes
-from imagineer.ia.provedor import ProvedorIA
+from imagineer.ia.catalogo_de_texto import Capacidades, capacidades_de, e_rapido, ler_catalogo
+from imagineer.ia.provedor import ErroDoProvedorIA, ProvedorIA
 from imagineer.ia.provedores import PROVEDORES, Provedor
 from imagineer.modelos import ModoDeNarracao, MotorDeNarracao, PrioridadeIA, Usuario
 from imagineer.servicos.catalogo_de_modelos_de_imagem import chave_do_modelo_de_imagem, montar_catalogo, testar_modelo_de_imagem
+from imagineer.servicos.estimativa_de_leitura import custo_do_capitulo_tipico
+from imagineer.servicos.modelos_recomendados import CAMPO_DA_CONFIGURACAO, RECOMENDACOES, Nivel, Papel, Recomendacao
 from imagineer.servicos.configuracao_ia import (
     construir_provedor,
     ler_modelo_reserva,
@@ -257,6 +260,18 @@ class ModeloDaLista(BaseModel):
     moderado: bool = Field(
         description="Se o modelo é moderado pelo provedor — pode rejeitar texto narrativo mais pesado."
     )
+    preco_entrada: float = Field(
+        description="Preço por token de entrada (US$). Na leitura é o que pesa: o capítulo inteiro entra a cada chamada (item 4.10)."
+    )
+    preco_cache_leitura: float | None = Field(
+        description="Preço por token de entrada lido do cache (US$); nulo = o modelo não informa ou não tem cache."
+    )
+    raciocinio_obrigatorio: bool = Field(
+        description="O modelo sempre raciocina e não dá para desligar: lento e caro para uma rajada de leituras."
+    )
+    esforcos: list[str] = Field(description="Os esforços de raciocínio que o modelo aceita; vazia = o catálogo não diz.")
+    rapido: bool = Field(description="Responde rápido: sem raciocínio, ou com um que se desliga ou fica no mínimo.")
+    saida_maxima: int | None = Field(description="O teto de tokens de saída do modelo; nulo = o catálogo não diz.")
 
 
 @rotas.get("", response_model=ConfiguracaoAtual, summary="A configuração atual")
@@ -451,6 +466,13 @@ def listar_modelos(
         default=False,
         description="Ordena a lista por custo de saída crescente, o mais barato primeiro.",
     ),
+    somente_rapidos: bool = Query(
+        default=False,
+        description=(
+            "Mostra só modelos rápidos: sem raciocínio, ou com um que se desliga ou fica no mínimo. "
+            "Os de raciocínio obrigatório são lentos e caros para ler um capítulo em rajada (item 4.10)."
+        ),
+    ),
     provedor: ProvedorIA = Depends(obter_provedor),
 ) -> list[ModeloDaLista]:
     """Os modelos de texto do OpenRouter, para a tela de escolha.
@@ -470,15 +492,148 @@ def listar_modelos(
             suporta_json=modelo.suporta_json,
             custo_saida=modelo.custo_saida,
             moderado=modelo.moderado,
+            preco_entrada=modelo.preco_entrada,
+            preco_cache_leitura=modelo.preco_cache_leitura,
+            raciocinio_obrigatorio=modelo.raciocinio_obrigatorio,
+            esforcos=modelo.esforcos,
+            rapido=modelo.rapido,
+            saida_maxima=modelo.saida_maxima,
         )
         for modelo in modelos
         if (not somente_gratuitos or modelo.gratuito)
         and modelo.contexto >= contexto_minimo
         and (not somente_com_json or modelo.suporta_json)
         and (not somente_nao_moderados or not modelo.moderado)
+        and (not somente_rapidos or modelo.rapido)
     ]
 
     if ordenar_por_custo:
         filtrados.sort(key=lambda m: m.custo_saida)
 
     return filtrados
+
+
+# --------------------------------------------------------------------------- #
+# Os níveis: Econômico, Equilibrado e Qualidade (item 4.10, LM14)
+# --------------------------------------------------------------------------- #
+
+
+class RecomendacaoDoPapel(BaseModel):
+    """O modelo que um nível recomenda para um papel, com o que o catálogo diz dele **agora**."""
+
+    papel: Papel
+    modelo: str
+    motivo: str
+    disponivel: bool = Field(description="O modelo existe no catálogo do OpenRouter neste momento. Se não, os campos abaixo vêm nulos.")
+    contexto: int | None
+    preco_entrada: float | None = Field(description="US$ por milhão de tokens de entrada.")
+    preco_saida: float | None = Field(description="US$ por milhão de tokens de saída.")
+    raciocinio_obrigatorio: bool | None
+    rapido: bool | None
+    custo_do_capitulo_tipico: float | None = Field(
+        description=(
+            "US$ para ler um capítulo típico (12 mil tokens, 9 leituras de 1.200 tokens de saída) **com** o cache do capítulo. "
+            "Nulo se o modelo não tem preço no catálogo."
+        )
+    )
+    custo_do_capitulo_tipico_sem_cache: float | None = Field(description="O mesmo, se o cache não pegasse.")
+
+
+class NivelRecomendado(BaseModel):
+    nivel: Nivel
+    papeis: list[RecomendacaoDoPapel]
+
+
+class PresetNovo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nivel: Nivel
+
+
+class ConfiguracaoDepoisDoPreset(ConfiguracaoAtual):
+    """A configuração depois de aplicar um nível, mais os papéis que **não** foram trocados."""
+
+    papeis_nao_aplicados: list[Papel] = Field(
+        description="Os papéis cujo modelo recomendado não existe no catálogo agora: ficaram como estavam."
+    )
+
+
+def _catalogo_de_capacidades() -> dict[str, Capacidades]:
+    """O catálogo do OpenRouter por id, do cache de 10 minutos. Catálogo que não pôde ser lido é 502, e não "nenhum modelo disponível"."""
+    try:
+        return {entrada.get("id"): capacidades_de(entrada) for entrada in ler_catalogo() if entrada.get("id")}
+    except Exception as erro:  # noqa: BLE001 - qualquer falha de rede ou de formato vira o erro do domínio
+        raise ErroDoProvedorIA(f"Não foi possível ler o catálogo de modelos do OpenRouter: {erro}") from erro
+
+
+def _por_milhao(preco: Decimal | None) -> float | None:
+    return None if preco is None else float(round(preco * 1_000_000, 6))
+
+
+def _recomendacao_do_papel(papel: Papel, recomendacao: Recomendacao, catalogo: dict[str, Capacidades]) -> RecomendacaoDoPapel:
+    capacidades = catalogo.get(recomendacao.modelo)
+    if capacidades is None:
+        return RecomendacaoDoPapel(
+            papel=papel, modelo=recomendacao.modelo, motivo=recomendacao.motivo, disponivel=False, contexto=None, preco_entrada=None,
+            preco_saida=None, raciocinio_obrigatorio=None, rapido=None, custo_do_capitulo_tipico=None, custo_do_capitulo_tipico_sem_cache=None,
+        )
+    sem_cache, com_cache = custo_do_capitulo_tipico(capacidades)
+    return RecomendacaoDoPapel(
+        papel=papel,
+        modelo=recomendacao.modelo,
+        motivo=recomendacao.motivo,
+        disponivel=True,
+        contexto=capacidades.contexto,
+        preco_entrada=_por_milhao(capacidades.preco_entrada),
+        preco_saida=_por_milhao(capacidades.preco_saida),
+        raciocinio_obrigatorio=capacidades.raciocinio_obrigatorio,
+        rapido=e_rapido(capacidades),
+        custo_do_capitulo_tipico=None if com_cache is None else float(round(com_cache, 6)),
+        custo_do_capitulo_tipico_sem_cache=None if sem_cache is None else float(round(sem_cache, 6)),
+    )
+
+
+@rotas.get(
+    "/modelos-recomendados",
+    response_model=list[NivelRecomendado],
+    summary="Os modelos recomendados em cada nível (Econômico, Equilibrado, Qualidade)",
+)
+def listar_modelos_recomendados() -> list[NivelRecomendado]:
+    """Para cada nível e cada papel, o modelo recomendado e o que o catálogo diz dele **agora** (preço, contexto, se é rápido, se existe).
+
+    **Não gasta IA** e não precisa de chave: lê o catálogo público do OpenRouter (guardado por 10 minutos). A tabela de recomendações é
+    curada à mão; um modelo que saiu do catálogo vem com `disponivel: false`."""
+    catalogo = _catalogo_de_capacidades()
+    return [
+        NivelRecomendado(
+            nivel=nivel, papeis=[_recomendacao_do_papel(papel, recomendacao, catalogo) for papel, recomendacao in por_papel.items()]
+        )
+        for nivel, por_papel in RECOMENDACOES.items()
+    ]
+
+
+@rotas.put(
+    "/preset",
+    response_model=ConfiguracaoDepoisDoPreset,
+    summary="Aplica um nível: grava os modelos recomendados nos papéis de texto",
+)
+def aplicar_preset(
+    corpo: PresetNovo, sessao: Session = Depends(obter_sessao), usuario: Usuario = Depends(obter_usuario)
+) -> ConfiguracaoDepoisDoPreset:
+    """Grava na configuração **da pessoa** os modelos do nível escolhido (extração, leitura, prompt, tradução, suavização, vídeo e reserva).
+
+    Só troca os papéis cujo modelo **existe no catálogo agora**; os que faltam ficam como estavam e vêm em `papeis_nao_aplicados`. **Não mexe**
+    em imagem, narração, perfil de renderização nem na prioridade de IA. Não gasta IA."""
+    catalogo = _catalogo_de_capacidades()
+    configuracao = obter_ou_criar(sessao)
+
+    nao_aplicados: list[Papel] = []
+    for papel, recomendacao in RECOMENDACOES[corpo.nivel].items():
+        if recomendacao.modelo in catalogo:
+            setattr(configuracao, CAMPO_DA_CONFIGURACAO[papel], recomendacao.modelo)
+        else:
+            nao_aplicados.append(papel)
+    sessao.commit()
+
+    atual = ver_configuracao(sessao, usuario)
+    return ConfiguracaoDepoisDoPreset(**atual.model_dump(), papeis_nao_aplicados=nao_aplicados)
