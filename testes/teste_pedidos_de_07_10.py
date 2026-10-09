@@ -31,7 +31,8 @@ def _instrucao_de_montagem() -> str:
 def teste_p2_o_retrato_e_sempre_em_pose_neutra() -> None:
     instrucao = _instrucao_de_montagem()
 
-    assert "Num retrato a pose é SEMPRE neutra" in instrucao
+    # FL1 (08/10/2026) ampliou o P2: além da pose, o retrato é neutro no fundo e na luz.
+    assert "Um retrato é uma imagem NEUTRA" in instrucao
     assert "standing in a neutral relaxed pose, arms at sides, facing the camera, neutral expression" in instrucao
     assert "SEM gesto, ação, emoção marcada nem objeto na mão" in instrucao
 
@@ -40,7 +41,7 @@ def teste_p2_a_roupa_e_o_penteado_continuam_vindo_do_instante_e_o_comentario_pod
     instrucao = _instrucao_de_montagem()
 
     assert "dele use só a roupa e o penteado" in instrucao
-    assert "Só o comentário do usuário pode pedir outra pose" in instrucao
+    assert "Só o comentário do usuário pode pedir outra coisa (outra pose, outro fundo)" in instrucao
     assert "Num retrato a pose é a neutra (ver acima)" in instrucao  # o bloco 2 não manda mais uma pose específica no retrato
     assert "a roupa e o penteado do \"Neste instante:\"" in instrucao  # a regra do "um só instante" também
 
@@ -116,11 +117,13 @@ def teste_p6_a_rota_devolve_a_proposta_e_nao_grava_nada(cliente: TestClient, usa
     resposta = cliente.post(f"/prompts/{prompt['id']}/corrigir", json={"instrucao": "tire o capuz"})
 
     assert resposta.status_code == 200, resposta.text
-    assert resposta.json()["texto"] == "a hooded knight on a misty hill [corrigido: tire o capuz]"
+    # O texto guardado de um retrato termina com o bloco do retrato neutro (item 4.9, FL1): a correção parte do que está guardado.
+    assert prompt["texto"].startswith("a hooded knight on a misty hill")
+    assert resposta.json()["texto"] == f"{prompt['texto']} [corrigido: tire o capuz]"
     assert resposta.json()["modelo"] == "m/prompt" and resposta.json()["custo"] is None
-    assert provedor.chamadas_de_correcao == [{"texto": "a hooded knight on a misty hill", "instrucao": "tire o capuz", "modelo": "m/prompt"}]
+    assert provedor.chamadas_de_correcao == [{"texto": prompt["texto"], "instrucao": "tire o capuz", "modelo": "m/prompt"}]
     sessao_com_tabelas.expire_all()
-    assert sessao_com_tabelas.get(Prompt, prompt["id"]).texto == "a hooded knight on a misty hill"  # é proposta: o gravado não mudou
+    assert sessao_com_tabelas.get(Prompt, prompt["id"]).texto == prompt["texto"]  # é proposta: o gravado não mudou
 
 
 def teste_p6_o_texto_da_tela_vale_mais_que_o_gravado(cliente: TestClient, usar_provedor_falso) -> None:

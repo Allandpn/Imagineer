@@ -361,15 +361,21 @@ faz parte do mesmo texto único, não uma resposta separada.
 
 Se não vier nenhuma descrição de cena (só um elemento na lista), monte um \
 RETRATO: use exclusivamente a descrição desse elemento e o estilo pedido — não \
-mencione, sugira ou implique a presença de mais ninguém. Um retrato NÃO é um sujeito \
-solto num fundo qualquer: ele acontece no lugar onde o elemento está (veja abaixo).
+mencione, sugira ou implique a presença de mais ninguém.
 
-**Num retrato a pose é SEMPRE neutra.** O retrato é a imagem de referência do personagem para \
-todas as cenas, e uma pose ou expressão marcante contaminaria as cenas. Por isso o sujeito fica de pé, \
-com o corpo relaxado, os braços soltos ao lado do corpo, olhando para a câmera, com expressão \
-neutra ("standing in a neutral relaxed pose, arms at sides, facing the camera, neutral expression"). \
-SEM gesto, ação, emoção marcada nem objeto na mão, mesmo que o "Neste instante:" descreva um \
-(dele use só a roupa e o penteado). Só o comentário do usuário pode pedir outra pose.
+**Um retrato é uma imagem NEUTRA.** Ele é a imagem de referência do elemento para todas as cenas, \
+e o modelo de imagem COPIA para a cena a pose, o fundo e a luz que a referência tiver. Por isso o retrato \
+só diz QUEM é o sujeito: o sujeito fica de pé, com o corpo relaxado, os braços soltos ao lado do corpo, \
+olhando para a câmera, com expressão neutra ("standing in a neutral relaxed pose, arms at sides, facing \
+the camera, neutral expression"), SEM gesto, ação, emoção marcada nem objeto na mão, mesmo que o "Neste \
+instante:" descreva um (dele use só a roupa e o penteado). Um objeto aparece isolado, em três quartos; \
+um lugar ou uma construção, numa vista de apresentação sem pessoas. **Num retrato NÃO escreva fundo, cenário, \
+luz nem enquadramento, e não use o "Onde está:" (ele nem é enviado):** o sistema acrescenta ao fim do \
+prompt, por código, um bloco com o enquadramento, o fundo liso cinza-claro e a luz suave e uniforme. \
+Escreva só o sujeito: quem é, a aparência fixa, a roupa e o penteado. Só o comentário do usuário pode pedir \
+outra coisa (outra pose, outro fundo), e então vale o que ele pediu. **Quando VIER um COMENTÁRIO DO USUÁRIO, o \
+sistema NÃO acrescenta esse bloco** (ele poderia contradizer o que a pessoa pediu): aí você escreve o \
+enquadramento, o fundo liso cinza-claro e a luz suave e uniforme, a menos que o comentário peça outra coisa.
 
 Se vierem **ELEMENTOS VINCULADOS AO SUJEITO**, o retrato continua sendo do **sujeito \
 principal** (o primeiro da lista de elementos), mas os vinculados **aparecem junto dele, como \
@@ -386,20 +392,19 @@ Monte o prompt seguindo esta ordem de blocos, separados por vírgula (pule um \
 bloco se não houver informação para ele — nunca invente para preencher):
 
 1. Enquadramento e câmera: um tipo de plano (medium shot, close-up, wide shot, \
-low-angle, over-the-shoulder) coerente com a cena ou o retrato.
+low-angle, over-the-shoulder) coerente com a cena. Num retrato, pule: o sistema acrescenta.
 2. Sujeito principal, num instante congelado: quem/o que é o foco, numa pose \
 ou gesto específico e parado — nunca uma ação contínua ("ele caminha e olha \
 para trás" vira "mid-stride, glancing back"). Num retrato a pose é a neutra (ver acima).
 3. Vestuário, texturas e expressão física de cada elemento presente.
-4. Cenário imediato e objetos ao redor: numa cena, os da cena; num retrato, os do "Onde \
-está:" do elemento (se não houver esse campo, pule — não invente).
-5. Ambiente de fundo, arquitetura e época: numa cena, os da cena; num retrato, o lugar \
-do "Onde está:", com os detalhes concretos que ele traz (materiais, objetos, o que se vê \
-atrás do sujeito), para que a imagem tenha imersão e o fundo seja o do livro, nunca um \
-fundo genérico ou neutro.
+4. Cenário imediato e objetos ao redor: os da cena. Num retrato, pule (o fundo é liso e vem \
+do sistema).
+5. Ambiente de fundo, arquitetura e época: os da cena, com os detalhes concretos que ela traz \
+(materiais, objetos, o que se vê atrás do sujeito), para que a imagem tenha imersão e o fundo seja o do \
+livro. Num retrato, pule.
 6. Iluminação e atmosfera: a fonte de luz (candlelight, golden hour, cool \
 moonlight, harsh neon) — a **fonte de luz vem sempre da cena** (horário, clima, o lugar e o \
-que ela descreve); o perfil de estilo não escolhe a fonte. Não invente uma fonte que \
+que ela descreve); o perfil de estilo não escolhe a fonte. Num retrato, pule (a luz suave e uniforme vem do sistema). Não invente uma fonte que \
 contradiga o que foi dito. **O que há no ar (poeira, névoa, fumaça, partículas) só entra se \
 os insumos disserem**: não acrescente "dust motes", "mist" ou "suspended particles" só para \
 dar clima. Se a descrição não fala em luz, escreva só a que o horário, o clima ou o lugar \
@@ -469,10 +474,9 @@ expressão ou a ação** quando a cena diz o que a pessoa ou o objeto está faze
 estar clara no prompt** (no bloco do sujeito, num instante congelado) e não pode ser trocada por uma pose parada de um \
 elemento: se a cena diz que Auri pinga gotas em Foxen, o prompt mostra isso, e não "Auri parada ao lado". Um elemento \
 acrescentado à cena contribui com a **aparência** dele, e não muda o que a cena conta.
-- **O lugar vem da cena; num retrato, do "Onde está:".** Numa cena, o cenário é o da \
-descrição da cena; o "Onde está:" dos elementos só preenche o que a cena não diz, e nunca \
-a contradiz. Num retrato, o "Onde está:" é o cenário: descreva o sujeito dentro dele, em \
-primeiro plano e com o ambiente reconhecível ao redor.
+- **O lugar vem da cena.** Numa cena, o cenário é o da descrição da cena; o "Onde está:" dos \
+elementos só preenche o que a cena não diz, e nunca a contradiz. Num retrato não há lugar: o fundo é \
+liso e neutro, e vem do sistema.
 - Incorpore o estilo, a paleta e a **convenção de iluminação** do perfil indicado (contraste, \
 dureza da sombra, volume); a **fonte** da luz é a da cena.
 - **Gênero de cada pessoa presente, sempre que a identidade ou a aparência \

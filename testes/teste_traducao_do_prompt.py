@@ -43,11 +43,11 @@ def teste_pt2_ver_em_portugues_traduz_uma_vez_e_guarda(cliente: TestClient, usar
     primeira = cliente.post(f"/prompts/{prompt['id']}/traducao-pt")
 
     assert primeira.status_code == 200, primeira.text
-    assert primeira.json()["texto"] == "[pt] a hooded knight on a misty hill"
+    assert primeira.json()["texto"] == f"[pt] {prompt['texto']}"  # o retrato guardado termina com o bloco neutro (item 4.9, FL1)
     assert primeira.json()["reaproveitada"] is False
     assert [c["para"] for c in provedor.chamadas_de_traducao] == ["pt"]
     sessao_com_tabelas.expire_all()
-    assert sessao_com_tabelas.get(Prompt, prompt["id"]).texto_pt == "[pt] a hooded knight on a misty hill"
+    assert sessao_com_tabelas.get(Prompt, prompt["id"]).texto_pt == f"[pt] {prompt['texto']}"
 
 
 def teste_pt2_a_segunda_vez_nao_chama_a_ia(cliente: TestClient, usar_provedor_falso) -> None:
@@ -71,7 +71,7 @@ def teste_pt3_traduzir_para_ingles_e_so_previa_nao_grava_nada(cliente: TestClien
     assert provedor.chamadas_de_traducao[-1]["para"] == "en"
     sessao_com_tabelas.expire_all()
     guardado = sessao_com_tabelas.get(Prompt, prompt["id"])
-    assert (guardado.texto, guardado.texto_pt) == ("a hooded knight on a misty hill", None)  # nada mudou
+    assert (guardado.texto, guardado.texto_pt) == (prompt["texto"], None)  # nada mudou
 
 
 def teste_pt3_texto_vazio_e_recusado(cliente: TestClient, usar_provedor_falso) -> None:

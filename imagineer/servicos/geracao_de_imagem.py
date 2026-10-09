@@ -206,12 +206,31 @@ def _nome_do_dono(imagem: Imagem) -> str | None:
 
 
 def _frase_de_contexto(nomes: list[str | None]) -> str:
-    """A frase, em inglês, que diz ao modelo qual imagem é de quem (W5). Só vai na chamada; o prompt guardado não muda."""
-    partes = [f"image {indice} is {nome}" if nome else f"image {indice}" for indice, nome in enumerate(nomes, start=1)]
-    return (
-        f"Reference images: {'; '.join(partes)}. "
-        "Keep each character's face, hair and build consistent with their reference image."
-    )
+    """A frase, em inglês, que diz ao modelo qual imagem é de quem e **para que serve** (W5, FL11). Só vai na chamada; o prompt guardado não muda.
+
+    A referência de um elemento serve **só à identidade** (rosto, cabelo, pele, porte): o modelo de imagem tende a copiar da referência a pose, a
+    roupa, o fundo e a luz, e isso levava para a cena o que não está nela (item 4.9, FL11). A imagem de uma **cena** usada como referência (EV15)
+    é de composição, e não de identidade: ganha a sua própria frase.
+    """
+    indicadas = list(enumerate(nomes, start=1))
+    e_de_cena = lambda nome: bool(nome) and nome.startswith("the scene ")  # noqa: E731 - ver ``_nome_do_dono``
+    de_identidade = [(indice, nome) for indice, nome in indicadas if not e_de_cena(nome)]
+    frases = []
+    if de_identidade:
+        partes = [f"image {indice} is {nome}" if nome else f"image {indice}" for indice, nome in de_identidade]
+        frases.append(
+            f"Reference images are for IDENTITY ONLY (face, hair, skin, build) of: {'; '.join(partes)}. "
+            "Do NOT copy pose, expression, clothing, background, lighting, camera angle or any object or person from the reference images. "
+            "Clothing, pose, setting and everything else come only from the text below. "
+            "Anything not described in the text must not appear."
+        )
+    for indice, nome in indicadas:
+        if e_de_cena(nome):
+            frases.append(
+                f"Image {indice} is an earlier illustration of {nome}: use it only as a reference for composition and mood, "
+                "and do not copy any figure or object from it that the text below does not describe."
+            )
+    return " ".join(frases)
 
 
 def _validar_sem_filtro(sessao: Session, prompt: Prompt, configuracao: Configuracao, modelo: str, texto: str) -> None:

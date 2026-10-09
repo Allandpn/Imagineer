@@ -14,7 +14,7 @@ saturated colors" contradiz um perfil de paleta dessaturada, e o resultado é a 
 perfil de anime de cores suaves). Só a técnica que *é* a cor do estilo (pixel art: poucas cores; gravura: monocromática) fica.
 """
 
-from imagineer.modelos import CategoriaEstilo
+from imagineer.modelos import CategoriaEstilo, TipoElemento
 
 POSICAO_DO_BLOCO = "fim"
 """Onde o bloco entra no prompt. ``"fim"`` por decisão de 04/10/2026: no começo o Gemini pintou melhor, mas inventou um bastão,
@@ -89,6 +89,44 @@ BLOCO_TECNICO_POR_CATEGORIA: dict[CategoriaEstilo, str] = {
         "no signature, no text."
     ),
 }
+
+
+FUNDO_NEUTRO = "plain uniform light-gray studio background"
+LUZ_NEUTRA = "soft even lighting"
+
+BLOCO_DO_RETRATO_NEUTRO: dict[TipoElemento, str] = {
+    TipoElemento.PERSONAGEM: (
+        f"Neutral reference portrait: standing, shown from the knees up (American shot), facing the camera, relaxed body with arms at "
+        f"the sides, neutral expression, nothing held in the hands, {FUNDO_NEUTRO}, {LUZ_NEUTRA}, a single figure in the frame."
+    ),
+    TipoElemento.CRIATURA: (
+        f"Neutral reference portrait: standing in a relaxed neutral pose, shown full body or from the knees up, facing the camera, "
+        f"neutral expression, {FUNDO_NEUTRO}, {LUZ_NEUTRA}, a single creature in the frame."
+    ),
+    TipoElemento.OBJETO: f"Isolated product-style view of the single object in three-quarter view, {FUNDO_NEUTRO}, {LUZ_NEUTRA}, nothing else in the frame.",
+    TipoElemento.VEICULO: f"Isolated view of the single vehicle in three-quarter view, {FUNDO_NEUTRO}, {LUZ_NEUTRA}, nothing else in the frame.",
+    TipoElemento.GRUPO: f"Neutral group reference: the figures standing in a relaxed neutral pose, facing the camera, {FUNDO_NEUTRO}, {LUZ_NEUTRA}.",
+    TipoElemento.AMBIENTE: "Establishing presentation view of the place with no people in it, soft diffuse lighting.",
+    TipoElemento.EDIFICACAO: "Establishing presentation view of the building with no people in it, soft diffuse lighting.",
+}
+"""O retrato é a imagem **neutra** que representa o elemento e vai como referência de identidade para as cenas (item 4.9, FL1, FL2).
+
+Se ela traz pose, fundo ou luz, o modelo de imagem **copia** isso para a cena. Por isso, por tipo de elemento: quem tem corpo fica de pé, de
+frente, sem expressão, sem nada nas mãos, num **fundo liso e cinza-claro** com **luz suave e uniforme**; o objeto, isolado em três quartos;
+o lugar, numa vista de apresentação **sem pessoas**. Os textos são em inglês (é o que vai ao modelo de imagem) e, como o bloco técnico do
+estilo, são **colados por código** depois da resposta da IA, que nunca os vê nem os reescreve.
+
+**É proposta, ajustável aqui sem custo** (FL16): o plano americano (dos joelhos para cima), a cor do fundo e as demais escolhas."""
+
+BLOCO_DO_RETRATO_COM_VINCULADOS = f"Neutral reference portrait: the main subject faces the camera in a relaxed neutral pose, {FUNDO_NEUTRO}, {LUZ_NEUTRA}."
+"""Quando a pessoa vinculou outros elementos ao sujeito (V3), eles aparecem **junto** dele de propósito: o bloco fica só com o que não conflita
+(pose do sujeito, fundo e luz), sem o "uma única figura" nem o "nada nas mãos"."""
+
+
+def com_bloco_de_retrato(texto: str, tipo: TipoElemento, com_vinculados: bool = False) -> str:
+    """O ``texto`` do retrato com o bloco do retrato neutro colado ao fim (FL1). Não repete se já está."""
+    bloco = BLOCO_DO_RETRATO_COM_VINCULADOS if com_vinculados else BLOCO_DO_RETRATO_NEUTRO[tipo]
+    return texto if bloco in texto else f"{texto} {bloco}"
 
 
 def com_bloco_tecnico(texto: str, categoria: CategoriaEstilo | None) -> str:

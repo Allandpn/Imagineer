@@ -87,4 +87,7 @@ def teste_a_imagem_de_uma_cena_vale_como_referencia_no_put(cliente: TestClient, 
 def teste_a_frase_das_referencias_diz_que_a_imagem_e_da_cena_e_nao_do_personagem() -> None:
     frase = _frase_de_contexto(['the scene "A partida"', "Auri"])
 
-    assert 'image 1 is the scene "A partida"' in frase and "image 2 is Auri" in frase
+    # FL11: a imagem do personagem é só de identidade; a da cena é de composição e ganha a sua própria frase.
+    assert "IDENTITY ONLY (face, hair, skin, build) of: image 2 is Auri." in frase
+    assert 'Image 1 is an earlier illustration of the scene "A partida": use it only as a reference for composition and mood' in frase
+    assert "image 1 is the scene" not in frase  # a cena não entra na lista de identidade

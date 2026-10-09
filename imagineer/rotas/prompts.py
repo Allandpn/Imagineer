@@ -32,7 +32,7 @@ from imagineer.esquemas.prompt import (
     ResultadoDaGeracao,
     Traducao,
 )
-from imagineer.ia.blocos_tecnicos import com_bloco_tecnico
+from imagineer.ia.blocos_tecnicos import com_bloco_de_retrato, com_bloco_tecnico
 from imagineer.ia.provedor import (
     ModeloNaoEscolhido,
     ProvedorIA,
@@ -75,7 +75,7 @@ from imagineer.servicos.limites import BYTES_POR_MB, exigir_espaco, obter_limite
 from imagineer.servicos.uso_de_ia import coletando_o_custo, gasto_do_livro
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
-from imagineer.servicos.aparencia_de_elemento import aparencia_fixa_anterior, e_rascunho_de_identidade
+from imagineer.servicos.aparencia_de_elemento import aparencia_fixa_anterior, e_rascunho_de_identidade, sem_o_lugar
 from imagineer.servicos.identidade_de_elemento import LIMITE_DA_IDENTIDADE_NO_PROMPT, identidade_vigente, resumir_texto
 from imagineer.servicos.lixeira import mover_para_a_lixeira
 from imagineer.servicos.imagens_reduzidas import (
@@ -375,17 +375,28 @@ def criar_prompt(
                 eh_retrato=frame.tipo == TipoDeFrame.PERSONAGEM,
             )
         else:
+            # FL1: o retrato é a âncora de identidade, NEUTRA: sem o lugar do elemento ("Onde está:") e sem a iluminação do perfil, que
+            # a cena é quem escolhe; o fundo liso e a luz uniforme entram por código, abaixo.
+            retrato = frame.tipo == TipoDeFrame.PERSONAGEM
+            vinculados = _elementos_vinculados(sessao, frame, sem_lugar=retrato)
             resultado = provedor.montar_prompt(
                 descricao_do_frame=_descricao_do_frame(frame),
-                elementos=_elementos_do_frame(sessao, frame),
-                perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo),
+                elementos=_elementos_do_frame(sessao, frame, sem_lugar=retrato),
+                perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo, sem_iluminacao=retrato),
                 modelo=modelo_prompt,
                 contexto_do_livro=contexto_do_livro,
                 comentario_do_usuario=corpo.comentario,
-                elementos_vinculados=_elementos_vinculados(sessao, frame) or None,
+                elementos_vinculados=vinculados or None,
                 trecho_do_livro=frame.trecho,
             )
 
+    texto_final = resultado.texto
+    if not eh_video and frame.tipo == TipoDeFrame.PERSONAGEM and frame.estados_elemento and not (corpo.comentario or "").strip():
+        # FL1: enquadramento, fundo liso e luz uniforme do retrato neutro, por código, DEPOIS da resposta da IA (que nunca o vê).
+        # Com comentário do usuário o bloco NÃO entra: o comentário vale mais (ele pode pedir outro fundo) e a IA recebe a instrução de escrever o neutro.
+        texto_final = com_bloco_de_retrato(
+            texto_final, frame.estados_elemento[0].elemento.tipo, com_vinculados=bool(frame.estados_vinculados)
+        )
     prompt = Prompt(
         frame_id=frame.id,
         perfil_renderizacao_id=perfil.id if perfil else None,
@@ -395,7 +406,7 @@ def criar_prompt(
         texto=(
             resultado.texto
             if eh_video and partida is not None
-            else com_bloco_tecnico(resultado.texto, perfil.categoria_estilo if perfil else None)
+            else com_bloco_tecnico(texto_final, perfil.categoria_estilo if perfil else None)
         ),
         tipo=corpo.tipo,
         imagem_partida_id=partida.id if partida is not None else None,
@@ -998,24 +1009,24 @@ def _descricao_do_frame(frame: Frame) -> str:
     return "\n".join(partes)
 
 
-def _elementos_vinculados(sessao: Session, frame: Frame) -> list[str]:
-    """As linhas "Nome (identidade): aparência" dos elementos **vinculados** ao sujeito de um retrato (V5)."""
-    return _linhas_de_estados(sessao, frame.estados_vinculados, frame.capitulo.ordem)
+def _elementos_vinculados(sessao: Session, frame: Frame, sem_lugar: bool = False) -> list[str]:
+    """As linhas "Nome (identidade): aparência" dos elementos **vinculados** ao sujeito de um retrato (V5). ``sem_lugar``: sem o "Onde está:" (FL1)."""
+    return _linhas_de_estados(sessao, frame.estados_vinculados, frame.capitulo.ordem, sem_lugar)
 
 
-def _elementos_do_frame(sessao: Session, frame: Frame) -> list[str]:
+def _elementos_do_frame(sessao: Session, frame: Frame, sem_lugar: bool = False) -> list[str]:
     """"Nome (identidade): aparência", para cada elemento que aparece no frame.
 
     A identidade (``Elemento.descricao``) entra entre parênteses quando existe
     — é o que diz gênero, papel, natureza do elemento — sem ela, a IA que
     fundamenta a cena ou monta o prompt final nunca via essa informação,
     só a leitura profunda de UM estado (``sugerir_estado``) recebia (item 4.4).
-    Omitida quando o elemento não tem identidade registrada.
+    Omitida quando o elemento não tem identidade registrada. ``sem_lugar`` tira o "Onde está:" (o retrato neutro não tem lugar, item 4.9, FL1).
     """
-    return _linhas_de_estados(sessao, frame.estados_elemento, frame.capitulo.ordem)
+    return _linhas_de_estados(sessao, frame.estados_elemento, frame.capitulo.ordem, sem_lugar)
 
 
-def _linhas_de_estados(sessao: Session, estados, ordem_do_capitulo: int) -> list[str]:
+def _linhas_de_estados(sessao: Session, estados, ordem_do_capitulo: int, sem_lugar: bool = False) -> list[str]:
     """"Nome (identidade): aparência" para cada estado, por tipo e nome.
 
     A identidade é a **vigente até o capítulo do frame** (FD3), e não só a inicial: o que o livro revelou depois (idade, gênero, origem)
@@ -1025,10 +1036,11 @@ def _linhas_de_estados(sessao: Session, estados, ordem_do_capitulo: int) -> list
     for estado in sorted(estados, key=lambda e: (e.elemento.tipo.name, e.elemento.nome)):
         nome = estado.elemento.nome
         identidade = resumir_texto(identidade_vigente(sessao, estado.elemento, ordem_do_capitulo), LIMITE_DA_IDENTIDADE_NO_PROMPT)
+        descricao = sem_o_lugar(estado.descricao) if sem_lugar else estado.descricao
         if identidade:
-            partes.append(f"{nome} ({identidade}): {estado.descricao}")
+            partes.append(f"{nome} ({identidade}): {descricao}")
         else:
-            partes.append(f"{nome}: {estado.descricao}")
+            partes.append(f"{nome}: {descricao}")
     return partes
 
 
@@ -1071,7 +1083,7 @@ como digitar `"16:9 (para cenários) ou 2:3 (para retratos)"` num campo só,
 texto que ia parar literal no prompt final sem funcionar como instrução."""
 
 
-def _descricao_do_perfil(perfil: PerfilRenderizacao | None, tipo: TipoDeFrame) -> str:
+def _descricao_do_perfil(perfil: PerfilRenderizacao | None, tipo: TipoDeFrame, sem_iluminacao: bool = False) -> str:
     """O texto de estilo que vai para a IA, só com os campos preenchidos.
 
     Cada ferramenta de imagem entende um subconjunto diferente de campos
@@ -1079,6 +1091,8 @@ def _descricao_do_perfil(perfil: PerfilRenderizacao | None, tipo: TipoDeFrame) -
     exceto o formato, que sempre entra: com o valor do perfil se o usuário
     preencheu (override explícito, vale pros dois tipos de frame igualmente),
     senão com o padrão automático por `tipo` do frame.
+
+    ``sem_iluminacao`` omite a iluminação do perfil: o retrato é neutro e a luz uniforme vem do bloco do retrato (item 4.9, FL1).
     """
     partes = []
     if perfil is not None:
@@ -1087,7 +1101,7 @@ def _descricao_do_perfil(perfil: PerfilRenderizacao | None, tipo: TipoDeFrame) -
             partes.append(perfil.estilo)
         if perfil.artista_referencia:
             partes.append(f"referência: {perfil.artista_referencia}")
-        if perfil.iluminacao:
+        if perfil.iluminacao and not sem_iluminacao:
             partes.append(f"iluminação: {perfil.iluminacao}")
         if perfil.paleta:
             partes.append(f"paleta: {perfil.paleta}")

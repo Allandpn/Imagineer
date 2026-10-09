@@ -88,3 +88,24 @@ def e_rascunho_de_identidade(sessao: Session, estado: EstadoElemento) -> bool:
         )
     )
     return any(texto == _normalizado(identidade) for identidade in identidades)
+
+
+def sem_o_lugar(descricao: str | None) -> str | None:
+    """A descrição de estado **sem** a parte "Onde está:" (e sem as linhas que a continuam); o resto fica idêntico.
+
+    O retrato é a âncora de identidade e vai de **fundo liso** (item 4.9, FL1): o lugar do elemento pertence à *cena*, não ao retrato. Estados
+    do formato antigo (sem rótulos) não têm parte de lugar: voltam como vieram.
+    """
+    if not descricao:
+        return descricao
+    mantidas: list[str] = []
+    pulando = False
+    for linha in descricao.splitlines():
+        if linha.startswith(ROTULO_DO_AMBIENTE):
+            pulando = True
+            continue
+        if pulando and not any(linha.startswith(rotulo) for rotulo in _ROTULOS):
+            continue  # continuação do lugar, em outra linha
+        pulando = False
+        mantidas.append(linha)
+    return "\n".join(mantidas)

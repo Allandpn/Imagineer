@@ -1395,7 +1395,7 @@ def teste_w3_gera_com_referencias_envia_junto_e_registra_os_ids(cliente: TestCli
     chamada = provedor.chamadas_de_imagem[-1]
     assert chamada["referencias"] == {"parametro": "image_input", "quantidade": 1}
     # W5: a frase de contexto vai na chamada, com o nome de quem é a imagem; o prompt guardado não muda.
-    assert chamada["prompt"].startswith('Reference images: image 1 is the scene "No pátio".')
+    assert chamada["prompt"].startswith('Image 1 is an earlier illustration of the scene "No pátio":')
     assert chamada["prompt"].endswith("close-up, Ned Stark")
     assert cliente.get(f"/prompts/{prompt['id']}").json()["texto"] == "close-up, Ned Stark"
 
@@ -1506,7 +1506,9 @@ def teste_w6_referencias_e_modelo_sem_filtro_juntos(cliente: TestClient, usar_pr
 def teste_w5_a_frase_sem_dono_conhecido_so_numera_a_imagem() -> None:
     from imagineer.servicos.geracao_de_imagem import _frase_de_contexto
 
-    assert _frase_de_contexto(["Auri", None]).startswith("Reference images: image 1 is Auri; image 2.")
+    assert _frase_de_contexto(["Auri", None]).startswith(
+        "Reference images are for IDENTITY ONLY (face, hair, skin, build) of: image 1 is Auri; image 2."
+    )
 
 
 def teste_w2_candidatas_trazem_as_imagens_do_retrato_de_cada_elemento_com_a_ancora(

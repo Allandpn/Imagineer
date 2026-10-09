@@ -660,15 +660,16 @@ def teste_a_instrucao_do_estado_pede_aparencia_fixa_instante_e_ambiente() -> Non
     assert 'nada de "depois", "mais tarde", "em seguida", "finalmente"' in instrucao
 
 
-def teste_a_instrucao_do_prompt_usa_o_ambiente_no_retrato() -> None:
-    """02/10 (A5, A6): num retrato o cenário vem do "Onde está:"; numa cena, da descrição da cena."""
+def teste_a_instrucao_do_prompt_nao_usa_o_ambiente_no_retrato_mas_usa_na_cena() -> None:
+    """A5 e A6 (02/10) mandavam o retrato acontecer no "Onde está:". O item 4.9 (FL1, 08/10) as REVISOU: o retrato é a âncora de identidade e
+    vai de fundo liso, porque o modelo de imagem copia o fundo da referência para a cena. O lugar é só da cena."""
     instrucao = _instrucao_enviada(lambda p: p.montar_prompt("", ["Auri: x"], "estilo: x", "modelo/x"))
 
     assert '"Aparência fixa:" (traços que não mudam: sempre entram no prompt' in instrucao
-    assert 'num retrato, os do "Onde está:" do elemento' in instrucao
-    assert "nunca um fundo genérico ou neutro" in instrucao
+    assert 'num retrato, os do "Onde está:" do elemento' not in instrucao
+    assert "nunca um fundo genérico ou neutro" not in instrucao
+    assert "Num retrato não há lugar: o fundo é liso e neutro" in instrucao
     assert 'Numa cena, o cenário é o da descrição da cena' in instrucao
-    assert "pule num retrato" not in instrucao and "só se houver cena — num retrato, pule" not in instrucao
 
 
 def teste_sugerir_estado_junta_as_tres_partes_com_rotulos() -> None:
