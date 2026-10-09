@@ -3,7 +3,8 @@
 Analisar o capítulo, corrigir o casamento de uma sugestão, descartar, buscar sugestões por nome no livro e ler os artefatos a desenhar sobre o texto. A regra de negócio mora em `servicos/sugestoes.py` e `servicos/artefatos.py`; aqui ficam só o HTTP e a montagem da resposta."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
@@ -26,8 +27,11 @@ from imagineer.esquemas.elemento import (
     SugestaoDeElementoBuscada,
     SugestoesDeCapitulo,
 )
-from imagineer.ia.provedor import ProvedorIA
+from imagineer.ia.catalogo_de_texto import obter_capacidades
+from imagineer.ia.provedor import ModeloNaoEscolhido, ProvedorIA
 from imagineer.servicos.acesso import buscar_visivel
+from imagineer.servicos.configuracao_ia import modelo_de_leitura, obter_ou_criar
+from imagineer.servicos.estimativa_de_leitura import estimar_leitura
 from imagineer.modelos import Capitulo, EstadoElemento, Frame, SugestaoDeCena, SugestaoDeElemento, TipoDeFrame
 from imagineer.rotas._comum import (
     buscar_capitulo as _buscar_capitulo,
@@ -409,6 +413,81 @@ def ler_sugestoes(
 
     pendentes_anteriores = sugestoes_pendentes_anteriores(sessao, capitulo)
     return _sugestoes_de_capitulo(sessao, capitulo, pendentes_anteriores)
+
+
+class EstimativaDeLeituraDoCapitulo(BaseModel):
+    """Quanto custaria ler um capítulo, antes de gastar (item 4.10, LM15)."""
+
+    modelo: str = Field(description="O modelo de leitura (ou, na falta dele, o de extração ou de prompt) cujos preços entraram na conta.")
+    tokens_do_capitulo: int = Field(description="Tamanho estimado do capítulo, em tokens.")
+    elementos: int = Field(description="Quantos elementos entraram na conta (o que veio em `elementos`, ou as sugestões não descartadas).")
+    cenas: int = Field(description="Quantas cenas entraram na conta (o que veio em `cenas`, ou as sugestões não descartadas).")
+    leituras: int = Field(description="Quantas chamadas à IA a leitura faz: estado e identidade por elemento, dossiê por cena e, se ainda não analisado, a extração.")
+    inclui_extracao: bool = Field(description="O capítulo ainda não foi analisado: a conta inclui a chamada de extração dos elementos.")
+    custo_sem_cache: float | None = Field(description="US$, se cada leitura pagasse o capítulo inteiro. Nulo = o catálogo não tem o preço do modelo.")
+    custo_com_cache: float | None = Field(description="US$, com o capítulo em cache entre as leituras. Nulo = o catálogo não tem o preço do modelo.")
+    aviso: str
+
+
+@rotas_de_capitulo.get(
+    "/{capitulo_id}/estimativa-de-leitura",
+    response_model=EstimativaDeLeituraDoCapitulo,
+    summary="Estima quanto custa ler o capítulo, sem chamar a IA",
+)
+def estimar_custo_da_leitura(
+    capitulo_id: int,
+    elementos: int | None = Query(
+        default=None, ge=0, le=500, description="Quantos elementos contar. Padrão: as sugestões de elemento do capítulo não descartadas."
+    ),
+    cenas: int | None = Query(
+        default=None, ge=0, le=500, description="Quantas cenas contar. Padrão: as sugestões de cena do capítulo não descartadas."
+    ),
+    sessao: Session = Depends(obter_sessao),
+) -> EstimativaDeLeituraDoCapitulo:
+    """A conta de ler o capítulo, para a tela mostrar **antes** de "Analisar" (item 4.10, LM15). **Nunca chama a IA** (não declara o provedor).
+
+    Usa os preços do **catálogo ao vivo** do OpenRouter para o modelo de leitura em uso (`modelo_leitura`, senão `modelo_extracao`, senão
+    `modelo_prompt`). `elementos` e `cenas` deixam a tela perguntar "e se fossem 10?". Capítulo ainda não analisado inclui a extração.
+    Modelo sem preço no catálogo: os custos vêm nulos e o `aviso` diz isso."""
+    capitulo = _buscar_capitulo(sessao, capitulo_id)  # 404 para capítulo de outra pessoa
+    configuracao = obter_ou_criar(sessao)
+    modelo = modelo_de_leitura(configuracao)
+    if not modelo:
+        raise ModeloNaoEscolhido("Nenhum modelo de leitura foi escolhido. Configure um em /configuracao.")
+
+    if elementos is None:
+        elementos = sessao.scalar(
+            select(func.count()).select_from(SugestaoDeElemento).where(
+                SugestaoDeElemento.capitulo_id == capitulo.id, SugestaoDeElemento.descartada.is_(False)
+            )
+        )
+    if cenas is None:
+        cenas = sessao.scalar(
+            select(func.count()).select_from(SugestaoDeCena).where(
+                SugestaoDeCena.capitulo_id == capitulo.id, SugestaoDeCena.descartada.is_(False)
+            )
+        )
+
+    ainda_nao_analisado = capitulo.sugestoes_geradas_em is None
+    estimativa = estimar_leitura(
+        capitulo.texto,
+        obter_capacidades(modelo),
+        elementos,
+        cenas,
+        com_extracao=ainda_nao_analisado,
+        capacidades_da_extracao=obter_capacidades(configuracao.modelo_extracao) if configuracao.modelo_extracao else None,
+    )
+    return EstimativaDeLeituraDoCapitulo(
+        modelo=modelo,
+        tokens_do_capitulo=estimativa.tokens_do_capitulo,
+        elementos=elementos,
+        cenas=cenas,
+        leituras=estimativa.leituras,
+        inclui_extracao=ainda_nao_analisado,
+        custo_sem_cache=None if estimativa.custo_sem_cache is None else float(round(estimativa.custo_sem_cache, 6)),
+        custo_com_cache=None if estimativa.custo_com_cache is None else float(round(estimativa.custo_com_cache, 6)),
+        aviso=estimativa.aviso,
+    )
 
 
 @rotas_de_capitulo.get(

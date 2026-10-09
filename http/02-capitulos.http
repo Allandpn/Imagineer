@@ -58,3 +58,13 @@ GET {{baseUrl}}/capitulos/{{capituloId}}/audio
 
 ### Apaga todas as narrações do capítulo (de qualquer modelo ou voz) e os arquivos
 DELETE {{baseUrl}}/capitulos/{{capituloId}}/audio
+
+### Quanto custa LER o capítulo, ANTES de analisar (item 4.10, LM15). NÃO chama a IA e não gasta nada
+# Conta, com os preços do catálogo do OpenRouter, as leituras do modelo de leitura: estado e identidade por
+# elemento, dossiê por cena e, se o capítulo ainda não foi analisado, a extração. Sem parâmetros, vale o
+# número de sugestões de elemento e de cena não descartadas. "elementos" e "cenas" deixam perguntar "e se
+# fossem 10?". Devolve custo_sem_cache e custo_com_cache (US$); nulos se o catálogo não tem o preço do modelo.
+GET {{baseUrl}}/capitulos/{{capituloId}}/estimativa-de-leitura
+
+### O mesmo, perguntando "e se fossem 10 elementos e 4 cenas?"
+GET {{baseUrl}}/capitulos/{{capituloId}}/estimativa-de-leitura?elementos=10&cenas=4
