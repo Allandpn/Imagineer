@@ -41,7 +41,7 @@ from imagineer.modelos import (
 from imagineer.modelos.elemento import HistoricoIdentidadeElemento
 
 _CAMPOS_QUE_NAO_CONTAM: dict[type, set[str]] = {
-    Livro: {"revisao"},
+    Livro: {"revisao", "modelos"},  # as trocas de modelo por livro (item 7.5g) não mudam o que se lê offline
     # O tamanho e as dimensões são calculados do disco numa leitura (manifesto de mídias, artefatos);
     # não mudam o que o leitor vê, e uma leitura que subisse a revisão faria o app reler para sempre.
     Imagem: {"tamanho_em_bytes", "largura", "altura"},

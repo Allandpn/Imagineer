@@ -19,6 +19,7 @@ from imagineer.modelos import (
     TipoElemento,
 )
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.modelos_do_livro import configuracao_do_livro
 from imagineer.servicos.estados_de_elemento import estado_vigente_por_elemento
 from imagineer.servicos.identidade_de_elemento import identidade_vigente, resumir_texto
 from imagineer.servicos.posicao_no_texto import LIMITE_DO_TRECHO_DA_IA, posicao_da_citacao, trecho_literal
@@ -69,7 +70,7 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
     nova, mesmo com `forcar=true`. Uma sugestão nova que repete uma descartada (mesmo
     tipo e nome, ou mesmo título de cena) **não é criada de novo**.
     """
-    configuracao = obter_ou_criar(sessao)
+    configuracao = configuracao_do_livro(sessao, capitulo.livro)  # item 7.5g
     modelo_extracao = configuracao.modelo_extracao
 
     if not modelo_extracao:

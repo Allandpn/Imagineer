@@ -196,10 +196,10 @@ def teste_o_pin_guarda_o_momento_em_que_foi_marcado() -> None:
         assert str(c.execute(sa.text("SELECT criado_em FROM favoritos WHERE posicao = 0")).scalar_one()).startswith("2026-10-01")
 
 
-def teste_a_migracao_vem_depois_da_do_modelo_de_conferencia_e_e_a_unica_cabeca() -> None:
+def teste_a_migracao_vem_depois_da_do_modelo_de_conferencia() -> None:
     configuracao = Config(str(RAIZ / "alembic.ini"))
     configuracao.set_main_option("script_location", str(RAIZ / "migracoes"))
     diretorio = ScriptDirectory.from_config(configuracao)
 
     assert diretorio.get_revision("d1e2f3a4b5c7").down_revision == "c0d1e2f3a4b6"
-    assert diretorio.get_heads() == ["d1e2f3a4b5c7"]
+    assert "d1e2f3a4b5c7" in {r.revision for r in diretorio.walk_revisions()}  # a cabeça mudou depois (e2f3a4b5c6d8)

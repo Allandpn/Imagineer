@@ -31,6 +31,7 @@ from imagineer.ia.catalogo_de_texto import obter_capacidades
 from imagineer.ia.provedor import ModeloNaoEscolhido, ProvedorIA
 from imagineer.servicos.acesso import buscar_visivel
 from imagineer.servicos.configuracao_ia import modelo_de_leitura, obter_ou_criar
+from imagineer.servicos.modelos_do_livro import configuracao_do_livro
 from imagineer.servicos.estimativa_de_leitura import estimar_leitura
 from imagineer.modelos import Capitulo, EstadoElemento, Frame, SugestaoDeCena, SugestaoDeElemento, TipoDeFrame
 from imagineer.rotas._comum import (
@@ -450,7 +451,7 @@ def estimar_custo_da_leitura(
     `modelo_prompt`). `elementos` e `cenas` deixam a tela perguntar "e se fossem 10?". Capítulo ainda não analisado inclui a extração.
     Modelo sem preço no catálogo: os custos vêm nulos e o `aviso` diz isso."""
     capitulo = _buscar_capitulo(sessao, capitulo_id)  # 404 para capítulo de outra pessoa
-    configuracao = obter_ou_criar(sessao)
+    configuracao = configuracao_do_livro(sessao, capitulo.livro)  # item 7.5g
     modelo = modelo_de_leitura(configuracao)
     if not modelo:
         raise ModeloNaoEscolhido("Nenhum modelo de leitura foi escolhido. Configure um em /configuracao.")

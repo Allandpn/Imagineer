@@ -78,6 +78,7 @@ from imagineer.servicos.catalogo_imagens import (
     tipo_da_imagem,
 )
 from imagineer.servicos.configuracao_ia import modelo_de_leitura, obter_ou_criar
+from imagineer.servicos.modelos_do_livro import configuracao_do_livro
 from imagineer.servicos.limites import BYTES_POR_MB, exigir_espaco, obter_limites
 from imagineer.servicos.uso_de_ia import coletando_o_custo, gasto_do_livro
 from imagineer.servicos.geracao_de_imagem import PedidoDeGeracaoInvalido, gerar_imagem_do_prompt
@@ -358,7 +359,7 @@ def criar_prompt(
     """
     frame = _buscar_frame(sessao, frame_id)
     livro = frame.capitulo.livro
-    configuracao = obter_ou_criar(sessao)
+    configuracao = configuracao_do_livro(sessao, livro)  # item 7.5g: os modelos que este livro trocou valem aqui
 
     perfil = _resolver_perfil(sessao, corpo.perfil_renderizacao_id, livro)
     eh_video = corpo.tipo == TipoDePrompt.VIDEO
@@ -602,7 +603,7 @@ def gerar_imagem(
             sessao,
             provedor,
             prompt,
-            obter_ou_criar(sessao),
+            configuracao_do_livro(sessao, _livro_do_prompt(prompt)),
             corpo.texto if corpo else None,
             corpo.modelo if corpo else None,
             sem_filtro_de_seguranca=bool(corpo and corpo.sem_filtro_de_seguranca),
@@ -624,10 +625,16 @@ def gerar_imagem(
 # --------------------------------------------------------------------------- #
 
 
+def _livro_do_prompt(prompt: Prompt):
+    """O livro a que o prompt pertence (para os modelos que o livro trocou, item 7.5g), ou ``None`` se a cadeia está incompleta."""
+    frame = prompt.frame
+    return frame.capitulo.livro if frame is not None and frame.capitulo is not None else None
+
+
 def _traduzir(sessao: Session, provedor: ProvedorIA, prompt: Prompt, texto: str, para: str) -> Traducao:
     """Chama o modelo da tradução (MT1; vazio: o da suavização, senão o de extração, senão o de prompt), anota o gasto como do livro do prompt
     (operação ``traducao``) e devolve a tradução com o custo da chamada (PT5, PT6)."""
-    configuracao = obter_ou_criar(sessao)
+    configuracao = configuracao_do_livro(sessao, _livro_do_prompt(prompt))
     modelo = (
         configuracao.modelo_traducao
         or configuracao.modelo_suavizacao
@@ -697,7 +704,7 @@ def corrigir_prompt(
     Parte de `texto` (o que está na tela) quando vem, senão do texto gravado. Usa o `modelo_prompt` (senão o de extração); o gasto vai para
     o livro do prompt (operação `correcao`)."""
     prompt = _buscar_prompt(sessao, prompt_id)
-    configuracao = obter_ou_criar(sessao)
+    configuracao = configuracao_do_livro(sessao, _livro_do_prompt(prompt))
     modelo = configuracao.modelo_prompt or configuracao.modelo_extracao
     if not modelo:
         raise ModeloNaoEscolhido("Nenhum modelo de texto foi escolhido para corrigir o prompt. Configure um em /configuracao.")
@@ -777,7 +784,7 @@ def conferir_imagem(
             detail="O prompt desta imagem não guardou a lista do que deveria aparecer (ela vem do dossiê da cena): leia o dossiê e gere o prompt de novo.",
         )
 
-    configuracao = obter_ou_criar(sessao)
+    configuracao = configuracao_do_livro(sessao, frame.capitulo.livro)
     modelo = configuracao.modelo_conferencia
     if not modelo:
         raise ModeloNaoEscolhido("Nenhum modelo de conferência foi escolhido. Escolha, em /configuracao, um modelo que leia imagens (modelo_conferencia).")
@@ -1080,7 +1087,7 @@ def ler_dossie(
     guardado, inclusive o que a pessoa já confirmou: é o botão de "ler de novo". Devolve o dossiê e o custo total; o gasto vai para o livro da cena."""
     frame = _buscar_frame(sessao, frame_id)
     _exigir_cena(frame)
-    configuracao = obter_ou_criar(sessao)
+    configuracao = configuracao_do_livro(sessao, frame.capitulo.livro)
 
     with gasto_do_livro(frame.capitulo.livro_id), coletando_o_custo() as custos:
         # Os participantes chegam ao dossiê já lidos (como no prompt): sem isto a IA veria o rascunho de identidade no lugar da aparência.

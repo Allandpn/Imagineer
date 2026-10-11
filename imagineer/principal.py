@@ -33,6 +33,7 @@ from imagineer.rotas import (
     identidade,
     leitura,
     livros,
+    modelos_do_livro,
     lixeira,
     perfis_renderizacao,
     prompts,
@@ -77,6 +78,7 @@ aplicacao.include_router(capitulos.rotas)
 aplicacao.include_router(audio.rotas)
 aplicacao.include_router(audio.rotas_de_configuracao)
 aplicacao.include_router(audio.rotas_de_audios)
+aplicacao.include_router(modelos_do_livro.rotas)
 aplicacao.include_router(elementos.rotas_de_livro)
 aplicacao.include_router(estados.rotas_de_capitulo)
 aplicacao.include_router(sugestoes.rotas_de_livro)

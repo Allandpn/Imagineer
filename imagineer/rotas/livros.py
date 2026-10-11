@@ -58,6 +58,7 @@ from imagineer.servicos.acesso import buscar_visivel, usuario_ou_dono
 from imagineer.servicos.capa_do_livro import CapaInvalida, capa_de_um_arquivo
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.modelos_do_livro import configuracao_do_livro
 from imagineer.servicos.limites import BYTES_POR_MB, obter_limites
 from imagineer.servicos.imagens_reduzidas import garantir_dimensoes
 from imagineer.servicos.importacao_epub import (
@@ -378,7 +379,7 @@ def sugerir_perfil_renderizacao(
     prompt de imagem gerado a partir dela saiu visualmente confuso.
     """
     livro = _buscar_livro(sessao, livro_id)
-    configuracao = obter_ou_criar(sessao)
+    configuracao = configuracao_do_livro(sessao, livro)  # item 7.5g
     modelo_perfil = configuracao.modelo_perfil
 
     if not modelo_perfil:

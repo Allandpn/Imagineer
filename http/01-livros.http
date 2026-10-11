@@ -88,6 +88,18 @@ Content-Type: image/png
 < ./arquivos/imagem-teste.png
 --fronteira--
 
+### Os modelos de IA deste livro (item 7.5g, MV3): as trocas dele e o que vale em cada tarefa, com a origem (livro ou global)
+GET {{baseUrl}}/livros/{{livroId}}/modelos
+
+### Troca modelos so neste livro. SUBSTITUI as trocas: o que nao vem (ou vem null/vazio) volta a valer o da configuracao global
+PUT {{baseUrl}}/livros/{{livroId}}/modelos
+Content-Type: application/json
+
+{
+  "modelo_narracao": "microsoft/mai-voice-2.1-flash",
+  "narracao_voz": "pt-BR-Luana:MAI-Voice-2.1-Flash"
+}
+
 ### Os livros da lixeira (LT2): apagar um livro so o move para la; aqui estao com capitulos, imagens e espaco
 GET {{baseUrl}}/lixeira/livros
 

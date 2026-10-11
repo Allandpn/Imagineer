@@ -25,6 +25,7 @@ from imagineer.rotas.configuracao import obter_provedor
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
 from imagineer.servicos.acesso import usuario_ou_dono
 from imagineer.servicos.configuracao_ia import obter_ou_criar
+from imagineer.servicos.modelos_do_livro import configuracao_do_livro
 from imagineer.servicos.limites import exigir_espaco, obter_limites
 from imagineer.servicos.narracao import (
     AudioEmAndamento,
@@ -80,7 +81,7 @@ def estimar_narracao(
     """Os caracteres, os minutos e o custo **estimado** (NA3). Lê o preço do catálogo público do OpenRouter (não gasta nada nem precisa de
     chave). **422** se nenhum modelo de voz foi escolhido."""
     capitulo = _buscar_capitulo(sessao, capitulo_id)
-    modelo, voz = parametros_da_narracao(obter_ou_criar(sessao))
+    modelo, voz = parametros_da_narracao(configuracao_do_livro(sessao, capitulo.livro))  # item 7.5g: o que este livro trocou vale
     if modelo is None:
         raise _sem_modelo()
     caracteres = len(capitulo.texto or "")
@@ -131,7 +132,7 @@ def gerar_narracao(
     capitulo = _buscar_capitulo(sessao, capitulo_id)
     if not (capitulo.texto or "").strip():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Este capítulo não tem texto para narrar.")
-    modelo, voz = parametros_da_narracao(obter_ou_criar(sessao))
+    modelo, voz = parametros_da_narracao(configuracao_do_livro(sessao, capitulo.livro))  # item 7.5g: o que este livro trocou vale
     if modelo is None:
         raise _sem_modelo()
     if not provedor.pode_narrar:
@@ -172,7 +173,7 @@ def estado_da_narracao(capitulo_id: int, sessao: Session = Depends(obter_sessao)
     """`NAO_GERADO`, `GERANDO`, `PRONTO` ou `FALHOU` (com o motivo). Só olha o áudio feito com o modelo e a voz **de agora**: se a
     pessoa trocou a voz, o áudio de antes não conta (NA4)."""
     capitulo = _buscar_capitulo(sessao, capitulo_id)
-    modelo, voz = parametros_da_narracao(obter_ou_criar(sessao))
+    modelo, voz = parametros_da_narracao(configuracao_do_livro(sessao, capitulo.livro))  # item 7.5g: o que este livro trocou vale
     return _estado(audio_de_agora(sessao, capitulo.id, modelo, voz))
 
 
@@ -181,7 +182,7 @@ def baixar_narracao(capitulo_id: int, sessao: Session = Depends(obter_sessao)) -
     """O arquivo do áudio `PRONTO` com o modelo e a voz de agora. O ``FileResponse`` responde ``206`` a um pedido ``Range``, que é o que o
     player precisa para avançar e voltar. **Sem cache imutável**: o endereço é o do capítulo, e o conteúdo muda se a pessoa gerar de novo."""
     capitulo = _buscar_capitulo(sessao, capitulo_id)
-    modelo, voz = parametros_da_narracao(obter_ou_criar(sessao))
+    modelo, voz = parametros_da_narracao(configuracao_do_livro(sessao, capitulo.livro))  # item 7.5g: o que este livro trocou vale
     audio = audio_pronto(sessao, capitulo.id, modelo, voz)
     if audio is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Este capítulo ainda não tem narração gerada com o modelo e a voz de agora.")
@@ -212,7 +213,7 @@ def listar_narracoes(capitulo_id: int, sessao: Session = Depends(obter_sessao)) 
     """Todas as narrações `PRONTO` do capítulo, de **qualquer** modelo e voz, da mais nova para a mais antiga (AU3). `de_agora` marca a feita
     com o modelo e a voz escolhidos agora. As que estão `GERANDO` ou `FALHOU` não aparecem aqui (a situação delas está em `.../audio/estado`)."""
     capitulo = _buscar_capitulo(sessao, capitulo_id)
-    modelo, voz = parametros_da_narracao(obter_ou_criar(sessao))
+    modelo, voz = parametros_da_narracao(configuracao_do_livro(sessao, capitulo.livro))  # item 7.5g: o que este livro trocou vale
     audios = sessao.scalars(
         select(AudioDeCapitulo)
         .where(AudioDeCapitulo.capitulo_id == capitulo.id, AudioDeCapitulo.situacao == SituacaoDoAudio.PRONTO)

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, func, true
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, func, true
 from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
 from imagineer.banco.base import Base
@@ -98,6 +98,10 @@ class Livro(Base):
     """
 
     perfil_renderizacao_padrao: Mapped["PerfilRenderizacao | None"] = relationship()  # noqa: F821
+
+    modelos: Mapped[dict | None] = mapped_column(JSON)
+    """As trocas de modelo de IA que este livro faz sobre a configuração global (item 7.5g, MV1), com as mesmas chaves dela
+    (`modelo_extracao`, `modelo_imagem`, `modelo_narracao`, `narracao_voz`...). Nulo = nenhuma troca: vale tudo o que é global."""
 
     capitulos: Mapped[list["Capitulo"]] = relationship(  # noqa: F821
         back_populates="livro",
