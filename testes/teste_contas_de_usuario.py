@@ -144,7 +144,11 @@ def teste_ct4_modo_tailscale_sem_dono_nao_sobe(monkeypatch) -> None:
 
 
 def teste_ct12_eu_devolve_o_usuario_do_pedido(cliente: TestClient, sessao_com_tabelas: Session) -> None:
-    assert cliente.get("/eu").json() == {"id": DONO_ID, "login": None, "nome": "Dono", "dono": True, "usa_chaves_do_servidor": True}
+    # Os três últimos campos são do item 7.5g (PF1): quantos livros, quanto espaço e a cota (o dono não tem cota).
+    assert cliente.get("/eu").json() == {
+        "id": DONO_ID, "login": None, "nome": "Dono", "dono": True, "usa_chaves_do_servidor": True,
+        "livros": 0, "uso_em_bytes": 0, "cota_efetiva_em_gb": None,
+    }
 
     maria = _pessoa(sessao_com_tabelas, "maria@exemplo.com")
     definir_usuario(sessao_com_tabelas, maria.id)
