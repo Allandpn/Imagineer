@@ -56,6 +56,15 @@ GET {{baseUrl}}/capitulos/{{capituloId}}/audio/estado
 ### O MP3 (aceita Range: bytes=0-1023 para avançar e voltar). 404 se não há PRONTO com o modelo e a voz de agora
 GET {{baseUrl}}/capitulos/{{capituloId}}/audio
 
+### As narrações PRONTAS guardadas do capítulo, de qualquer modelo e voz, da mais nova para a mais antiga (item 7.5g, AU3). "de_agora": true marca a feita com o modelo e a voz escolhidos agora. Não gasta nada
+GET {{baseUrl}}/capitulos/{{capituloId}}/audios
+
+### O MP3 de UMA narração guardada, pelo id (aceita Range). 404 se não existe, não está pronta ou o arquivo sumiu (AU3)
+GET {{baseUrl}}/audios/1/arquivo
+
+### Apaga UMA narração guardada e o arquivo dela (204). 409 se ainda está sendo gerada (AU3)
+DELETE {{baseUrl}}/audios/1
+
 ### Apaga todas as narrações do capítulo (de qualquer modelo ou voz) e os arquivos
 DELETE {{baseUrl}}/capitulos/{{capituloId}}/audio
 

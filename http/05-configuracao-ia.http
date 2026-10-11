@@ -129,6 +129,18 @@ Content-Type: application/json
   "narracao_instrucoes": "voz grave e calma, com suspense nas cenas de tensão"
 }
 
+### Testar a voz (item 7.5g, AU4): a frase que será falada e o custo estimado, ANTES de gerar. Não gasta nada. Sem corpo, vale o modelo e a voz da configuração; ?modelo= e ?voz= testam outros sem mudá-la
+GET {{baseUrl}}/configuracao/narracao/teste
+
+### Fala a frase curta e devolve o MP3 (não guarda nada em disco). Gasta uma fração de centavo (nada num modelo gratuito); o custo estimado vem no cabeçalho X-Custo-Estimado
+POST {{baseUrl}}/configuracao/narracao/teste
+Content-Type: application/json
+
+{
+  "modelo": "microsoft/mai-voice-2.1-flash",
+  "voz": "pt-BR-Luana:MAI-Voice-2.1-Flash"
+}
+
 ### Chave de API própria, por chamada (item 4.3)
 # O servidor NÃO guarda chave no banco. A do servidor vem só de
 # CHAVE_API_OPENROUTER / IMAGINEER_KEY_OPEN_ROUTER no ambiente. Quem quiser usar

@@ -60,3 +60,37 @@ class EstadoDaNarracao(BaseModel):
     custo: Decimal | None = Field(default=None, description="O custo **estimado** em dólares dos trechos já feitos.")
     erro: str | None = Field(default=None, description="Por que falhou, em português (só se `FALHOU`).")
     criado_em: datetime | None = None
+
+
+class AudioSalvo(BaseModel):
+    """Uma narração pronta que está guardada (item 7.5g, AU3): uma por (capítulo, modelo, voz)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    modelo: str
+    voz: str | None = Field(default=None, description="A voz usada; nula = a padrão do modelo.")
+    caracteres: int | None = None
+    tamanho_em_bytes: int | None = None
+    custo: Decimal | None = Field(default=None, description="O custo **estimado** em dólares.")
+    criado_em: datetime | None = None
+    de_agora: bool = Field(description="`true`: é a feita com o modelo e a voz escolhidos agora em Configurações → Narração.")
+
+
+class EstimativaDoTesteDeVoz(BaseModel):
+    """O que o teste de voz vai falar e quanto custa, antes de gerar (item 7.5g, AU4)."""
+
+    frase: str
+    caracteres: int
+    custo_estimado: Decimal | None = Field(
+        description="Dólares; zero = modelo gratuito; nulo = o modelo cobra por token ou por segundo, ou o catálogo não respondeu."
+    )
+    modelo: str
+    voz: str | None = None
+
+
+class PedidoDeTesteDeVoz(BaseModel):
+    """O corpo de `POST /configuracao/narracao/teste`: o modelo e a voz a testar; vazio, valem os da configuração."""
+
+    modelo: str | None = None
+    voz: str | None = None
