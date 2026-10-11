@@ -83,17 +83,29 @@ CATALOGO = {
 
 
 def _openrouter(
-    audio: httpx.Response | None = None, avisos: list | None = None, pedidos: list | None = None, catalogo: httpx.Response | None = None, chave: str | None = "sk-teste"
+    audio: httpx.Response | list[httpx.Response] | None = None,
+    avisos: list | None = None,
+    pedidos: list | None = None,
+    catalogo: httpx.Response | None = None,
+    chave: str | None = "sk-teste",
+    esperas: list | None = None,
 ) -> ProvedorOpenRouter:
+    """``audio`` pode ser uma lista: cada pedido recebe a resposta seguinte (a última se repete). ``esperas`` junta o tempo que o provedor "dormiria"."""
+    fila = list(audio) if isinstance(audio, list) else None
+
     def responder(pedido: httpx.Request) -> httpx.Response:
         if pedido.url.path.endswith("/models"):
             return catalogo or httpx.Response(200, json=CATALOGO)
         if pedidos is not None:
             pedidos.append((pedido.url.path, dict(pedido.headers), json.loads(pedido.content)))
+        if fila is not None:
+            return fila.pop(0) if len(fila) > 1 else fila[0]
         return audio or httpx.Response(200, content=b"MP3", headers={"content-type": "audio/mpeg", "x-generation-id": "gen-voz-1"})
 
     cliente = httpx.Client(base_url=ENDERECO_BASE, transport=httpx.MockTransport(responder))
-    return ProvedorOpenRouter(chave_api=chave, cliente=cliente, ao_usar=avisos.append if avisos is not None else None)
+    return ProvedorOpenRouter(
+        chave_api=chave, cliente=cliente, ao_usar=avisos.append if avisos is not None else None, dormir=esperas.append if esperas is not None else (lambda segundos: None)
+    )
 
 
 def teste_o_catalogo_de_voz_traz_vozes_e_o_preco_por_caractere_so_quando_da_para_estimar() -> None:
@@ -161,6 +173,43 @@ def teste_falhas_viram_erros_em_portugues() -> None:
         _openrouter(audio=httpx.Response(200, content=b"")).narrar("x", MODELO, VOZ)
     with pytest.raises(ErroDoProvedorIA, match="não devolveu um áudio"):
         _openrouter(audio=httpx.Response(200, json={"erro": "x"})).narrar("x", MODELO, VOZ)
+
+
+_MP3 = httpx.Response(200, content=b"MP3", headers={"content-type": "audio/mpeg"})
+_PROVEDOR_CAIU = httpx.Response(400, json={"error": {"message": "Provider returned 400", "code": 400}})
+
+
+def teste_o_400_provider_returned_e_repetido_e_o_trecho_acaba_saindo() -> None:
+    pedidos: list = []
+    esperas: list = []
+
+    audio = _openrouter(audio=[_PROVEDOR_CAIU, _PROVEDOR_CAIU, _MP3], pedidos=pedidos, esperas=esperas).narrar("Era uma vez.", MODELO, VOZ)
+
+    assert audio.conteudo == b"MP3"
+    assert len(pedidos) == 3 and esperas == [3.0, 8.0]
+
+
+def teste_falha_de_servidor_tambem_e_repetida() -> None:
+    esperas: list = []
+    audio = _openrouter(audio=[httpx.Response(503, text="fora"), httpx.Response(429, text="devagar"), _MP3], esperas=esperas).narrar("x", MODELO, VOZ)
+    assert audio.conteudo == b"MP3" and len(esperas) == 2
+
+
+def teste_provider_returned_que_nunca_passa_desiste_depois_de_quatro_tentativas() -> None:
+    pedidos: list = []
+    esperas: list = []
+
+    with pytest.raises(ErroDoProvedorIA, match="Provider returned 400"):
+        _openrouter(audio=_PROVEDOR_CAIU, pedidos=pedidos, esperas=esperas).narrar("x", MODELO, VOZ)
+
+    assert len(pedidos) == 4 and esperas == [3.0, 8.0, 15.0]
+
+
+def teste_400_do_pedido_nao_e_repetido() -> None:
+    pedidos: list = []
+    with pytest.raises(ErroDoProvedorIA, match="voz"):
+        _openrouter(audio=httpx.Response(400, json={"error": {"message": "voice is required"}}), pedidos=pedidos).narrar("x", MODELO, None)
+    assert len(pedidos) == 1  # voz errada não melhora tentando de novo
 
 
 def teste_erro_de_voz_do_modelo_aponta_para_a_tela_de_narracao() -> None:

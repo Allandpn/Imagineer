@@ -1725,12 +1725,22 @@ class ProvedorOpenRouter(ProvedorIA):
         """``POST /audio/speech``: devolve os bytes do áudio e os cabeçalhos, traduzindo qualquer falha em ``ErroDoProvedorIA``.
 
         A resposta é o **áudio cru**, não JSON; já os erros (status 400 ou mais) vêm em JSON."""
-        try:
-            resposta = self._cliente.post("/audio/speech", json=corpo, headers={"Authorization": f"Bearer {self._chave_api}"})
-        except httpx.TimeoutException as erro:
-            raise ErroDoProvedorIA("O OpenRouter não respondeu no tempo esperado ao narrar um trecho.") from erro
-        except httpx.HTTPError as erro:
-            raise ErroDoProvedorIA(f"Não foi possível falar com o OpenRouter: {erro}") from erro
+        resposta = None
+        for numero in range(len(ESPERAS_DA_NARRACAO) + 1):
+            esperas_restantes = numero < len(ESPERAS_DA_NARRACAO)
+            try:
+                resposta = self._cliente.post("/audio/speech", json=corpo, headers={"Authorization": f"Bearer {self._chave_api}"})
+            except httpx.TimeoutException as erro:
+                raise ErroDoProvedorIA("O OpenRouter não respondeu no tempo esperado ao narrar um trecho.") from erro
+            except httpx.HTTPError as erro:
+                if esperas_restantes and isinstance(erro, ERROS_DE_REDE_QUE_SE_REPETEM):
+                    self._dormir(ESPERAS_DA_NARRACAO[numero])
+                    continue
+                raise ErroDoProvedorIA(f"Não foi possível falar com o OpenRouter: {erro}") from erro
+            if esperas_restantes and _falha_passageira_da_voz(resposta):
+                self._dormir(ESPERAS_DA_NARRACAO[numero])
+                continue
+            break
 
         if resposta.status_code == 401:
             raise ChaveDeApiAusente("O OpenRouter recusou a chave de API. Verifique se ela está certa.")
@@ -1807,6 +1817,20 @@ ERROS_DE_REDE_QUE_SE_REPETEM = (httpx.RemoteProtocolError, httpx.ReadError, http
 
 STATUS_QUE_SE_REPETEM = frozenset({429, 500, 502, 503, 504})
 """Falhas do lado do provedor que costumam passar sozinhas. 401 e 402 (chave e saldo) e os outros 4xx nunca se repetem (LM5)."""
+
+ESPERAS_DA_NARRACAO = (3.0, 8.0, 15.0)
+"""Quanto esperar antes de cada nova tentativa de um trecho de voz (até 4 tentativas no total). Os provedores de voz por trás do OpenRouter
+(o Orpheus, por exemplo) falham de vez em quando com um 400 "Provider returned 400" que passa sozinho em segundos; sem repetir, um trecho
+que cai derrubava o capítulo inteiro, com os trechos já pagos."""
+
+
+def _falha_passageira_da_voz(resposta: httpx.Response) -> bool:
+    """Vale repetir o trecho? Sim nas falhas do lado do provedor (429, 5xx) e no 400 "Provider returned" (erro do provedor por trás, não do
+    pedido). Os outros 400 (voz que não existe, formato inválido...) são do pedido e repetir não adianta."""
+    if resposta.status_code in STATUS_QUE_SE_REPETEM:
+        return True
+    return resposta.status_code == 400 and "provider returned" in resposta.text.lower()
+
 
 FATOR_DO_LIMITE_NA_REPETICAO = 1.5
 """Resposta cortada por ``finish_reason = length``: a repetição ganha 50% a mais de espaço (LM6)."""
