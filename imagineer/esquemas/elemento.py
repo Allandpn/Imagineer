@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from imagineer.esquemas.cenario import CenarioDaCena
 from imagineer.modelos import TipoElemento
 
 
@@ -48,6 +49,10 @@ class EstadoResumo(BaseModel):
             "A linha do tempo do elemento no capítulo, em ordem do texto (item 4.9, FL3). Nulo = estado antigo ou digitado à mão: "
             "vale só a `descricao`, como sempre. Editar a `descricao` à mão apaga os momentos."
         ),
+    )
+    cenario: CenarioDaCena | None = Field(
+        default=None,
+        description="O cenário e a fotografia do elemento neste capítulo (item 4.11, AF5), só para objeto, lugar, edificação, criatura e veículo. Nulo = sem cenário lido.",
     )
 
 

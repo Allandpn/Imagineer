@@ -111,6 +111,7 @@ EXEMPLOS = {
         "momentos": [
             {"ancora": "Ned ergueu", "roupa": "capa escura", "estado_fisico": None, "expressao_e_postura": "queixo erguido", "humor": "tenso", "lugar": "pátio"}
         ],
+        "cenario": None,
     },
     "dossie": {
         "momento_incerto": False,
@@ -121,6 +122,15 @@ EXEMPLOS = {
         "onde": "pátio de pedra",
         "luz_e_clima": "manhã fria",
         "acao": "Ned ergue a espada",
+        "cenario": {
+            "ambiente": {"texto": "pátio de pedra", "origem": "texto"},
+            "clima": {"texto": None, "origem": "texto"},
+            "iluminacao": {"texto": "luz fria da manhã", "origem": "anterior"},
+            "hora_e_estacao": {"texto": "manhã de inverno", "origem": "texto"},
+            "atmosfera": {"texto": "tons de cinza e azul", "origem": "texto"},
+            "enquadramento": {"texto": "plano médio, ângulo na altura dos olhos", "origem": "sugerido"},
+            "lente": {"texto": "50 mm, fundo levemente desfocado", "origem": "sugerido"},
+        },
         "faltou": ["a cor do portão"],
     },
 }

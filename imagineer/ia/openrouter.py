@@ -20,6 +20,14 @@ from decimal import Decimal, InvalidOperation
 import httpx
 
 from imagineer.ia import esquemas_json
+from imagineer.ia.cenario import (
+    TIPOS_QUE_LEEM_CENARIO,
+    bloco_do_cenario,
+    linhas_do_cenario,
+    luz_e_clima_do_cenario,
+    normalizar_cenario,
+    onde_do_cenario,
+)
 from imagineer.ia.catalogo_de_texto import (
     Capacidades,
     capacidades_de,
@@ -221,7 +229,7 @@ baixo, ombros curvados").
 específico do capítulo, como se fosse um fotograma parado — não "ele entra, \
 pega o livro e sai", mas o momento em que a mão toca a página.
 
-Você devolve QUATRO partes, porque cada uma tem um papel diferente na imagem:
+Você devolve CINCO partes (a quinta só para alguns elementos), porque cada uma tem um papel diferente na imagem:
 
 1. "aparencia_fixa": os traços que NÃO mudam ao longo do livro — idade aparente, porte, \
 pele, rosto, cor, comprimento e tipo do cabelo, marcas permanentes. Pode vir de QUALQUER \
@@ -270,6 +278,10 @@ começa (o autor abre a cena e vai preenchendo): eles entram no momento a que pe
 momento COMEÇA.
 - Cada campo sem sustentação no texto é null. Nada de inventar para completar.
 
+5. "cenario": SÓ para um elemento que é um OBJETO, um LUGAR (AMBIENTE), uma EDIFICACAO, uma CRIATURA ou um VEICULO; para uma PESSOA (PERSONAGEM) ou um GRUPO devolva null. É o cenário e a fotografia em que ESSE elemento aparece neste capítulo, com 7 campos, cada um no formato {"texto": ..., "origem": ...}: "ambiente" (o lugar e o que há em volta; para um elemento que é o próprio lugar, o aspecto geral dele), "clima" (o tempo e o que há no ar), "iluminacao" (a fonte e a qualidade da luz), "hora_e_estacao", "atmosfera" (a paleta dominante e a sensação: névoa, poeira, fumaça), "enquadramento" (plano e ângulo) e "lente" (a objetiva e a profundidade de campo).
+  * Os CINCO primeiros vêm do LIVRO. O que o texto diz leva "origem": "texto". O que o texto NÃO diz você HERDA do anterior: primeiro o "CENÁRIO DESTE ELEMENTO NO ESTADO ANTERIOR" e o "FIM DO CAPÍTULO ANTERIOR", quando vierem; herdado leva "origem": "anterior". Se nem isso diz, "texto": null: NUNCA invente um fato do livro. NÃO herde quando o texto mostra uma MUDANÇA (outro lugar, outro dia, a noite que caiu).
+  * "enquadramento" e "lente" NÃO existem no livro: SUGIRA o que mostra melhor o elemento (um objeto pequeno pede plano fechado e fundo desfocado; um lugar ou uma edificação, plano aberto), com "origem": "sugerido".
+
 Regras de fidelidade ao texto (mais importantes que o estilo de escrita acima):
 - Descreva só o que o texto diz ou implica com segurança. Não invente detalhes \
 que o texto não sustenta, mesmo que pareçam plausíveis para o gênero da obra.
@@ -307,8 +319,18 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
       "humor": "o humor que se vê, ou null",
       "lugar": "onde está nesse momento, ou null"
     }
-  ]
+  ],
+  "cenario": {
+    "ambiente": {"texto": "o lugar e o que há em volta, ou null", "origem": "texto"},
+    "clima": {"texto": "o tempo e o que há no ar, ou null", "origem": "texto"},
+    "iluminacao": {"texto": "a fonte e a qualidade da luz, ou null", "origem": "anterior"},
+    "hora_e_estacao": {"texto": "a hora do dia e a estação, ou null", "origem": "texto"},
+    "atmosfera": {"texto": "paleta e atmosfera, ou null", "origem": "texto"},
+    "enquadramento": {"texto": "plano e ângulo sugeridos", "origem": "sugerido"},
+    "lente": {"texto": "objetiva e profundidade de campo sugeridas", "origem": "sugerido"}
+  }
 }
+("cenario" é null para uma pessoa ou um grupo.)
 
 Escreva em português.
 """
@@ -370,6 +392,10 @@ o item pertence a este momento). Só entra quem ou o que está PRESENTE: não en
 em outro lugar. Objetos: só os de peso visual na cena (os que a ação usa ou o autor destaca); o cenário comum vai em "onde".
 - "onde": o lugar, com os detalhes físicos reunidos de qualquer ponto do capítulo; null se o texto não diz.
 - "luz_e_clima": a luz, o clima e o que há no ar que o texto sustenta; null se não diz.
+- "cenario": o cenário e a fotografia da cena, com 7 campos, cada um no formato {"texto": ..., "origem": ...}: "ambiente" (o lugar e o que há em volta), "clima" (o tempo e o que há no ar), "iluminacao" (a fonte e a qualidade da luz), "hora_e_estacao" (amanhecer, noite, inverno...), "atmosfera" (a paleta dominante e a sensação: névoa, poeira, fumaça), "enquadramento" (plano e ângulo) e "lente" (a objetiva e a profundidade de campo).
+  * Os CINCO primeiros vêm do LIVRO. O que o texto diz leva "origem": "texto". O que o texto NÃO diz você HERDA do anterior: primeiro o que o próprio capítulo disse por último ANTES deste momento; depois, o "FIM DO CAPÍTULO ANTERIOR", quando vier. O herdado leva "origem": "anterior". Se nem o anterior diz, "texto": null (e registre em "faltou"): NUNCA invente um fato do livro. NÃO herde quando o texto mostra uma MUDANÇA (outro lugar, outro dia, a noite que caiu): a mudança vale.
+  * "enquadramento" e "lente" NÃO existem no livro: SUGIRA, a partir da ação e do tipo de cena (uma cena íntima pede plano fechado; uma paisagem ou uma multidão, plano aberto), com "origem": "sugerido".
+  * "onde" e "luz_e_clima" continuam sendo preenchidos (o primeiro repete o ambiente; o segundo junta clima, iluminação e hora).
 - "acao": o que acontece nesse momento, UM instante parado (um gesto concreto, não uma sequência); null se não é claro.
 - "faltou": o que o texto NÃO deixa claro e faria falta para desenhar a cena (em vez de supor). Lista vazia se nada.
 
@@ -399,6 +425,15 @@ Responda APENAS com um objeto JSON, sem texto antes ou depois, neste formato:
   "onde": "o lugar, ou null",
   "luz_e_clima": "a luz e o clima, ou null",
   "acao": "o que acontece, num instante parado, ou null",
+  "cenario": {
+    "ambiente": {"texto": "o lugar e o que há em volta, ou null", "origem": "texto"},
+    "clima": {"texto": "o tempo e o que há no ar, ou null", "origem": "texto"},
+    "iluminacao": {"texto": "a fonte e a qualidade da luz, ou null", "origem": "texto"},
+    "hora_e_estacao": {"texto": "a hora do dia e a estação, ou null", "origem": "anterior"},
+    "atmosfera": {"texto": "paleta e atmosfera, ou null", "origem": "texto"},
+    "enquadramento": {"texto": "plano e ângulo sugeridos", "origem": "sugerido"},
+    "lente": {"texto": "objetiva e profundidade de campo sugeridas", "origem": "sugerido"}
+  },
   "faltou": ["o que o texto não deixa claro"]
 }
 """
@@ -430,6 +465,12 @@ Escreva só o sujeito: quem é, a aparência fixa, a roupa e o penteado. Só o c
 outra coisa (outra pose, outro fundo), e então vale o que ele pediu. **Quando VIER um COMENTÁRIO DO USUÁRIO, o \
 sistema NÃO acrescenta esse bloco** (ele poderia contradizer o que a pessoa pediu): aí você escreve o \
 enquadramento, o fundo liso cinza-claro e a luz suave e uniforme, a menos que o comentário peça outra coisa.
+
+**Exceção: o retrato de um objeto, um lugar, uma edificação, uma criatura ou um veículo que vier com "CENÁRIO E FOTOGRAFIA DESTE \
+ELEMENTO" NÃO é neutro.** Nesse caso nada do que está dito acima sobre fundo liso, luz uniforme e "pule" vale: o sistema NÃO \
+acrescenta bloco nenhum, e você escreve o enquadramento e a lente indicados (bloco 1), o elemento com a aparência dele, o \
+ambiente e o que o cerca (blocos 4 e 5) e a luz, o clima, a hora e a atmosfera do cenário (bloco 6). Um lugar ou uma edificação \
+continuam sem pessoas, a menos que o cenário ponha alguém ali; uma criatura ou um objeto aparecem no seu cenário, não isolados.
 
 Se vierem **ELEMENTOS VINCULADOS AO SUJEITO**, o retrato continua sendo do **sujeito \
 principal** (o primeiro da lista de elementos), mas os vinculados **aparecem junto dele, como \
@@ -532,9 +573,15 @@ acrescentado à cena contribui com a **aparência** dele, e não muda o que a ce
 state:", "expression and posture:", "visible mood:"): é o momento do capítulo em que a cena acontece. Use só a roupa \
 e o penteado e o estado físico (ferimentos, sujeira, cansaço); a expressão, a postura e o humor da cena vêm \
 da descrição da cena, como sempre.
+- **Cenário e fotografia.** Quando o pedido traz "CENÁRIO E FOTOGRAFIA", escreva o ambiente, o clima, a hora e a estação e a atmosfera no \
+bloco do lugar; a fonte e a qualidade da luz no bloco da luz; e o enquadramento e a lente no bloco da câmera (a abertura do prompt). \
+O que vem marcado [herdado do anterior] ou [sugerido] entra normalmente; a descrição da cena, o trecho e o comentário do usuário valem \
+mais se divergirem. Sem esse bloco, escolha como sempre.
 - **O lugar vem da cena.** Numa cena, o cenário é o da descrição da cena; o "Onde está:" dos \
-elementos só preenche o que a cena não diz, e nunca a contradiz. Num retrato não há lugar: o fundo é \
-liso e neutro, e vem do sistema.
+elementos só preenche o que a cena não diz, e nunca a contradiz. Num retrato de pessoa ou de grupo não há lugar: o fundo é \
+liso e neutro, e vem do sistema. **Exceção:** se junto do elemento do retrato vier "CENÁRIO E FOTOGRAFIA \
+DESTE ELEMENTO" (um objeto, um lugar, uma edificação, uma criatura ou um veículo), o retrato NÃO é neutro: mostre o elemento NESSE \
+cenário (ambiente, clima, luz, hora, atmosfera), com o enquadramento e a lente indicados, e sem pessoas que o texto não ponha ali.
 - Incorpore o estilo, a paleta e a **convenção de iluminação** do perfil indicado (contraste, \
 dureza da sombra, volume); a **fonte** da luz é a da cena.
 - **Gênero de cada pessoa presente, sempre que a identidade ou a aparência \
@@ -1152,8 +1199,10 @@ class ProvedorOpenRouter(ProvedorIA):
         modelo: str,
         aparencia_anterior: str | None = None,
         id_do_capitulo: int | None = None,
+        cenario_anterior: dict | None = None,
+        fim_do_capitulo_anterior: str | None = None,
     ) -> EstadoSugerido:
-        """Pede ao modelo a aparência de UM elemento — fase 2 (item 4.4)."""
+        """Pede ao modelo a aparência de UM elemento — fase 2 (item 4.4). Para um elemento que não é pessoa, lê também o cenário (item 4.11, AF5)."""
         pedido = PedidoComCapitulo(
             capitulo=texto_capitulo,
             variavel=(
@@ -1163,6 +1212,7 @@ class ProvedorOpenRouter(ProvedorIA):
                 f"{aparencia_anterior or '(nenhuma ainda)'}\n"
                 f"ESTADO JÁ REGISTRADO (pode estar desatualizado): "
                 f"{estado_atual or '(nenhum ainda)'}"
+                + _herancas_do_cenario(tipo, cenario_anterior, fim_do_capitulo_anterior)
             ),
         )
 
@@ -1170,7 +1220,12 @@ class ProvedorOpenRouter(ProvedorIA):
             modelo, _INSTRUCAO_DE_ESTADO, pedido, operacao="estado", temperatura=TEMPERATURA_DE_FIDELIDADE,
             sessao_de_cache=_sessao_de_cache(id_do_capitulo, texto_capitulo),
         )
-        return EstadoSugerido(descricao=_interpretar_estado(resposta), modelo=modelo, momentos=_interpretar_momentos(resposta))
+        return EstadoSugerido(
+            descricao=_interpretar_estado(resposta),
+            modelo=modelo,
+            momentos=_interpretar_momentos(resposta),
+            cenario=_interpretar_cenario_do_elemento(resposta, tipo),
+        )
 
     def sugerir_identidade(
         self,
@@ -1208,8 +1263,9 @@ class ProvedorOpenRouter(ProvedorIA):
         modelo: str,
         trecho: str | None = None,
         id_do_capitulo: int | None = None,
+        fim_do_capitulo_anterior: str | None = None,
     ) -> FrameFundamentado:
-        """Pede ao modelo para conferir a cena contra o capítulo (item 4.4)."""
+        """Pede ao modelo para conferir a cena contra o capítulo (item 4.4). Com ``fim_do_capitulo_anterior`` (item 4.11, AF3), a IA pode herdar dele o cenário."""
         lista = "\n".join(f"- {p}" for p in participantes) or "(nenhum)"
         variavel = (
             f"O QUE O USUÁRIO ESCREVEU SOBRE A CENA:\n"
@@ -1222,6 +1278,12 @@ class ProvedorOpenRouter(ProvedorIA):
         )
         if trecho:
             variavel += f"\n\nTRECHO DO LIVRO EM QUE A CENA ACONTECE (literal, as palavras do autor):\n{trecho}"
+        if fim_do_capitulo_anterior:
+            # Depois do capítulo (que é o prefixo em cache) e do resto do que varia: herdar o cenário (item 4.11, AF3).
+            variavel += (
+                "\n\nFIM DO CAPÍTULO ANTERIOR (só para HERDAR ambiente, clima, luz e hora quando o capítulo atual não os diz; "
+                f"não use para mais nada):\n{fim_do_capitulo_anterior}"
+            )
         pedido = PedidoComCapitulo(capitulo=texto_capitulo, variavel=variavel)
 
         resposta = self._conversar(
@@ -2292,6 +2354,26 @@ def _interpretar_estado(resposta: str) -> str:
     return "\n".join(linhas)
 
 
+def _herancas_do_cenario(tipo: TipoElemento, cenario_anterior: dict | None, fim_do_capitulo_anterior: str | None) -> str:
+    """O que a leitura do estado recebe para herdar o cenário (item 4.11, AF5): só para quem lê cenário; vazio para pessoa e grupo."""
+    if tipo.name not in TIPOS_QUE_LEEM_CENARIO:
+        return ""
+    texto = ""
+    if linhas := linhas_do_cenario(cenario_anterior):
+        texto += "\nCENÁRIO DESTE ELEMENTO NO ESTADO ANTERIOR (só para HERDAR o que o capítulo atual não diz):\n" + "\n".join(linhas)
+    if fim_do_capitulo_anterior:
+        texto += f"\nFIM DO CAPÍTULO ANTERIOR (só para HERDAR ambiente, clima, luz e hora; não use para mais nada):\n{fim_do_capitulo_anterior}"
+    return texto
+
+
+def _interpretar_cenario_do_elemento(resposta: str, tipo: TipoElemento) -> dict | None:
+    """O ``cenario`` da leitura de um elemento (item 4.11, AF5); ``None`` para pessoa e grupo (mesmo que o modelo o devolva) e quando não vem."""
+    if tipo.name not in TIPOS_QUE_LEEM_CENARIO:
+        return None
+    bruto = _extrair_json(resposta)
+    return normalizar_cenario(bruto.get("cenario")) if isinstance(bruto, dict) else None
+
+
 def _interpretar_momentos(resposta: str) -> list[MomentoSugerido] | None:
     """Lê a lista ``momentos`` da leitura de um elemento (item 4.9, FL3); ``None`` se a resposta não a traz (formato antigo: um instante só).
 
@@ -2371,6 +2453,8 @@ def texto_dos_presentes(dossie: dict) -> str:
         f"Pessoas e criaturas no quadro: {figuras}",
     ]
     partes += [f"{rotulo}: {dossie[campo]}" for campo, rotulo in ROTULOS_DO_DOSSIE if dossie.get(campo)]
+    if bloco := bloco_do_cenario(dossie.get("cenario")):
+        partes.append(bloco)
     return "\n".join(partes)
 
 
@@ -2420,6 +2504,12 @@ def _interpretar_dossie(resposta: str) -> tuple[str, dict | None]:
         "acao": _texto_ou_nulo(bruto.get("acao")),
         "faltou": faltou,
     }
+    cenario = normalizar_cenario(bruto.get("cenario"))
+    if cenario is not None:
+        # AF4: o ``onde`` e o ``luz_e_clima`` das telas e dos prompts antigos continuam, completados pelo cenário.
+        dossie["cenario"] = cenario
+        dossie["onde"] = dossie["onde"] or onde_do_cenario(cenario)
+        dossie["luz_e_clima"] = dossie["luz_e_clima"] or luz_e_clima_do_cenario(cenario)
     if not presentes and not (dossie["onde"] or dossie["luz_e_clima"] or dossie["acao"]):
         raise ErroDoProvedorIA("O modelo devolveu um dossiê sem nenhum presente, lugar, luz nem ação.")
     return contexto_do_dossie(dossie), dossie

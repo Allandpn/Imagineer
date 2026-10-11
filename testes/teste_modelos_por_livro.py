@@ -160,10 +160,10 @@ def teste_sem_troca_a_narracao_continua_usando_a_global(cliente: TestClient, ses
 # --------------------------------------------------------------------------- #
 
 
-def teste_a_migracao_vem_depois_da_dos_pins_e_e_a_unica_cabeca() -> None:
+def teste_a_migracao_vem_depois_da_dos_pins() -> None:
     configuracao = Config(str(RAIZ / "alembic.ini"))
     configuracao.set_main_option("script_location", str(RAIZ / "migracoes"))
     diretorio = ScriptDirectory.from_config(configuracao)
 
     assert diretorio.get_revision("e2f3a4b5c6d8").down_revision == "d1e2f3a4b5c7"
-    assert diretorio.get_heads() == ["e2f3a4b5c6d8"]
+    assert "e2f3a4b5c6d8" in {r.revision for r in diretorio.walk_revisions()}  # a cabeça mudou depois (depois dela vieram outras)

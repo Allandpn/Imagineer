@@ -130,7 +130,7 @@ def teste_fl1_a_instrucao_nao_manda_mais_o_retrato_acontecer_no_lugar_do_element
     assert "ele acontece no lugar onde o elemento está" not in instrucao
     assert "o fundo seja o do livro, nunca um fundo genérico ou neutro" not in instrucao
     assert 'Num retrato, o "Onde está:" é o cenário' not in instrucao
-    assert "Num retrato não há lugar: o fundo é liso e neutro" in instrucao
+    assert "Num retrato de pessoa ou de grupo não há lugar: o fundo é liso e neutro" in instrucao
 
 
 def teste_fl1_os_blocos_de_cenario_enquadramento_e_luz_mandam_pular_no_retrato() -> None:
@@ -186,8 +186,9 @@ def teste_fl1_o_retrato_guardado_termina_com_o_bloco_neutro_do_tipo_do_sujeito(c
     assert texto == f"a woman in a dark cloak {BLOCO_DO_RETRATO_NEUTRO[TipoElemento.PERSONAGEM]}"
 
 
-@pytest.mark.parametrize("tipo", ["CRIATURA", "OBJETO", "AMBIENTE"])
-def teste_fl1_cada_tipo_de_sujeito_recebe_o_seu_bloco(cliente: TestClient, usar_provedor_falso, tipo: str) -> None:
+@pytest.mark.parametrize("tipo", ["GRUPO"])
+def teste_fl1_grupo_continua_recebendo_o_seu_bloco_neutro(cliente: TestClient, usar_provedor_falso, tipo: str) -> None:
+    # Item 4.11 (AF6): objeto, lugar, edificação, criatura e veículo deixaram de ter o retrato neutro; pessoa e grupo continuam.
     _, frame = _retrato_de(cliente, usar_provedor_falso, tipo)
 
     texto = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()["texto"]
@@ -242,7 +243,7 @@ def teste_fl1_o_bloco_vai_antes_do_bloco_tecnico_da_categoria_do_perfil(cliente:
 
 
 def teste_fl1_com_vinculados_o_bloco_deixa_de_dizer_figura_unica(cliente: TestClient, usar_provedor_falso) -> None:
-    _, frame = _retrato_de(cliente, usar_provedor_falso, "CRIATURA", com_vinculado=True)
+    _, frame = _retrato_de(cliente, usar_provedor_falso, "GRUPO", com_vinculado=True)
 
     texto = cliente.post(f"/frames/{frame['id']}/prompts", json={}).json()["texto"]
 
@@ -251,7 +252,7 @@ def teste_fl1_com_vinculados_o_bloco_deixa_de_dizer_figura_unica(cliente: TestCl
 
 
 def teste_fl1_os_vinculados_tambem_ficam_sem_o_onde_esta(cliente: TestClient, usar_provedor_falso) -> None:
-    provedor, frame = _retrato_de(cliente, usar_provedor_falso, "CRIATURA", com_vinculado=True)
+    provedor, frame = _retrato_de(cliente, usar_provedor_falso, "GRUPO", com_vinculado=True)
 
     cliente.post(f"/frames/{frame['id']}/prompts", json={})
 

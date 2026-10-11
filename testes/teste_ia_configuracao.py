@@ -668,7 +668,7 @@ def teste_a_instrucao_do_prompt_nao_usa_o_ambiente_no_retrato_mas_usa_na_cena() 
     assert '"Aparência fixa:" (traços que não mudam: sempre entram no prompt' in instrucao
     assert 'num retrato, os do "Onde está:" do elemento' not in instrucao
     assert "nunca um fundo genérico ou neutro" not in instrucao
-    assert "Num retrato não há lugar: o fundo é liso e neutro" in instrucao
+    assert "Num retrato de pessoa ou de grupo não há lugar: o fundo é liso e neutro" in instrucao
     assert 'Numa cena, o cenário é o da descrição da cena' in instrucao
 
 

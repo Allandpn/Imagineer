@@ -11,6 +11,7 @@ import copy
 import hashlib
 import json
 
+from imagineer.ia.cenario import aplicar_edicao, luz_e_clima_do_cenario, onde_do_cenario
 from imagineer.ia.openrouter import contexto_do_dossie
 from imagineer.modelos import Frame
 from imagineer.servicos.momentos_do_elemento import indice_do_momento, posicao_do_frame
@@ -87,6 +88,13 @@ def confirmar_dossie(frame: Frame, novo: dict, campos_enviados: set[str], partic
     for campo in ("onde", "luz_e_clima", "acao"):
         if campo in campos_enviados:
             atual[campo] = novo.get(campo)
+    if novo.get("cenario") is not None and "cenario" in campos_enviados:
+        # AF8: o que a pessoa mudou no cenário vira a palavra dela; o ``onde`` e o ``luz_e_clima`` acompanham, a não ser que ela os tenha mandado.
+        atual["cenario"] = aplicar_edicao(atual.get("cenario"), novo["cenario"])
+        if "onde" not in campos_enviados:
+            atual["onde"] = onde_do_cenario(atual["cenario"]) or atual.get("onde")
+        if "luz_e_clima" not in campos_enviados:
+            atual["luz_e_clima"] = luz_e_clima_do_cenario(atual["cenario"]) or atual.get("luz_e_clima")
     atual["confirmado"] = True
     frame.dossie = atual
     frame.dossie_entrada = entrada_do_dossie(frame, participantes)

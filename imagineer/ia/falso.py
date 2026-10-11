@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from PIL import Image
 
+from imagineer.ia.cenario import TIPOS_QUE_LEEM_CENARIO
 from imagineer.ia.provedor import (
     AudioNarrado,
     ErroDoProvedorIA,
@@ -92,6 +93,7 @@ class ProvedorFalso(ProvedorIA):
         modelos: list[ModeloDisponivel] | None = None,
         estado: str = "watercolor-ready appearance description",
         momentos: list[MomentoSugerido] | None = None,
+        cenario_do_elemento: dict | None = None,
         identidade: str | None = None,
         contexto: str = "the book confirms this happens in the guard room",
         dossie: dict | None = None,
@@ -122,6 +124,8 @@ class ProvedorFalso(ProvedorIA):
         self._estado = estado
         self._momentos = momentos
         """A linha do tempo que ``sugerir_estado`` devolve (item 4.9, FL3); ``None`` por padrão: o formato antigo, de um instante só."""
+        self._cenario_do_elemento = cenario_do_elemento
+        """O cenário que ``sugerir_estado`` devolve para um elemento que lê cenário (item 4.11, AF5); ``None`` por padrão."""
         self._identidade = identidade
         """O incremento de identidade a devolver — ``None`` por padrão (o
         caso comum: nada de novo), como ``sugerir_identidade`` documenta."""
@@ -205,6 +209,8 @@ class ProvedorFalso(ProvedorIA):
         modelo: str,
         aparencia_anterior: str | None = None,
         id_do_capitulo: int | None = None,
+        cenario_anterior: dict | None = None,
+        fim_do_capitulo_anterior: str | None = None,
     ) -> EstadoSugerido:
         chamada = {
             "texto_capitulo": texto_capitulo,
@@ -217,10 +223,20 @@ class ProvedorFalso(ProvedorIA):
         }
         if id_do_capitulo is not None:  # só aparece quando a rota o passa, para os testes de antes não mudarem
             chamada["id_do_capitulo"] = id_do_capitulo
+        if cenario_anterior:  # idem: só aparece quando há um cenário anterior a herdar (item 4.11)
+            chamada["cenario_anterior"] = cenario_anterior
+        if fim_do_capitulo_anterior:
+            chamada["fim_do_capitulo_anterior"] = fim_do_capitulo_anterior
         self.chamadas_de_estado.append(chamada)
         if self._erro is not None:
             raise self._erro
-        return EstadoSugerido(descricao=self._estado, modelo=modelo, momentos=self._momentos)
+        le_cenario = tipo.name in TIPOS_QUE_LEEM_CENARIO
+        return EstadoSugerido(
+            descricao=self._estado,
+            modelo=modelo,
+            momentos=self._momentos,
+            cenario=copy.deepcopy(self._cenario_do_elemento) if le_cenario else None,
+        )
 
     def sugerir_identidade(
         self,
@@ -257,6 +273,7 @@ class ProvedorFalso(ProvedorIA):
         modelo: str,
         trecho: str | None = None,
         id_do_capitulo: int | None = None,
+        fim_do_capitulo_anterior: str | None = None,
     ) -> FrameFundamentado:
         chamada = {
             "texto_capitulo": texto_capitulo,
@@ -272,6 +289,8 @@ class ProvedorFalso(ProvedorIA):
             chamada["trecho"] = trecho
         if id_do_capitulo is not None:
             chamada["id_do_capitulo"] = id_do_capitulo
+        if fim_do_capitulo_anterior:  # idem: só quando há capítulo anterior
+            chamada["fim_do_capitulo_anterior"] = fim_do_capitulo_anterior
         self.chamadas_de_fundamentacao.append(chamada)
         if self._erro is not None:
             raise self._erro

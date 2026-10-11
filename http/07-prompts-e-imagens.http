@@ -61,8 +61,17 @@ Content-Type: application/json
     {"nome": "o cão", "tipo": "CRIATURA", "caracteristicas": "cinzento, deitado sob a mesa", "incluir": false},
     {"nome": "uma vela", "tipo": "OBJETO", "caracteristicas": "de cera, acesa no castiçal", "incluir": true}
   ],
-  "acao": "Auri espera sentada à mesa"
+  "acao": "Auri espera sentada à mesa",
+  "cenario": {
+    "clima": {"texto": "chuva fina lá fora"},
+    "lente": {"texto": "50 mm, fundo desfocado"}
+  }
 }
+
+### O CENÁRIO DA CENA (item 4.11, AF1 a AF4): a resposta do dossiê traz "cenario" com 7 campos (ambiente, clima, iluminacao, hora_e_estacao,
+### atmosfera, enquadramento, lente), cada um {"texto", "origem"}: "texto" (o livro ou a pessoa), "anterior" (herdado da cena/capítulo anterior)
+### ou "sugerido" (enquadramento e lente). No PUT acima, só os campos de "cenario" que vierem são trocados; o que a pessoa mudar vira origem "texto";
+### {"texto": null} apaga o campo. O estado de um OBJETO, lugar, edificação, criatura ou veículo (GET /estados/{id}) também traz "cenario".
 
 ### As imagens que podem ir como referência (e as MARCADAS por padrão, item 4.9, FL10)
 # "marcadas" são os ids que o app mostra marcados numa cena: a âncora de cada elemento da lista dela (no máximo 4; ambiente e edificação não).

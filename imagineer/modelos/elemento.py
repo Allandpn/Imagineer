@@ -193,6 +193,11 @@ class EstadoElemento(Base):
     consistente entre capítulos distantes.
     """
 
+    cenario: Mapped[dict | None] = mapped_column(JSON)
+    """O cenário e a fotografia do elemento neste capítulo (item 4.11, AF5): ``{campo: {"texto", "origem"}}`` com ambiente, clima, iluminação,
+    hora e estação, atmosfera, enquadramento e lente. Só os elementos que não são pessoa leem cenário (objeto, lugar, edificação, criatura,
+    veículo); nulo = estado antigo ou de pessoa, que se comporta como sempre."""
+
     confirmado_pela_leitura_profunda: Mapped[bool] = mapped_column(
         Boolean, server_default=false()
     )

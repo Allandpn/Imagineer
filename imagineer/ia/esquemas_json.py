@@ -34,6 +34,23 @@ def _lista(itens: dict) -> dict:
 _TIPO_DE_ELEMENTO = {"type": "string", "enum": [tipo.name for tipo in TipoElemento]}
 """Os tipos de elemento, tirados do próprio ``TipoElemento``: assim o esquema não fica para trás se um tipo novo nascer."""
 
+_CAMPO_DO_CENARIO = _objeto(texto=_TEXTO_OU_NULO, origem={"type": "string", "enum": ["texto", "anterior", "sugerido"]})
+"""Um campo do cenário (item 4.11, AF1): o texto e de onde ele veio."""
+
+_CENARIO = _objeto(
+    ambiente=_CAMPO_DO_CENARIO,
+    clima=_CAMPO_DO_CENARIO,
+    iluminacao=_CAMPO_DO_CENARIO,
+    hora_e_estacao=_CAMPO_DO_CENARIO,
+    atmosfera=_CAMPO_DO_CENARIO,
+    enquadramento=_CAMPO_DO_CENARIO,
+    lente=_CAMPO_DO_CENARIO,
+)
+"""Os 7 campos do cenário e da fotografia (item 4.11, AF1)."""
+
+_CENARIO_OU_NULO = {**_CENARIO, "type": ["object", "null"]}
+"""O cenário do elemento (AF5): um objeto para quem lê cenário (objeto, lugar, criatura...), ``null`` para pessoa e grupo."""
+
 _TIPO_DE_PRESENTE = {"type": "string", "enum": ["PESSOA", "CRIATURA", "OBJETO", "LUGAR"]}
 """O que o dossiê da cena distingue entre os presentes (item 4.9, FL5)."""
 
@@ -80,6 +97,7 @@ ESQUEMAS: dict[str, dict] = {
                 lugar=_TEXTO_OU_NULO,
             )
         ),
+        cenario=_CENARIO_OU_NULO,
     ),
     "dossie": _objeto(
         momento_incerto={"type": "boolean"},
@@ -89,6 +107,7 @@ ESQUEMAS: dict[str, dict] = {
         onde=_TEXTO_OU_NULO,
         luz_e_clima=_TEXTO_OU_NULO,
         acao=_TEXTO_OU_NULO,
+        cenario=_CENARIO,
         faltou=_lista(_TEXTO),
     ),
 }

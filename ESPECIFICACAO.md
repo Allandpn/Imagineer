@@ -1602,7 +1602,13 @@ Migration `a92e5f1c8d3b`. 4 testes novos (311 no total). Verificado contra `Prov
 
 **Testes.** Com o provedor falso: a leitura devolve `cenario` com origens; a herança campo a campo; o fim do capítulo anterior vai na chamada (e não vai sem capítulo anterior); o retrato de objeto/criatura/lugar/edificação/veículo **sem** o bloco neutro e o de pessoa/grupo **com**; o `montar_prompt` recebe o cenário; `PUT` do dossiê com e sem `cenario`; migração. A qualidade real (a IA realmente herda sem inventar) só se mede com casos reais (LM19).
 
-**Status: especificado (11/10/2026); implementação a seguir.**
+**Status: especificado (11/10/2026); servidor implementado (11/10/2026); o bloco Cenário do app (AF8) falta.**
+
+**Implementado no servidor (11/10/2026), em linguagem simples:**
+- **A cena.** A leitura do capítulo (o dossiê) agora devolve também o **cenário**: ambiente, clima, iluminação, hora e estação, atmosfera, enquadramento e lente, cada campo com a sua origem. O que o capítulo não diz, a IA herda do que o próprio capítulo disse antes e, depois, do **fim do capítulo anterior** (os últimos ~3.000 caracteres, mandados depois do capítulo atual). Enquadramento e lente ela sugere. O `onde` e o `luz_e_clima` antigos continuam e são completados pelo cenário. `PUT /frames/{id}/dossie` aceita `cenario` (o que a pessoa muda vira a palavra dela). O prompt da cena recebe o cenário num bloco "CENÁRIO E FOTOGRAFIA".
+- **O elemento que não é pessoa.** Objeto, lugar, edificação, criatura e veículo ganharam `EstadoElemento.cenario` (migração `a3b4c5d6e7f9`), lido junto com o estado, herdando do **cenário do estado anterior do mesmo elemento** (sem custo: já está no banco) e do fim do capítulo anterior. O retrato deles **deixou de ser neutro**: não leva mais o bloco de fundo liso e luz uniforme; a IA recebe o cenário e o "Onde está:" e a iluminação do perfil volta a valer. Pessoa e grupo continuam neutros.
+- **Divergências e escolhas:** (1) a herança do **capítulo anterior** usa o **texto** dele, não dossiês gravados (AF10), então funciona mesmo com as cenas anteriores ainda não geradas; (2) a coluna JSON `cenario` pode guardar `null` JSON (não NULL do SQL), então "o estado anterior que tem cenário" é decidido em Python; (3) o limite de saída da leitura da cena subiu de 3.500 para 4.500 tokens (o cenário são 7 campos a mais); (4) o **vídeo** não mudou (AF10).
+- **Testes:** `teste_af_cenario_da_cena.py` (25) e `teste_af_cenario_do_elemento.py` (25); ajustados os testes que fixavam o retrato neutro de criatura/objeto/lugar (agora só grupo e pessoa) e o limite da leitura.
 
 ## Etapa 5 — Decisões Técnicas e Justificativas
 

@@ -312,6 +312,8 @@ class EstadoSugerido:
     modelo: str = ""
     momentos: list[MomentoSugerido] | None = None
     """A linha do tempo do elemento no capítulo, em ordem do texto (item 4.9, FL3). ``None`` = o modelo devolveu o formato antigo (um instante só)."""
+    cenario: dict | None = None
+    """O cenário e a fotografia do elemento (item 4.11, AF5), já normalizado. ``None`` = pessoa ou grupo, ou o modelo não devolveu."""
 
 
 @dataclass
@@ -455,6 +457,8 @@ class ProvedorIA(ABC):
         modelo: str,
         aparencia_anterior: str | None = None,
         id_do_capitulo: int | None = None,
+        cenario_anterior: dict | None = None,
+        fim_do_capitulo_anterior: str | None = None,
     ) -> EstadoSugerido:
         """A leitura profunda de UM elemento num capítulo — fase 2 do item 4.4.
 
@@ -525,6 +529,7 @@ class ProvedorIA(ABC):
         modelo: str,
         trecho: str | None = None,
         id_do_capitulo: int | None = None,
+        fim_do_capitulo_anterior: str | None = None,
     ) -> FrameFundamentado:
         """A leitura profunda de um frame do tipo CENA — item 4.4.
 

@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from imagineer.esquemas.cenario import CenarioDaCena
 from imagineer.modelos.prompt import OrigemDaImagem, SituacaoDaGeracao, TipoDePrompt
 from imagineer.servicos.imagens_reduzidas import Orientacao, orientacao_de
 
@@ -430,6 +431,10 @@ class DossieDaCena(BaseModel):
     onde: str | None = None
     luz_e_clima: str | None = None
     acao: str | None = Field(default=None, description="O que acontece, num instante parado.")
+    cenario: CenarioDaCena | None = Field(
+        default=None,
+        description="O cenário e a fotografia da cena (item 4.11, AF4), com a origem de cada campo. Nulo = dossiê lido antes do cenário existir.",
+    )
     faltou: list[str] = Field(default_factory=list, description="O que o texto não deixa claro (em vez de a IA supor).")
     confirmado: bool = Field(default=False, description="A pessoa viu a lista e a aceitou (`PUT /frames/{id}/dossie`).")
     desatualizado: bool = Field(
@@ -454,6 +459,10 @@ class DossieConfirmado(BaseModel):
     onde: str | None = Field(default=None, max_length=2000)
     luz_e_clima: str | None = Field(default=None, max_length=2000)
     acao: str | None = Field(default=None, max_length=2000)
+    cenario: CenarioDaCena | None = Field(
+        default=None,
+        description="O cenário como a pessoa o deixou (AF8): o que ela mudou vira `origem: texto`; campo ausente fica como estava; `texto` nulo apaga o campo.",
+    )
 
 
 class ConferenciaDaImagem(BaseModel):

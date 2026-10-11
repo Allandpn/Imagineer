@@ -78,6 +78,9 @@ from imagineer.servicos.catalogo_imagens import (
     tipo_da_imagem,
 )
 from imagineer.servicos.configuracao_ia import modelo_de_leitura, obter_ou_criar
+from imagineer.ia.cenario import TIPOS_QUE_LEEM_CENARIO
+from imagineer.servicos.capitulo_anterior import fim_do_capitulo_anterior
+from imagineer.servicos.cenario_do_elemento import cenario_anterior_do_elemento, le_cenario, linhas_do_cenario_do_estado
 from imagineer.servicos.modelos_do_livro import configuracao_do_livro
 from imagineer.servicos.limites import BYTES_POR_MB, exigir_espaco, obter_limites
 from imagineer.servicos.uso_de_ia import coletando_o_custo, gasto_do_livro
@@ -390,11 +393,11 @@ def criar_prompt(
         else:
             # FL1: o retrato é a âncora de identidade, NEUTRA: sem o lugar do elemento ("Onde está:") e sem a iluminação do perfil, que
             # a cena é quem escolhe; o fundo liso e a luz uniforme entram por código, abaixo.
-            retrato = frame.tipo == TipoDeFrame.PERSONAGEM
+            retrato = _eh_retrato_neutro(frame)
             vinculados = _elementos_vinculados(sessao, frame, sem_lugar=retrato)
             resultado = provedor.montar_prompt(
                 descricao_do_frame=_descricao_do_frame(frame),
-                elementos=_elementos_do_frame(sessao, frame, sem_lugar=retrato),
+                elementos=_elementos_do_frame(sessao, frame, sem_lugar=retrato, com_cenario=_retrato_com_cenario(frame)),
                 perfil_renderizacao=_descricao_do_perfil(perfil, frame.tipo, sem_iluminacao=retrato),
                 modelo=modelo_prompt,
                 contexto_do_livro=None if dossie else contexto_do_livro,
@@ -406,7 +409,7 @@ def criar_prompt(
             )
 
     texto_final = resultado.texto
-    if not eh_video and frame.tipo == TipoDeFrame.PERSONAGEM and frame.estados_elemento and not (corpo.comentario or "").strip():
+    if not eh_video and retrato and frame.estados_elemento and not (corpo.comentario or "").strip():
         # FL1: enquadramento, fundo liso e luz uniforme do retrato neutro, por código, DEPOIS da resposta da IA (que nunca o vê).
         # Com comentário do usuário o bloco NÃO entra: o comentário vale mais (ele pode pedir outro fundo) e a IA recebe a instrução de escrever o neutro.
         texto_final = com_bloco_de_retrato(
@@ -888,10 +891,14 @@ def _fazer_leitura_profunda(
             aparencia_anterior=aparencia_fixa_anterior(sessao, estado),
             # LM11: as leituras de um capítulo vão em rajada, e o provedor reaproveita o cache do capítulo entre elas.
             id_do_capitulo=capitulo_de_origem.id,
+            # Item 4.11, AF5: o cenário do estado anterior do mesmo elemento e o fim do capítulo anterior, para herdar o que este capítulo não diz.
+            cenario_anterior=cenario_anterior_do_elemento(sessao, estado) if le_cenario(estado) else None,
+            fim_do_capitulo_anterior=fim_do_capitulo_anterior(sessao, capitulo_de_origem) if le_cenario(estado) else None,
         )
         estado.descricao = sugestao.descricao
         # FL3, FL4: a linha do tempo do elemento no capítulo, com a posição de cada momento achada no texto.
         estado.momentos = momentos_com_posicao(sugestao.momentos, capitulo_de_origem.texto)
+        estado.cenario = sugestao.cenario if le_cenario(estado) else None
         estado.confirmado_pela_leitura_profunda = True
         sessao.add(estado)
 
@@ -975,6 +982,8 @@ def _ler_o_dossie(
         modelo=modelo,
         trecho=frame.trecho,
         id_do_capitulo=frame.capitulo_id,
+        # Item 4.11, AF3: o fim do capítulo anterior, para a IA herdar o cenário que o capítulo atual não descreve.
+        fim_do_capitulo_anterior=fim_do_capitulo_anterior(sessao, frame.capitulo),
     )
     if fundamentado.dossie is not None:
         guardado = guardar_dossie(frame, fundamentado.dossie, fundamentado.contexto, entrada_dos_participantes(frame), _nomes_dos_elementos(frame))
@@ -1222,7 +1231,25 @@ def _elementos_vinculados(sessao: Session, frame: Frame, sem_lugar: bool = False
     return _linhas_de_estados(sessao, frame.estados_vinculados, frame.capitulo.ordem, sem_lugar)
 
 
-def _elementos_do_frame(sessao: Session, frame: Frame, sem_lugar: bool = False) -> list[str]:
+def _tipo_do_sujeito(frame: Frame) -> TipoElemento | None:
+    """O tipo do elemento de um retrato (``None`` se o frame não é retrato ou não tem estado)."""
+    if frame.tipo != TipoDeFrame.PERSONAGEM or not frame.estados_elemento:
+        return None
+    return frame.estados_elemento[0].elemento.tipo
+
+
+def _retrato_com_cenario(frame: Frame) -> bool:
+    """O retrato é de um elemento que lê cenário (objeto, lugar, edificação, criatura, veículo): o cenário entra no pedido (item 4.11, AF6)."""
+    tipo = _tipo_do_sujeito(frame)
+    return tipo is not None and tipo.name in TIPOS_QUE_LEEM_CENARIO
+
+
+def _eh_retrato_neutro(frame: Frame) -> bool:
+    """O retrato é a âncora neutra (FL1)? Sim para pessoa e grupo; os que leem cenário (AF6) mostram o elemento no seu cenário."""
+    return frame.tipo == TipoDeFrame.PERSONAGEM and not _retrato_com_cenario(frame)
+
+
+def _elementos_do_frame(sessao: Session, frame: Frame, sem_lugar: bool = False, com_cenario: bool = False) -> list[str]:
     """"Nome (identidade): aparência", para cada elemento que aparece no frame.
 
     A identidade (``Elemento.descricao``) entra entre parênteses quando existe
@@ -1233,11 +1260,13 @@ def _elementos_do_frame(sessao: Session, frame: Frame, sem_lugar: bool = False) 
     """
     # FL7: numa CENA, cada elemento entra no momento que cobre o trecho dela (não o primeiro do capítulo); no retrato vale o estado como está.
     return _linhas_de_estados(
-        sessao, frame.estados_elemento, frame.capitulo.ordem, sem_lugar, frame=frame if frame.tipo == TipoDeFrame.CENA else None
+        sessao, frame.estados_elemento, frame.capitulo.ordem, sem_lugar, frame=frame if frame.tipo == TipoDeFrame.CENA else None, com_cenario=com_cenario
     )
 
 
-def _linhas_de_estados(sessao: Session, estados, ordem_do_capitulo: int, sem_lugar: bool = False, frame: Frame | None = None) -> list[str]:
+def _linhas_de_estados(
+    sessao: Session, estados, ordem_do_capitulo: int, sem_lugar: bool = False, frame: Frame | None = None, com_cenario: bool = False
+) -> list[str]:
     """"Nome (identidade): aparência" para cada estado, por tipo e nome.
 
     A identidade é a **vigente até o capítulo do frame** (FD3), e não só a inicial: o que o livro revelou depois (idade, gênero, origem)
@@ -1249,10 +1278,11 @@ def _linhas_de_estados(sessao: Session, estados, ordem_do_capitulo: int, sem_lug
         identidade = resumir_texto(identidade_vigente(sessao, estado.elemento, ordem_do_capitulo), LIMITE_DA_IDENTIDADE_NO_PROMPT)
         descricao = descricao_para_a_cena(estado, frame) if frame is not None else estado.descricao
         descricao = sem_o_lugar(descricao) if sem_lugar else descricao
-        if identidade:
-            partes.append(f"{nome} ({identidade}): {descricao}")
-        else:
-            partes.append(f"{nome}: {descricao}")
+        linha = f"{nome} ({identidade}): {descricao}" if identidade else f"{nome}: {descricao}"
+        if com_cenario and (cenario := linhas_do_cenario_do_estado(estado)):
+            # AF6: o retrato de um objeto, lugar, edificação, criatura ou veículo mostra o elemento no seu cenário (não é neutro).
+            linha += "\nCENÁRIO E FOTOGRAFIA DESTE ELEMENTO:\n" + "\n".join(cenario)
+        partes.append(linha)
     return partes
 
 

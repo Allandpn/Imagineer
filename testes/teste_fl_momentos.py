@@ -75,10 +75,10 @@ def _instrucao_de_estado() -> str:
     return pedidos[0]["messages"][0]["content"]
 
 
-def teste_fl3_a_instrucao_pede_quatro_partes_e_a_linha_do_tempo() -> None:
+def teste_fl3_a_instrucao_pede_as_partes_e_a_linha_do_tempo() -> None:
     instrucao = _instrucao_de_estado()
 
-    assert "Você devolve QUATRO partes" in instrucao
+    assert "Você devolve CINCO partes" in instrucao  # a quinta (cenário, item 4.11) só para quem não é pessoa
     assert '4. "momentos": a LINHA DO TEMPO do elemento neste capítulo, em ORDEM DO TEXTO' in instrucao
     assert '"ancora" (uma citação LITERAL de até uns 80' in instrucao
     assert '"estado_fisico" (ferimentos, sujeira, cansaço)' in instrucao

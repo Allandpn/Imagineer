@@ -94,7 +94,7 @@ PERFIS: dict[str, PerfilDaTarefa] = {
     "extracao": _leitura(8000, "extracao"),
     "estado": _leitura(3000, "estado_com_momentos"),  # item 4.9, FL3: o formato com a linha do tempo do elemento (o `estado` de antes continua em ESQUEMAS)
     "identidade": _leitura(800, "identidade"),
-    "fundamentacao": _leitura(3500, "dossie"),  # item 4.9, FL5: a fundamentação de três frases virou o dossiê da cena
+    "fundamentacao": _leitura(4500, "dossie"),  # item 4.9, FL5: a fundamentação de três frases virou o dossiê da cena
     "conferencia": PerfilDaTarefa(
         temperatura=0.0, limite_de_saida=1500, raciocinio=NivelDeRaciocinio.NENHUM, esquema="conferencia", cache_do_capitulo=False
     ),  # item 4.9, FL13.1: comparar a imagem com a lista; sem variar
