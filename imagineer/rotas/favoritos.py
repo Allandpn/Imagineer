@@ -1,4 +1,4 @@
-"""Rotas dos favoritos (RL31 a RL38): uma estrela no livro, num parágrafo, num elemento, numa cena ou numa imagem."""
+"""Rotas dos favoritos (RL31 a RL38): uma estrela no livro, num capítulo, num parágrafo, num elemento, numa cena ou numa imagem."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
@@ -54,6 +54,11 @@ def _validar_e_procurar(sessao: Session, livro_id: int, novo: FavoritoNovo) -> t
     if novo.tipo == TipoDeFavorito.LIVRO:
         _exigir_so(novo)
         return {}, None
+    if novo.tipo == TipoDeFavorito.CAPITULO:
+        # Item 7.5g, FV2: o capítulo inteiro. Só o capitulo_id; ele tem de ser deste livro (422 senão).
+        _exigir_so(novo, "capitulo_id")
+        _capitulo_do_livro(sessao, livro_id, novo.capitulo_id)
+        return {"capitulo_id": novo.capitulo_id}, None
     if novo.tipo == TipoDeFavorito.PARAGRAFO:
         _exigir_so(novo, "capitulo_id", "posicao")
         capitulo = _capitulo_do_livro(sessao, livro_id, novo.capitulo_id)
@@ -91,6 +96,11 @@ def _resposta(sessao: Session, favorito: Favorito) -> FavoritoResposta | None:
         if livro is None or livro.apagado_em is not None:
             return None
         rotulo = livro.titulo
+    elif favorito.tipo == TipoDeFavorito.CAPITULO:
+        capitulo = sessao.get(Capitulo, favorito.capitulo_id)
+        if capitulo is None:
+            return None
+        rotulo = f"Capítulo {capitulo.ordem} · {capitulo.titulo}" if capitulo.titulo else f"Capítulo {capitulo.ordem}"
     elif favorito.tipo == TipoDeFavorito.PARAGRAFO:
         capitulo = sessao.get(Capitulo, favorito.capitulo_id)
         if capitulo is None:

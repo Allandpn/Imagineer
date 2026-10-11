@@ -8,7 +8,7 @@ from imagineer.modelos.favorito import TipoDeFavorito
 
 
 class FavoritoNovo(BaseModel):
-    """O que o app manda para favoritar. O **alvo** depende do tipo: `LIVRO` não tem alvo (é o próprio livro); `PARAGRAFO` pede `capitulo_id` e
+    """O que o app manda para favoritar. O **alvo** depende do tipo: `LIVRO` não tem alvo (é o próprio livro); `CAPITULO` pede só `capitulo_id`; `PARAGRAFO` pede `capitulo_id` e
     `posicao`; `ELEMENTO` pede `elemento_id`; `CENA`, `frame_id`; `IMAGEM`, `imagem_id`."""
 
     model_config = ConfigDict(extra="forbid")

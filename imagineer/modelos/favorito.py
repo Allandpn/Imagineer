@@ -1,4 +1,4 @@
-"""O Favorito: uma estrela da pessoa num livro, num parágrafo, num elemento, numa cena ou numa imagem (RL31 a RL38)."""
+"""O Favorito: uma estrela da pessoa num livro, num capítulo, num parágrafo, num elemento, numa cena ou numa imagem (RL31 a RL38; capítulo: item 7.5g, FV2)."""
 
 import enum
 from datetime import datetime
@@ -13,6 +13,7 @@ class TipoDeFavorito(enum.Enum):
     """O que foi favoritado."""
 
     LIVRO = "LIVRO"
+    CAPITULO = "CAPITULO"
     PARAGRAFO = "PARAGRAFO"
     ELEMENTO = "ELEMENTO"
     CENA = "CENA"
