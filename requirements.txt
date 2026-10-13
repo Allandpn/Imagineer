@@ -25,6 +25,9 @@ EbookLib==0.20
 # e também pelo TestClient do FastAPI nos testes
 httpx==0.28.1
 
+# Codificador de MP3 (LAME) -- converte o PCM cru do Gemini TTS em MP3 (PD14). Tem wheel pronto para ARM64.
+lameenc==1.8.4
+
 # Testes
 pytest==9.1.1
 

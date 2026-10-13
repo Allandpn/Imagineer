@@ -105,6 +105,11 @@ class Elemento(Base):
     não ter definido a identidade — só reconhecido que o elemento existe.
     """
 
+    vestimenta: Mapped[str | None] = mapped_column(Text)
+    """A roupa **característica** do elemento neste livro (PD9): a que ele veste na maior parte da história. Preenchida pela IA quando se gera o
+    retrato (lendo as descrições de estado) e corrigida pela pessoa na ficha. É o último recurso da roupa de uma cena: vale quando o capítulo da
+    cena não diz o que a pessoa veste (PD1)."""
+
     imagem_ancora_padrao_id: Mapped[int | None] = mapped_column(
         # SET NULL, como a âncora por estado (item 3.1): apagar a imagem do
         # catálogo não pode apagar o elemento, só desfaz a referência.

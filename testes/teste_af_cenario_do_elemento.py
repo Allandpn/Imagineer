@@ -202,7 +202,7 @@ def teste_af6_com_comentario_do_usuario_nada_muda_para_quem_le_cenario(cliente: 
     assert provedor.chamadas_de_prompt[0]["comentario_do_usuario"] == "sobre uma mesa de madeira"
 
 
-def teste_af9_a_migracao_vem_depois_da_dos_modelos_por_livro_e_e_a_unica_cabeca() -> None:
+def teste_af9_a_migracao_vem_depois_da_dos_modelos_por_livro_e_continua_na_cadeia() -> None:
     from pathlib import Path
 
     from alembic.config import Config
@@ -214,7 +214,9 @@ def teste_af9_a_migracao_vem_depois_da_dos_modelos_por_livro_e_e_a_unica_cabeca(
     diretorio = ScriptDirectory.from_config(configuracao)
 
     assert diretorio.get_revision("a3b4c5d6e7f9").down_revision == "e2f3a4b5c6d8"
-    assert diretorio.get_heads() == ["a3b4c5d6e7f9"]
+    # Migrations novas vêm depois dela: o que vale é ela continuar na cadeia, e a cadeia ter uma cabeça só.
+    assert "a3b4c5d6e7f9" in {r.revision for r in diretorio.walk_revisions()}
+    assert len(diretorio.get_heads()) == 1
 
 
 def teste_af6_a_instrucao_abre_a_excecao_do_retrato_com_cenario() -> None:

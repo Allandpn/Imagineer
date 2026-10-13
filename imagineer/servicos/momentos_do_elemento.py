@@ -8,6 +8,7 @@ Tudo aqui é **conservador**: sem posição, sem trecho, ou com estado de outro 
 sempre. Nunca se inventa uma posição.
 """
 
+from imagineer.ia.openrouter import ROTULO_DA_ROUPA_HERDADA
 from imagineer.ia.provedor import MomentoSugerido
 from imagineer.modelos import EstadoElemento, Frame
 from imagineer.servicos.aparencia_de_elemento import aparencia_fixa_de
@@ -83,6 +84,37 @@ def momento_usado(estado: EstadoElemento, frame: Frame) -> dict | None:
     }
 
 
+def roupa_de_antes(estado: EstadoElemento) -> str | None:
+    """A roupa de um estado de **outro** capítulo, para a cena que o herda (PD1, PD2, PD9).
+
+    Vale primeiro a **vestimenta característica** do elemento (``Elemento.vestimenta``): é a roupa que a IA identificou no livro e a pessoa pôde
+    corrigir. Sem ela, a roupa do **último momento** do estado (a com que o personagem terminou aquele capítulo). Sem nenhuma: ``None``.
+    """
+    if estado.elemento.vestimenta and estado.elemento.vestimenta.strip():
+        return estado.elemento.vestimenta.strip()
+    for momento in reversed(estado.momentos or []):
+        if momento.get("roupa"):
+            return momento["roupa"]
+    return None
+
+
+def descricao_herdada(estado: EstadoElemento) -> str:
+    """A descrição de um estado que **não é do capítulo da cena** (o personagem não tem estado neste capítulo e a cena herda o último).
+
+    Do outro capítulo só vale o que **atravessa capítulos**: a "Aparência fixa" e a roupa (``roupa_de_antes``, só se o capítulo da cena
+    não disser outra). O **"Neste instante"** (pose, expressão, humor) e o **"Onde está"** são daquele momento, de outro lugar: levá-los
+    para a cena misturava o capítulo de lá com o daqui (a Sedotia saía com "roupa simples" e "floresta densa" numa cena de túnel). Estado do
+    formato antigo (sem rótulos, que não separam o fixo do instante) volta como está: não há como cortar sem arriscar perder a aparência.
+    """
+    fixa = aparencia_fixa_de(estado.descricao)
+    if not fixa:
+        return estado.descricao
+    linhas = [f"Aparência fixa: {fixa}"]
+    if roupa := roupa_de_antes(estado):
+        linhas.append(f"{ROTULO_DA_ROUPA_HERDADA}: {roupa}")
+    return "\n".join(linhas)
+
+
 def descricao_para_a_cena(estado: EstadoElemento, frame: Frame) -> str:
     """A descrição do ``estado`` que a IA recebe ao montar a **cena** ``frame``: a do momento que cobre o trecho dela.
 
@@ -90,6 +122,9 @@ def descricao_para_a_cena(estado: EstadoElemento, frame: Frame) -> str:
     "Neste instante:" passa a ser o do momento, com cada parte rotulada (roupa e penteado, estado físico, expressão e postura, humor), e o
     "Onde está:" passa a ser o ``lugar`` do momento, se ele tiver um.
     """
+    if estado.capitulo_id != frame.capitulo_id:
+        return descricao_herdada(estado)
+
     indice = indice_do_momento(estado, posicao_do_frame(frame), frame.capitulo_id)
     if indice == 0:
         return estado.descricao

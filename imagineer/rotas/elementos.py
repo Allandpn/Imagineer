@@ -355,6 +355,7 @@ def _detalhe(sessao: Session, elemento: Elemento) -> ElementoDetalhe:
         tipo=elemento.tipo,
         nome=elemento.nome,
         descricao=elemento.descricao,
+        vestimenta=elemento.vestimenta,
         imagem_ancora_padrao_id=elemento.imagem_ancora_padrao_id,
         estados=[
             EstadoResumo.model_validate(estado).model_copy(

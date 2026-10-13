@@ -32,6 +32,7 @@ from imagineer.ia.provedor import (
     ExtracaoDeElementos,
     FrameFundamentado,
     IdentidadeSugerida,
+    VestimentaIdentificada,
     ImagemConferida,
     ImagemGerada,
     ModeloDisponivel,
@@ -106,7 +107,11 @@ class ProvedorFalso(ProvedorIA):
         prompt_de_video: str = "slow push-in, the subject breathes slowly. No on-screen text.",
         pode_narrar: bool = True,
         narracao_falha_no_trecho: int | None = None,
+        vestimenta: str | None = None,
     ):
+        self._vestimenta = vestimenta
+        """A roupa característica que ``identificar_vestimenta`` devolve (PD9); ``None`` por padrão: as descrições não dizem uma roupa concreta."""
+        self.chamadas_de_vestimenta: list[dict] = []
         self._pode_narrar = pode_narrar
         self._narracao_falha_no_trecho = narracao_falha_no_trecho
         self.chamadas_de_narracao: list[tuple[str, str, str | None]] = []
@@ -237,6 +242,12 @@ class ProvedorFalso(ProvedorIA):
             momentos=self._momentos,
             cenario=copy.deepcopy(self._cenario_do_elemento) if le_cenario else None,
         )
+
+    def identificar_vestimenta(self, nome: str, identidade: str | None, descricoes_de_estados: list[str], modelo: str) -> VestimentaIdentificada:
+        self.chamadas_de_vestimenta.append({"nome": nome, "identidade": identidade, "descricoes": list(descricoes_de_estados), "modelo": modelo})
+        if self._erro is not None:
+            raise self._erro
+        return VestimentaIdentificada(vestimenta=self._vestimenta, modelo=modelo)
 
     def sugerir_identidade(
         self,

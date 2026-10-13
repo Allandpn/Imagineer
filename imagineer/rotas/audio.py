@@ -22,6 +22,7 @@ from imagineer.ia.provedor import ErroDoProvedorIA, ProvedorIA
 from imagineer.modelos import AudioDeCapitulo, SituacaoDoAudio
 from imagineer.rotas._comum import buscar_capitulo as _buscar_capitulo, obter_ou_404
 from imagineer.rotas.configuracao import obter_provedor
+from imagineer.servicos.idioma_das_vozes import fala_portugues
 from imagineer.servicos.catalogo_imagens import caminho_absoluto, remover_arquivo
 from imagineer.servicos.acesso import usuario_ou_dono
 from imagineer.servicos.configuracao_ia import obter_ou_criar
@@ -106,7 +107,14 @@ def listar_modelos_de_narracao(provedor: ProvedorIA = Depends(obter_provedor)) -
     """O catálogo para a tela de Narração (NA1). O endpoint do OpenRouter é público: dá para ver a lista antes de cadastrar a chave. Os
     gratuitos vêm primeiro. Falha do serviço de fora vira 502."""
     return [
-        ModeloDeNarracao(id=m.id, nome=m.nome, vozes=m.vozes, preco_por_caractere=m.preco_por_caractere, gratuito=m.gratuito)
+        ModeloDeNarracao(
+            id=m.id,
+            nome=m.nome,
+            vozes=m.vozes,
+            preco_por_caractere=m.preco_por_caractere,
+            gratuito=m.gratuito,
+            fala_portugues=fala_portugues(m.id, m.vozes),
+        )
         for m in provedor.listar_modelos_de_voz()
     ]
 

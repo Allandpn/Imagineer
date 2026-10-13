@@ -330,6 +330,15 @@ class ImagemConferida:
 
 
 @dataclass
+class VestimentaIdentificada:
+    """A roupa característica de um personagem neste livro, lida das descrições de estado dele (PD9)."""
+
+    vestimenta: str | None
+    """A roupa que ele veste na maior parte da história; ``None`` se as descrições não dizem uma roupa concreta (nunca um palpite)."""
+    modelo: str
+
+
+@dataclass
 class IdentidadeSugerida:
     """O resultado da leitura profunda de identidade (item 4.4, fase 2b).
 
@@ -483,6 +492,14 @@ class ProvedorIA(ABC):
             id_do_capitulo: o id do capítulo em ``texto_capitulo`` (4.10, LM11). Serve para o provedor
                 reaproveitar o **cache** do capítulo entre as leituras de uma mesma rajada; um provedor que não
                 conhece cache o ignora, e sem ele a chamada é como era antes.
+        """
+
+    @abstractmethod
+    def identificar_vestimenta(self, nome: str, identidade: str | None, descricoes_de_estados: list[str], modelo: str) -> VestimentaIdentificada:
+        """Qual é a roupa **característica** de um personagem neste livro (PD9), a partir das descrições de aparência dele em vários capítulos.
+
+        Não lê o capítulo: recebe só as descrições já guardadas (barata, uma chamada curta). ``vestimenta`` é nulo quando elas não dizem uma roupa
+        concreta: o retrato continua com o que o estado dele diz, e a pessoa pode digitar a roupa na ficha.
         """
 
     @abstractmethod

@@ -38,6 +38,13 @@ class ModeloDeNarracao(BaseModel):
     vozes: list[str] = Field(description="As vozes que o modelo aceita (o que se grava em `narracao_voz`). Vazia = o modelo não lista vozes.")
     preco_por_caractere: Decimal | None = Field(description="Dólares por caractere; zero = gratuito; nulo = o modelo cobra por token ou por segundo (sem estimativa).")
     gratuito: bool
+    fala_portugues: bool | None = Field(
+        default=None,
+        description=(
+            "Se o modelo fala português (PD12): `true` sim (as vozes dizem, ou a tabela do servidor), `false` só inglês, nulo = o catálogo "
+            "não informa e o servidor não sabe. É um aviso para a tela; não bloqueia nenhuma escolha."
+        ),
+    )
 
 
 class PedidoDeNarracao(BaseModel):

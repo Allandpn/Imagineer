@@ -13,11 +13,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from imagineer.ia.audio_pcm import pcm_para_mp3
 from imagineer.ia.falso import ProvedorFalso
 from imagineer.ia.openrouter import ENDERECO_BASE, ProvedorOpenRouter
 from imagineer.ia.provedor import ChaveDeApiAusente, ErroDoProvedorIA, ModeloNaoEscolhido, UsoDaChamada
 from imagineer.modelos import AudioDeCapitulo, Capitulo, Livro, SituacaoDoAudio
 from imagineer.servicos import narracao, uso_de_ia
+from imagineer.servicos.idioma_das_vozes import fala_portugues
 from imagineer.servicos.catalogo_imagens import caminho_absoluto
 from imagineer.servicos.trechos_da_narracao import CARACTERES_POR_MINUTO, LIMITE_DO_TRECHO, dividir_em_trechos
 from testes.teste_rotas_prompts import _diretorio_de_imagens  # noqa: F401  (a pasta de imagens temporária que o cenário usa)
@@ -212,6 +214,74 @@ def teste_400_do_pedido_nao_e_repetido() -> None:
     assert len(pedidos) == 1  # voz errada não melhora tentando de novo
 
 
+# --------------------------------------------------------------------------- #
+# PD14: modelos que só entregam PCM (o Gemini TTS)
+# --------------------------------------------------------------------------- #
+
+GEMINI = "google/gemini-3.8-flash-tts"
+_SO_PCM = httpx.Response(400, json={"error": {"message": "This model supports only pcm, got mp3", "code": 400}})
+_UM_SEGUNDO_DE_PCM = b"\x00\x10\xff\x0f" * 6000  # 24 000 amostras de 16 bits (1 s a 24 kHz), mono
+
+
+def teste_pcm_para_mp3_devolve_um_mp3_de_verdade_bem_menor_que_o_pcm() -> None:
+    mp3 = pcm_para_mp3(_UM_SEGUNDO_DE_PCM)
+
+    assert mp3[0] == 0xFF and (mp3[1] & 0xE0) == 0xE0  # o quadro de sincronia de um MP3
+    assert 0 < len(mp3) < len(_UM_SEGUNDO_DE_PCM) / 4
+
+
+def teste_modelo_que_so_entrega_pcm_e_refeito_em_pcm_e_o_resultado_e_mp3() -> None:
+    pedidos: list = []
+    pcm = httpx.Response(200, content=_UM_SEGUNDO_DE_PCM, headers={"content-type": "audio/pcm"})
+
+    audio = _openrouter(audio=[_SO_PCM, pcm], pedidos=pedidos).narrar("Era uma vez.", GEMINI, "Zephyr")
+
+    assert [p[2]["response_format"] for p in pedidos] == ["mp3", "pcm"]
+    assert audio.conteudo[0] == 0xFF and audio.conteudo != _UM_SEGUNDO_DE_PCM  # o servidor entrega MP3, não o PCM cru
+
+
+def teste_o_formato_aprendido_vale_para_os_trechos_seguintes_do_mesmo_modelo() -> None:
+    pedidos: list = []
+    pcm = httpx.Response(200, content=_UM_SEGUNDO_DE_PCM, headers={"content-type": "audio/pcm"})
+    provedor = _openrouter(audio=[_SO_PCM, pcm], pedidos=pedidos)
+
+    provedor.narrar("Primeiro trecho.", GEMINI, "Zephyr")
+    provedor.narrar("Segundo trecho.", GEMINI, "Zephyr")
+    provedor.narrar("Outro modelo.", MODELO, VOZ)
+
+    # 1º trecho: recusa do mp3 + pcm; 2º trecho: já vai em pcm; o outro modelo continua pedindo mp3.
+    assert [p[2]["response_format"] for p in pedidos] == ["mp3", "pcm", "pcm", "mp3"]
+
+
+def teste_o_400_que_nao_fala_de_pcm_nao_vira_pedido_em_pcm() -> None:
+    pedidos: list = []
+    with pytest.raises(ErroDoProvedorIA, match="voz"):
+        _openrouter(audio=httpx.Response(400, json={"error": {"message": "voice is required"}}), pedidos=pedidos).narrar("x", GEMINI, None)
+    assert len(pedidos) == 1
+
+
+def teste_se_ate_o_pcm_for_recusado_o_erro_sobe_sem_repetir_sem_fim() -> None:
+    pedidos: list = []
+    with pytest.raises(ErroDoProvedorIA, match="pcm"):
+        _openrouter(audio=_SO_PCM, pedidos=pedidos).narrar("x", GEMINI, "Zephyr")
+    assert [p[2]["response_format"] for p in pedidos] == ["mp3", "pcm"]  # uma troca de formato, e só
+
+
+def teste_o_idioma_do_modelo_vem_das_vozes_depois_da_tabela_e_nunca_e_palpite() -> None:
+    # 1) as vozes do catálogo dizem
+    assert fala_portugues("qualquer/modelo", ["en-US-Ana", "pt-BR-Luana:Voz"]) is True
+    assert fala_portugues("qualquer/modelo", ["pt_br_marcos"]) is True
+    assert fala_portugues("qualquer/modelo", ["Portuguese-Female"]) is True
+    # 2) a tabela curada
+    assert fala_portugues("google/gemini-3.8-flash-tts", ["Zephyr"]) is True
+    assert fala_portugues("canopylabs/orpheus-3b-0.1-ft", ["tara", "leah"]) is False
+    # 3) o resto: não se sabe
+    assert fala_portugues("fish-audio/s2.1-pro-free:free", []) is None
+    assert fala_portugues("bytedance-seed/seed-audio-1-0", ["a", "b"]) is None
+    # uma voz de português vence a tabela de "só inglês"
+    assert fala_portugues("canopylabs/orpheus-x", ["pt-BR-X"]) is True
+
+
 def teste_erro_de_voz_do_modelo_aponta_para_a_tela_de_narracao() -> None:
     with pytest.raises(ErroDoProvedorIA, match="Configurações → Narração"):
         _openrouter(audio=httpx.Response(400, json={"error": {"message": "voice is required"}})).narrar("x", MODELO, None)
@@ -279,6 +349,10 @@ def teste_a_lista_de_modelos_de_voz_traz_vozes_preco_e_gratuito(cliente: TestCli
     assert por_id[MODELO]["vozes"][0].startswith("pt-BR-") and Decimal(por_id[MODELO]["preco_por_caractere"]) == Decimal("0.000015")
     assert por_id["google/gemini-3.8-flash-tts"]["preco_por_caractere"] is None
     assert por_id["fish-audio/s2.1-pro-free:free"]["gratuito"] is True
+    # PD12: as vozes dizem (pt-BR-...), a tabela do servidor diz (Gemini), e o que ninguém sabe fica nulo.
+    assert por_id[MODELO]["fala_portugues"] is True
+    assert por_id["google/gemini-3.8-flash-tts"]["fala_portugues"] is True
+    assert por_id["fish-audio/s2.1-pro-free:free"]["fala_portugues"] is None
 
 
 def teste_a_lista_de_modelos_de_voz_com_o_servico_fora_do_ar_responde_502(cliente: TestClient, narrar_com) -> None:

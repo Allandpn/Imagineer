@@ -38,7 +38,7 @@ from imagineer.esquemas.prompt import (
 )
 from imagineer.ia.blocos_tecnicos import com_bloco_de_retrato, com_bloco_tecnico
 from imagineer.ia.catalogo_de_texto import obter_capacidades
-from imagineer.ia.openrouter import presentes_incluidos
+from imagineer.ia.openrouter import ROTULO_DA_VESTIMENTA_DO_RETRATO, presentes_incluidos
 from imagineer.ia.provedor import (
     ErroDoProvedorIA,
     ModeloNaoEscolhido,
@@ -90,6 +90,7 @@ from imagineer.servicos.aparencia_de_elemento import aparencia_fixa_anterior, e_
 from imagineer.servicos.referencias_da_cena import ancoras_da_cena, presentes_do_dossie
 from imagineer.servicos.dossie_da_cena import confirmar_dossie, dossie_esta_velho, entrada_dos_participantes, guardar_dossie
 from imagineer.servicos.momentos_do_elemento import descricao_para_a_cena, momento_usado, momentos_com_posicao
+from imagineer.servicos.vestimenta_do_elemento import garantir_vestimenta
 from imagineer.servicos.identidade_de_elemento import LIMITE_DA_IDENTIDADE_NO_PROMPT, identidade_vigente, resumir_texto
 from imagineer.servicos.lixeira import mover_para_a_lixeira
 from imagineer.servicos.imagens_reduzidas import (
@@ -376,6 +377,10 @@ def criar_prompt(
     # Os erros do provedor sobem como estão: o tratador global os traduz para HTTP (imagineer/erros.py).
     with gasto_do_livro(livro.id):  # CU3: as chamadas daqui valem como gasto deste livro
         _fazer_leitura_profunda(sessao, provedor, frame, configuracao)
+        if frame.tipo == TipoDeFrame.PERSONAGEM and not eh_video:
+            # PD9: o retrato sai com a roupa característica do personagem neste livro (a IA a identifica uma vez; a pessoa corrige na ficha).
+            for estado in frame.estados_elemento:
+                garantir_vestimenta(sessao, provedor, estado.elemento, configuracao)
         contexto_do_livro, dossie = _dossie_se_necessario(sessao, provedor, frame, configuracao)
         if eh_video:
             resultado = provedor.montar_prompt_de_video(
@@ -1260,12 +1265,14 @@ def _elementos_do_frame(sessao: Session, frame: Frame, sem_lugar: bool = False, 
     """
     # FL7: numa CENA, cada elemento entra no momento que cobre o trecho dela (não o primeiro do capítulo); no retrato vale o estado como está.
     return _linhas_de_estados(
-        sessao, frame.estados_elemento, frame.capitulo.ordem, sem_lugar, frame=frame if frame.tipo == TipoDeFrame.CENA else None, com_cenario=com_cenario
+        sessao, frame.estados_elemento, frame.capitulo.ordem, sem_lugar, frame=frame if frame.tipo == TipoDeFrame.CENA else None, com_cenario=com_cenario,
+        com_vestimenta=frame.tipo == TipoDeFrame.PERSONAGEM,
     )
 
 
 def _linhas_de_estados(
-    sessao: Session, estados, ordem_do_capitulo: int, sem_lugar: bool = False, frame: Frame | None = None, com_cenario: bool = False
+    sessao: Session, estados, ordem_do_capitulo: int, sem_lugar: bool = False, frame: Frame | None = None, com_cenario: bool = False,
+    com_vestimenta: bool = False,
 ) -> list[str]:
     """"Nome (identidade): aparência" para cada estado, por tipo e nome.
 
@@ -1279,6 +1286,9 @@ def _linhas_de_estados(
         descricao = descricao_para_a_cena(estado, frame) if frame is not None else estado.descricao
         descricao = sem_o_lugar(descricao) if sem_lugar else descricao
         linha = f"{nome} ({identidade}): {descricao}" if identidade else f"{nome}: {descricao}"
+        if com_vestimenta and (estado.elemento.vestimenta or "").strip():
+            # PD9: no retrato, a roupa característica do personagem neste livro vale no lugar da roupa do instante do estado.
+            linha += f"\n{ROTULO_DA_VESTIMENTA_DO_RETRATO}: {estado.elemento.vestimenta.strip()}"
         if com_cenario and (cenario := linhas_do_cenario_do_estado(estado)):
             # AF6: o retrato de um objeto, lugar, edificação, criatura ou veículo mostra o elemento no seu cenário (não é neutro).
             linha += "\nCENÁRIO E FOTOGRAFIA DESTE ELEMENTO:\n" + "\n".join(cenario)

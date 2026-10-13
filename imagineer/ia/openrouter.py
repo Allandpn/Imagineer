@@ -20,6 +20,7 @@ from decimal import Decimal, InvalidOperation
 import httpx
 
 from imagineer.ia import esquemas_json
+from imagineer.ia.audio_pcm import pcm_para_mp3
 from imagineer.ia.cenario import (
     TIPOS_QUE_LEEM_CENARIO,
     bloco_do_cenario,
@@ -67,6 +68,7 @@ from imagineer.ia.provedor import (
     ProvedorIA,
     TextoLongoDemais,
     UsoDaChamada,
+    VestimentaIdentificada,
 )
 from imagineer.ia.tarefas import (  # noqa: F401 - as temperaturas são usadas aqui e importadas daqui por quem já as importava
     ORDEM_DOS_ESFORCOS,
@@ -107,6 +109,10 @@ tokens leva tempo. Um limite curto transformaria lentidão em erro.
 
 ROTULO_DA_APARENCIA_FIXA = "Aparência fixa:"
 ROTULO_DO_INSTANTE = "Neste instante:"
+ROTULO_DA_ROUPA_HERDADA = "Roupa de antes (vale só se este capítulo não disser outra)"
+ROTULO_DA_VESTIMENTA_DO_RETRATO = "Roupa característica neste livro (use esta no retrato)"
+"""A roupa que o personagem veste na maior parte do livro, anexada à linha dele no pedido do **retrato** (PD9): vale no lugar da roupa do instante."""
+"""A roupa que vem de **fora** do capítulo da cena (a vestimenta característica ou a de um capítulo anterior): a IA só a usa se o capítulo não diz a roupa (PD1)."""
 ROTULO_DO_AMBIENTE = "Onde está:"
 """Os rótulos das três partes do estado de um elemento (A1).
 
@@ -207,6 +213,20 @@ não invente — ignore. Todo o resto das regras vale igual.
 - Todo nome em "participantes" deve corresponder exatamente a um nome que \
 também está em "elementos".
 - Escreva em português.
+"""
+
+_INSTRUCAO_DE_VESTIMENTA = """\
+Você recebe o nome de um personagem de um livro e as descrições da aparência dele em vários capítulos. Diga qual é a ROUPA CARACTERÍSTICA \
+dele neste livro: o traje que ele veste na maior parte da história, o que um leitor reconheceria nele, com o material e a cor quando as \
+descrições derem.
+
+- Ignore trajes de uma ocasião só (camisola, fantasia, roupa de gala de um dia, armadura de uma batalha) a menos que seja o único registrado.
+- Se a roupa muda de verdade ao longo do livro (uma nova vida, um uniforme), vale a mais frequente ou a mais recente entre as concretas.
+- Não invente. Se as descrições não dizem uma roupa concreta, ou só dizem algo genérico ("roupa simples", "roupas comuns") sem material nem cor, \
+responda null: uma roupa vaga é pior do que nenhuma.
+- Escreva em português, numa frase curta, só com o que se vê.
+
+Responda APENAS com um objeto JSON, sem texto antes ou depois: {"vestimenta": "a roupa característica, ou null"}
 """
 
 _INSTRUCAO_DE_ESTADO = """\
@@ -405,6 +425,10 @@ mostra; a palavra do usuário vale mais que a sua (ele já leu o capítulo; voc�
 - Não invente. O que o capítulo não deixa claro vai em "faltou", não em "caracteristicas".
 - Dos participantes cadastrados, não repita a aparência estabelecida (rosto, cabelo, pele, porte): ela já está em \
 outro lugar. Escreva só o que o texto diz deles NESTE momento.
+- **A roupa é a deste capítulo.** De cada pessoa presente, escreva a roupa que o capítulo diz naquele momento, com o material e a cor \
+que o texto der (um capítulo costuma dizê-la com clareza, mesmo longe do trecho). Se o participante vier com "Roupa de antes (vale só \
+se este capítulo não disser outra)", use-a SÓ quando o capítulo não diz a roupa; se o capítulo diz, vale o capítulo. Nunca troque uma roupa \
+concreta do texto por uma genérica ("roupa simples"). Se nenhuma das duas diz, registre em "faltou" em vez de escrever uma roupa vaga.
 - Nomes inventados pelo livro (de lugares, criaturas, objetos) não dizem nada a quem vai desenhar: escreva o que SE VÊ \
 ("um filhote de luz azul num prato") e o nome só junto disso.
 - Escreva em português.
@@ -480,8 +504,10 @@ abrir para caber o conjunto; o sujeito segue em primeiro plano.
 
 A descrição de cada elemento pode vir em até três partes rotuladas: "Aparência fixa:" \
 (traços que não mudam: sempre entram no prompt, mesmo que o instante não os cite), \
-"Neste instante:" (roupa, pose, expressão e humor do momento) e "Onde está:" (o lugar \
-e o que o cerca naquele momento).
+"Neste instante:" (roupa, pose, expressão e humor do momento), "Onde está:" (o lugar \
+e o que o cerca naquele momento) e "Roupa de antes (vale só se este capítulo não disser outra):" (a roupa \
+que o elemento vestia antes: use-a só se nem o dossiê nem a descrição da cena dizem a roupa dele neste momento; \
+nunca no lugar de uma roupa que a cena ou o dossiê já dizem).
 
 Monte o prompt seguindo esta ordem de blocos, separados por vírgula (pule um \
 bloco se não houver informação para ele — nunca invente para preencher):
@@ -554,6 +580,8 @@ penteado do "Neste instante:" (ou, sem rótulos, do PRIMEIRO momento descrito), 
 pele, porte, humor), e NUNCA roupa ou pose que contradigam o instante escolhido: o \
 prompt não pode juntar, por exemplo, "nude" com roupa, nem duas poses incompatíveis. O \
 comentário do usuário, se houver, pode indicar outro momento e vale mais que esta regra.
+- **Se o personagem do retrato vier com "Roupa característica neste livro (use esta no retrato):"**, essa é a roupa do retrato: descreva-a (material e \
+cor) no lugar da roupa do "Neste instante:". Ela é a que o define no livro; o instante pode ser uma roupa de ocasião.
 - **Penteado e roupa vêm só do instante.** Se a "Aparência fixa:" fala de cabelo preso ou solto, \
 ignore isso e use o que o "Neste instante:" diz; se o instante não diz, escreva só cor, \
 comprimento e tipo do cabelo, sem dizer preso nem solto.
@@ -1013,6 +1041,8 @@ class ProvedorOpenRouter(ProvedorIA):
         self._cliente = cliente or httpx.Client(base_url=ENDERECO_BASE, timeout=TEMPO_LIMITE)
         self._precos_de_voz: dict[str, Decimal | None] | None = None
         """O preço por caractere de cada modelo de voz, lido do catálogo **uma vez** por provedor (NA3)."""
+        self._vozes_so_pcm: set[str] = set()
+        """Os modelos de voz que recusaram o MP3 e só entregam PCM (PD14): lembrados para os trechos seguintes irem direto em PCM."""
         self._ao_usar = ao_usar
         """Chamada depois de cada conversa bem-sucedida, com o que ela consumiu (item 4.3).
         O provedor não sabe o que fazer com isso (gravar, somar...): só avisa."""
@@ -1119,11 +1149,21 @@ class ProvedorOpenRouter(ProvedorIA):
             raise ChaveDeApiAusente(
                 "Não há chave de API do OpenRouter configurada. Defina a variável de ambiente CHAVE_API_OPENROUTER ou mande a sua chave pelo app."
             )
-        corpo = {"model": modelo, "input": texto, "response_format": "mp3"}
+        corpo = {"model": modelo, "input": texto, "response_format": "pcm" if modelo in self._vozes_so_pcm else "mp3"}
         if voz:
             corpo["voice"] = voz
 
-        conteudo, cabecalhos = self._pedir_audio(corpo)
+        try:
+            conteudo, cabecalhos = self._pedir_audio(corpo)
+        except ErroHttpDoProvedor as erro:
+            # PD14: o Gemini TTS responde 400 "supports only pcm, got mp3". O servidor aprende o formato pela recusa e refaz o pedido.
+            if corpo["response_format"] != "mp3" or not _so_aceita_pcm(erro):
+                raise
+            self._vozes_so_pcm.add(modelo)
+            corpo["response_format"] = "pcm"
+            conteudo, cabecalhos = self._pedir_audio(corpo)
+        if corpo["response_format"] == "pcm":
+            conteudo = pcm_para_mp3(conteudo)  # o resto do sistema só conhece MP3
         custo = self._custo_da_narracao(modelo, len(texto))
         id_da_geracao = cabecalhos.get("x-generation-id")
         self._avisar_narracao(modelo, custo, id_da_geracao)
@@ -1226,6 +1266,16 @@ class ProvedorOpenRouter(ProvedorIA):
             momentos=_interpretar_momentos(resposta),
             cenario=_interpretar_cenario_do_elemento(resposta, tipo),
         )
+
+    def identificar_vestimenta(self, nome: str, identidade: str | None, descricoes_de_estados: list[str], modelo: str) -> VestimentaIdentificada:
+        """Pede ao modelo a roupa característica de um personagem a partir das descrições de estado dele (PD9). Curta: não leva o capítulo."""
+        descricoes = "\n".join(f"- {d}" for d in descricoes_de_estados) or "(nenhuma)"
+        pedido = f"PERSONAGEM: {nome}\nQUEM É: {identidade or '(sem identidade registrada)'}\n\nDESCRIÇÕES DA APARÊNCIA, CAPÍTULO A CAPÍTULO:\n{descricoes}"
+        resposta = self._conversar(modelo, _INSTRUCAO_DE_VESTIMENTA, pedido, operacao="vestimenta", temperatura=TEMPERATURA_DE_FIDELIDADE)
+        bruto = _extrair_json(resposta)
+        if bruto is None:
+            raise ErroDoProvedorIA("O modelo não devolveu JSON. Tente outro modelo: alguns modelos pequenos não seguem bem instruções de formato.")
+        return VestimentaIdentificada(vestimenta=_texto_ou_nulo(bruto.get("vestimenta")), modelo=modelo)
 
     def sugerir_identidade(
         self,
@@ -1884,6 +1934,12 @@ ESPERAS_DA_NARRACAO = (3.0, 8.0, 15.0)
 """Quanto esperar antes de cada nova tentativa de um trecho de voz (até 4 tentativas no total). Os provedores de voz por trás do OpenRouter
 (o Orpheus, por exemplo) falham de vez em quando com um 400 "Provider returned 400" que passa sozinho em segundos; sem repetir, um trecho
 que cai derrubava o capítulo inteiro, com os trechos já pagos."""
+
+
+def _so_aceita_pcm(erro: ErroHttpDoProvedor) -> bool:
+    """O 400 de um modelo que só entrega PCM (PD14)? É o que diz o corpo da recusa ("supports only pcm, got mp3"); qualquer outro 400
+    (voz inexistente, texto inválido) não tem a palavra e não deve ser tratado como formato."""
+    return erro.codigo == 400 and "pcm" in erro.corpo.lower()
 
 
 def _falha_passageira_da_voz(resposta: httpx.Response) -> bool:

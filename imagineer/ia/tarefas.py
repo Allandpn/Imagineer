@@ -98,6 +98,9 @@ PERFIS: dict[str, PerfilDaTarefa] = {
     "conferencia": PerfilDaTarefa(
         temperatura=0.0, limite_de_saida=1500, raciocinio=NivelDeRaciocinio.NENHUM, esquema="conferencia", cache_do_capitulo=False
     ),  # item 4.9, FL13.1: comparar a imagem com a lista; sem variar
+    "vestimenta": PerfilDaTarefa(
+        temperatura=TEMPERATURA_DE_FIDELIDADE, limite_de_saida=600, raciocinio=NivelDeRaciocinio.NENHUM, esquema="vestimenta", cache_do_capitulo=False
+    ),  # PD9: a roupa característica, lida só das descrições já guardadas (sem o capítulo)
     "prompt": _redacao(TEMPERATURA_DO_PROMPT, 1500),
     "prompt_de_video": _redacao(TEMPERATURA_DO_PROMPT, 1500),
     "traducao": _redacao(TEMPERATURA_DA_TRADUCAO, 2000),

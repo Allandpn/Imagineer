@@ -76,6 +76,8 @@ ESQUEMAS: dict[str, dict] = {
     "estado": _objeto(aparencia_fixa=_TEXTO_OU_NULO, instante=_TEXTO_OU_NULO, ambiente=_TEXTO_OU_NULO),
     # A leitura de identidade (fase 2b): ``descricao`` nula é o caso comum ("nada de novo neste capítulo").
     "identidade": _objeto(descricao=_TEXTO_OU_NULO),
+    # A roupa característica de um personagem no livro (PD9): nula quando as descrições não dizem uma roupa concreta.
+    "vestimenta": _objeto(vestimenta=_TEXTO_OU_NULO),
     # A fundamentação da cena (fase 3), no formato **de hoje**: um contexto só.
     "fundamentacao": _objeto(contexto=_TEXTO),
     # A conferência de uma imagem gerada (item 4.9, FL13.1): conforme, ou a lista das divergências que o modelo viu.

@@ -268,6 +268,13 @@ class ElementoDetalhe(BaseModel):
     tipo: TipoElemento
     nome: str
     descricao: str | None
+    vestimenta: str | None = Field(
+        default=None,
+        description=(
+            "A roupa característica do elemento neste livro (PD9): a que veste na maior parte da história. A IA a preenche ao gerar o "
+            "retrato; a pessoa a corrige. Vale numa cena quando o capítulo dela não diz a roupa."
+        ),
+    )
     imagem_ancora_padrao_id: int | None = Field(
         default=None,
         description=(
@@ -330,6 +337,10 @@ class ElementoAjuste(BaseModel):
     tipo: TipoElemento | None = None
     nome: str | None = Field(default=None, min_length=1, max_length=200)
     descricao: str | None = None
+    vestimenta: str | None = Field(
+        default=None,
+        description="Define (ou, com null ou vazio, apaga) a roupa característica do elemento neste livro (PD9).",
+    )
     imagem_ancora_padrao_id: int | None = Field(
         default=None,
         description=(
