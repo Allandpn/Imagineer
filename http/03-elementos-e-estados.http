@@ -76,6 +76,14 @@ Content-Type: application/json
   "descricao": "Descrição corrigida"
 }
 
+### A roupa característica do personagem neste livro (PD9): a IA a preenche ao gerar o retrato; aqui a pessoa a corrige. null apaga.
+PATCH {{baseUrl}}/elementos/{{elementoId}}
+Content-Type: application/json
+
+{
+  "vestimenta": "túnica de lã cinza com capuz"
+}
+
 ### Registra um novo estado, a partir de outro capítulo
 POST {{baseUrl}}/elementos/{{elementoId}}/estados
 Content-Type: application/json
