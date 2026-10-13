@@ -275,6 +275,9 @@ def teste_o_idioma_do_modelo_vem_das_vozes_depois_da_tabela_e_nunca_e_palpite() 
     # 2) a tabela curada
     assert fala_portugues("google/gemini-3.8-flash-tts", ["Zephyr"]) is True
     assert fala_portugues("canopylabs/orpheus-3b-0.1-ft", ["tara", "leah"]) is False
+    assert fala_portugues("elevenlabs/eleven-multilingual-v2", []) is True
+    assert fala_portugues("elevenlabs/eleven-flash-v2.5", []) is True
+    assert fala_portugues("elevenlabs/eleven-flash-v2", []) is False  # sem o ".5": só inglês (o prefixo do .5 não o pega)
     # 3) o resto: não se sabe
     assert fala_portugues("fish-audio/s2.1-pro-free:free", []) is None
     assert fala_portugues("bytedance-seed/seed-audio-1-0", ["a", "b"]) is None

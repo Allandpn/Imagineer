@@ -12,11 +12,15 @@ PREFIXOS_QUE_FALAM_PORTUGUES = (
     "google/gemini",  # Gemini TTS: multilíngue, inclui português
     "openai/gpt-4o-mini-tts",  # multilíngue
     "microsoft/mai-voice",  # tem vozes pt-BR (também aparecem nas vozes do catálogo)
+    "elevenlabs/eleven-multilingual",  # Multilingual v2: 29 idiomas, com português
+    "elevenlabs/eleven-flash-v2.5",  # Flash v2.5: 32 idiomas, com português
+    "elevenlabs/eleven-turbo-v2.5",  # Turbo v2.5: 32 idiomas, com português
 )
 """Modelos que a documentação do fornecedor diz que falam português."""
 
 PREFIXOS_SO_EM_INGLES = (
     "canopylabs/orpheus",  # Orpheus 3B: o modelo do catálogo é o de inglês
+    "elevenlabs/eleven-flash-v2",  # Flash v2 (sem o ".5"): só inglês
 )
 """Modelos que só falam inglês: lerem português com eles dá um sotaque que a pessoa não quer descobrir só depois de pagar."""
 
