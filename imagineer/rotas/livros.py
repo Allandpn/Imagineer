@@ -45,6 +45,7 @@ from imagineer.modelos import (
     Frame,
     Imagem,
     Livro,
+    Marcador,
     PerfilRenderizacao,
     Prompt,
     SugestaoDeCena,
@@ -127,8 +128,10 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
             func.coalesce(func.sum(_um_se_ignorado()), 0),
             func.coalesce(func.sum(_um_se_lido_e_ativo()), 0),
             func.coalesce(func.sum(_caracteres_se_ativo()), 0),
+            func.max(Marcador.lido_em),  # PD10: um marcador por livro; o max só serve para o group_by aceitar a coluna
         )
         .outerjoin(Capitulo, Capitulo.livro_id == Livro.id)
+        .outerjoin(Marcador, Marcador.livro_id == Livro.id)
         .where(Livro.apagado_em.is_(None), Livro.usuario_id == usuario_ou_dono(sessao))  # LT2: o da lixeira não aparece; CT6-c: só os da pessoa
         .group_by(Livro.id)
         .order_by(Livro.titulo)
@@ -141,8 +144,9 @@ def listar_livros(sessao: Session = Depends(obter_sessao)) -> list[LivroResumo]:
             capitulos_ignorados=ignorados,
             capitulos_lidos=lidos,
             total_de_caracteres=caracteres,
+            ultima_abertura=aberto_em,
         )
-        for livro, total, ignorados, lidos, caracteres in linhas
+        for livro, total, ignorados, lidos, caracteres, aberto_em in linhas
     ]
 
 

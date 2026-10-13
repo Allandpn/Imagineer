@@ -112,6 +112,13 @@ class LivroResumo(BaseModel):
         default=0,
         description="Quantos capítulos **ativos** (não arquivados) estão lidos: o progresso do livro (item 7.5b, LE6).",
     )
+    ultima_abertura: datetime | None = Field(
+        default=None,
+        description=(
+            "Quando o livro foi aberto pela última vez (PD10): a hora do marcador de leitura (`lido_em`), que sincroniza entre aparelhos. "
+            "Nulo = o livro nunca foi lido; o app ordena a biblioteca por ela, e quem não tem usa a data de importação."
+        ),
+    )
 
 
 class LivroDetalhe(LivroResumo):

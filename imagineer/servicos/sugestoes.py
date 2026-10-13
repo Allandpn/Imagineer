@@ -2,6 +2,7 @@
 
 Era lógica de negócio dentro de `rotas/elementos.py`; agora mora num serviço, que não conhece HTTP: os erros do provedor (e a falta de modelo) sobem como exceções do domínio e o tratador global (`imagineer/erros.py`) as traduz."""
 
+import re
 import unicodedata
 from datetime import datetime, timezone
 
@@ -188,8 +189,12 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
             correspondente = elementos_desta_rodada.get(
                 chave_normalizada(participante.tipo, participante.nome)
             )
-            if correspondente is not None:
+            if correspondente is not None and correspondente not in linha_cena.participantes:
                 linha_cena.participantes.append(correspondente)
+        # PD3: quem a própria cena cita no título ou na descrição é participante, mesmo que a IA tenha esquecido de listá-lo.
+        for citado in participantes_citados(cena.titulo, cena.descricao, list(elementos_desta_rodada.values())):
+            if citado not in linha_cena.participantes:
+                linha_cena.participantes.append(citado)
         sessao.add(linha_cena)
 
     capitulo.sugestoes_geradas_em = datetime.now(timezone.utc)
@@ -299,6 +304,29 @@ def formatar_elementos_conhecidos(sessao: Session, capitulo: Capitulo) -> list[s
         linhas.append(linha)
         total += len(linha) + 1
     return linhas
+
+
+TIPOS_QUE_PARTICIPAM_PELO_NOME = (TipoElemento.PERSONAGEM, TipoElemento.CRIATURA, TipoElemento.GRUPO)
+"""Os tipos que entram numa cena só por serem citados nela (PD3): são o "quem". Lugares e objetos citados continuam sendo decisão da IA
+(um lugar mencionado de passagem não é o cenário da cena)."""
+
+
+def participantes_citados(titulo: str, descricao: str | None, candidatos: list[SugestaoDeElemento]) -> list[SugestaoDeElemento]:
+    """Os ``candidatos`` (pessoas, criaturas e grupos) cujo **nome inteiro** aparece no título ou na descrição da cena (PD3).
+
+    A IA às vezes descreve a cena com um personagem ("Vis se encontra com Estevan") e esquece de pô-lo na lista de participantes: a imagem
+    sai sem ele. Esta verificação não depende de o modelo lembrar. Compara sem caixa nem acento e por **palavra inteira** (``Vis`` não
+    casa com ``visão``). Não inclui quem foi descartado pela pessoa.
+    """
+    texto = texto_normalizado(f"{titulo} {descricao or ''}")
+    citados: list[SugestaoDeElemento] = []
+    for candidato in candidatos:
+        if candidato.tipo not in TIPOS_QUE_PARTICIPAM_PELO_NOME or candidato.descartada:
+            continue
+        nome = texto_normalizado(candidato.nome)
+        if nome and re.search(rf"(?<![a-z0-9]){re.escape(nome)}(?![a-z0-9])", texto):
+            citados.append(candidato)
+    return citados
 
 
 def texto_normalizado(texto: str) -> str:

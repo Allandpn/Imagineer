@@ -179,6 +179,56 @@ def teste_sugestoes_devolve_cenas_com_participantes_casados(
     assert isinstance(participante["sugestao_elemento_id"], int)
 
 
+def teste_pd3_quem_a_cena_cita_na_descricao_e_participante_mesmo_que_a_ia_esqueca(cliente: TestClient, usar_provedor_falso) -> None:
+    """*A reunião com Estevan*: a descrição diz "Vis se encontra com Estevan", mas a IA listou só Estevan e Sedotia. Vis tem de entrar."""
+    usar_provedor_falso(
+        ProvedorFalso(
+            elementos=[
+                ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Vis"),
+                ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Estevan"),
+                ElementoSugerido(tipo=TipoElemento.PERSONAGEM, nome="Sedotia"),
+                ElementoSugerido(tipo=TipoElemento.AMBIENTE, nome="Túnel"),
+            ],
+            cenas_sugeridas=[
+                CenaSugerida(
+                    titulo="A reunião com Estevan",
+                    descricao="Vis se encontra com Estevan em um túnel, discutindo aliança.",
+                    participantes=[
+                        ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Sedotia"),
+                        ParticipanteSugerido(tipo=TipoElemento.PERSONAGEM, nome="Estevan"),
+                    ],
+                )
+            ],
+        )
+    )
+    livro = _livro_importado(cliente)
+    _escolher_modelo_de_extracao(cliente)
+
+    resposta = cliente.post(f"/capitulos/{livro['capitulos'][0]['id']}/sugestoes")
+
+    (cena,) = resposta.json()["cenas"]
+    nomes = [p["nome"] for p in cena["participantes"]]
+    assert sorted(nomes) == ["Estevan", "Sedotia", "Vis"]  # Vis entrou; ninguém repetido
+    assert "Túnel" not in nomes  # lugar citado não entra por citação: continua sendo decisão da IA
+
+
+def teste_pd3_citar_e_por_palavra_inteira_sem_caixa_nem_acento_e_nao_traz_descartado() -> None:
+    from imagineer.modelos import SugestaoDeElemento
+    from imagineer.servicos.sugestoes import participantes_citados
+
+    vis = SugestaoDeElemento(tipo=TipoElemento.PERSONAGEM, nome="Vis")
+    aequa = SugestaoDeElemento(tipo=TipoElemento.PERSONAGEM, nome="Aequa Claudius")
+    mae = SugestaoDeElemento(tipo=TipoElemento.PERSONAGEM, nome="Mãe")
+    fora = SugestaoDeElemento(tipo=TipoElemento.PERSONAGEM, nome="Jon", descartada=True)
+    sala = SugestaoDeElemento(tipo=TipoElemento.AMBIENTE, nome="Sala")
+    candidatos = [vis, aequa, mae, fora, sala]
+
+    # "visão" não casa com Vis; "MAE" casa com Mãe (sem acento nem caixa); o nome composto casa inteiro; descartado e lugar ficam de fora.
+    assert participantes_citados("A visão", "A MAE chama Aequa Claudius. Jon observa na Sala.", candidatos) == [aequa, mae]
+    assert participantes_citados("Vis chega", None, candidatos) == [vis]
+    assert participantes_citados("Aequa", "só o primeiro nome", candidatos) == []
+
+
 def teste_sugestoes_sem_cenas_devolve_lista_vazia(
     cliente: TestClient, usar_provedor_falso
 ) -> None:

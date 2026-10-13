@@ -46,6 +46,23 @@ def teste_livro_sem_leitura_devolve_marcador_nulo(cliente: TestClient, sessao_co
     assert resposta.json() == {"marcador": None}
 
 
+def teste_a_lista_de_livros_diz_quando_cada_um_foi_aberto_pela_ultima_vez(cliente: TestClient, sessao_com_tabelas: Session) -> None:
+    """PD10: a biblioteca ordena pelo livro aberto por último; sem marcador, o campo vem nulo (o app cai na data de importação)."""
+    lido, (c1, _) = _cenario(cliente, sessao_com_tabelas)
+    nunca_lido, _ = _cenario(cliente, sessao_com_tabelas)
+    lido_em = AGORA - timedelta(hours=3)
+    _marcar(cliente, lido["id"], c1, 10, lido_em)
+
+    lista = {livro["id"]: livro for livro in cliente.get("/livros").json()}
+
+    assert lista[nunca_lido["id"]]["ultima_abertura"] is None
+    aberto = datetime.fromisoformat(lista[lido["id"]]["ultima_abertura"])
+    if aberto.tzinfo is None:  # o SQLite dos testes devolve sem fuso; o PostgreSQL, com
+        aberto = aberto.replace(tzinfo=timezone.utc)
+    assert abs(aberto - lido_em) < timedelta(seconds=1)
+    assert len(lista) == 2  # juntar o marcador não duplica nem some com nenhum livro
+
+
 def teste_gravar_cria_o_marcador_e_a_leitura_devolve(cliente: TestClient, sessao_com_tabelas: Session) -> None:
     livro, (c1, c2) = _cenario(cliente, sessao_com_tabelas)
     lido_em = AGORA - timedelta(minutes=5)
