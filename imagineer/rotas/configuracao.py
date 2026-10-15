@@ -303,6 +303,18 @@ class ModeloDaLista(BaseModel):
     esforcos: list[str] = Field(description="Os esforços de raciocínio que o modelo aceita; vazia = o catálogo não diz.")
     rapido: bool = Field(description="Responde rápido: sem raciocínio, ou com um que se desliga ou fica no mínimo.")
     saida_maxima: int | None = Field(description="O teto de tokens de saída do modelo; nulo = o catálogo não diz.")
+    preco_entrada_por_milhao: float = Field(
+        default=0.0, description="US$ por **milhão** de tokens de entrada (o `preco_entrada` está por token, uma unidade que ninguém lê). É a unidade da tabela do OpenRouter."
+    )
+    preco_saida_por_milhao: float = Field(default=0.0, description="US$ por **milhão** de tokens de saída.")
+    custo_do_capitulo_tipico: float | None = Field(
+        default=None,
+        description=(
+            "**O número para comparar modelos:** US$ para ler um capítulo típico (12 mil tokens, 9 leituras) com o cache do capítulo. "
+            "Mostre-o ao lado do nome do modelo (\"≈ US$ 0,12 por capítulo\"). Nulo = o catálogo não tem o preço."
+        ),
+    )
+    custo_do_capitulo_tipico_sem_cache: float | None = Field(default=None, description="O mesmo, se o cache não pegasse.")
 
 
 @rotas.get("", response_model=ConfiguracaoAtual, summary="A configuração atual")
@@ -530,6 +542,10 @@ def listar_modelos(
             esforcos=modelo.esforcos,
             rapido=modelo.rapido,
             saida_maxima=modelo.saida_maxima,
+            preco_entrada_por_milhao=_por_milhao(Decimal(str(modelo.preco_entrada))) or 0.0,
+            preco_saida_por_milhao=_por_milhao(Decimal(str(modelo.custo_saida))) or 0.0,
+            custo_do_capitulo_tipico=modelo.custo_do_capitulo_tipico,
+            custo_do_capitulo_tipico_sem_cache=modelo.custo_do_capitulo_tipico_sem_cache,
         )
         for modelo in modelos
         if (not somente_gratuitos or modelo.gratuito)

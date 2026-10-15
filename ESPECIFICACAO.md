@@ -1581,6 +1581,16 @@ Migration `a92e5f1c8d3b`. 4 testes novos (311 no total). Verificado contra `Prov
   4. **Custo zero ou não informado** não gera "qualidade por dólar" (não se divide por zero): essas linhas vão para o fim da tabela, ordenadas por qualidade.
   5. **Não executado com IA real:** sem chave e sem os casos do Allan, o script só foi exercitado com provedor e juiz falsos. O juiz é um modelo, com temperatura 0 mas não infalível: vale rodá-lo com dois juízes diferentes antes de confiar numa diferença pequena.
 
+#### E2. O custo legível na lista de modelos (pedido do Allan, 15/10/2026)
+
+**Achado.** O Allan não entendeu *"o modelo sem sufixo custa cerca do dobro: US$ 2 e US$ 10 por milhão de tokens, em vez de US$ 1 e US$ 5"*, e disse que isso **importa na hora de escolher o modelo**. Com razão: o `GET /configuracao/modelos` só trazia o preço **por token** (`0,000002`, uma unidade que ninguém lê), e mesmo o preço por milhão de tokens **não diz quanto um capítulo custa**. **Decisão:** a lista passa a trazer os números que dão para **comparar modelos lado a lado**.
+
+- **Campos novos em cada modelo de `GET /configuracao/modelos`** (os de antes **continuam**): **`preco_entrada_por_milhao`** e **`preco_saida_por_milhao`** (US$ por milhão de tokens, a unidade da tabela do OpenRouter) e **`custo_do_capitulo_tipico`** (**o número para comparar**: US$ para ler um capítulo típico, 12 mil tokens e 9 leituras, **com** o cache do capítulo, a mesma conta do LM15) e `custo_do_capitulo_tipico_sem_cache`. Nulo = o catálogo não tem o preço; modelo gratuito = 0.
+- **Para o app (recomendado):** mostrar ao lado do nome **"≈ US$ 0,12 por capítulo"** (e, em pequeno, "US$ 2 / US$ 10 por milhão de tokens"). Em reais, se quiser, o app multiplica pela cotação que ele já souber. O preço por milhão sozinho **não** deve ser o destaque.
+- **Exemplo (catálogo de 15/10/2026, capítulo típico):** `google/gemini-2.5-flash-lite` US$ 0,006; `gpt-4.1-mini` US$ 0,032; `google/gemini-2.5-flash` US$ 0,031; `claude-haiku-4.5` US$ 0,079; `google/gemini-4-argon` US$ 0,120 (US$ 0,324 sem cache) e **mais**, porque o raciocínio obrigatório dele conta como saída.
+- **A variante `:batch`** (por que custa metade): o OpenRouter a vende por **metade do preço porque entrega o resultado horas depois** (processamento em lote); a conversa do app precisa da resposta na hora, então ela **não funciona** aqui. O aviso do servidor agora diz isso e o que escolher no lugar (a versão normal, que cobra o dobro **por token**).
+- **Implementado (15/10/2026):** os campos em `ModeloDisponivel` e `ModeloDaLista`, calculados em `listar_modelos` com o catálogo que ele já lê (sem chamada extra); `testes/teste_custo_na_lista_de_modelos.py` (4).
+
 #### F. Sugestões por item da configuração (pedido do Allan, 15/10/2026; SG1 a SG10)
 
 **Pedido:** *"para cada item na configuração de modelos você poderia ter uma opção de modelos sugeridos"*. Hoje a pessoa tem os **níveis** (Econômico, Equilibrado, Qualidade: LM14), que trocam **todos** os papéis de uma vez, ou escolhe cada modelo na lista de 400. Falta o meio: **na linha de um item**, ver o que se sugere **para aquele item** e tocar.

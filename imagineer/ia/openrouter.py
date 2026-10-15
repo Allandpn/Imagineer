@@ -1063,6 +1063,8 @@ class ProvedorOpenRouter(ProvedorIA):
         Modelos que não recebem e devolvem texto são descartados: a lista tem
         modelos de imagem, áudio e música, e nenhum deles serve aqui.
         """
+        from imagineer.servicos.estimativa_de_leitura import custo_do_capitulo_tipico  # aqui dentro: aquele módulo importa este (círculo)
+
         # A mesma leitura que a montagem de cada chamada usa (LM17): no máximo uma ida ao OpenRouter a cada 10 minutos.
         brutos = ler_catalogo(lambda: self._pedir("GET", "/models"))
 
@@ -1071,6 +1073,7 @@ class ProvedorOpenRouter(ProvedorIA):
             if not _e_modelo_de_texto(bruto) or e_variante_em_lote(bruto.get("id")):  # a variante ``:batch`` não serve à conversa
                 continue
             capacidades = capacidades_de(bruto)  # LM16: o que decide a escolha de um modelo para ler um livro
+            sem_cache, com_cache = custo_do_capitulo_tipico(capacidades)
             modelos.append(
                 ModeloDisponivel(
                     id=bruto.get("id", ""),
@@ -1086,6 +1089,8 @@ class ProvedorOpenRouter(ProvedorIA):
                     esforcos=list(capacidades.esforcos),
                     rapido=e_rapido(capacidades),
                     saida_maxima=capacidades.saida_maxima,
+                    custo_do_capitulo_tipico=None if com_cache is None else float(round(com_cache, 6)),
+                    custo_do_capitulo_tipico_sem_cache=None if sem_cache is None else float(round(sem_cache, 6)),
                 )
             )
 

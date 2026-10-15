@@ -47,8 +47,8 @@ def mensagem_de_variante_em_lote(id_do_modelo: str) -> str:
     """O aviso, em português, que diz o que fazer: usar o mesmo modelo **sem** o sufixo (que custa o dobro)."""
     sem_sufixo = id_do_modelo.strip()[: -len(SUFIXO_DE_LOTE)]
     return (
-        f"O modelo {id_do_modelo.strip()} é a variante de processamento em lote (assíncrona) e não funciona na conversa. "
-        f"Escolha {sem_sufixo}, a versão sem ':batch' (custa cerca do dobro)."
+        f"O modelo {id_do_modelo.strip()} é a variante em lote (batch): o OpenRouter a vende por metade do preço porque entrega o resultado horas "
+        f"depois, e por isso ela não funciona na conversa. Escolha {sem_sufixo}, a versão normal (cobra o dobro por token)."
     )
 
 
@@ -158,6 +158,13 @@ class ModeloDisponivel:
 
     saida_maxima: int | None = None
     """O teto de tokens de saída do modelo (``top_provider.max_completion_tokens``). Nulo = o catálogo não diz."""
+
+    custo_do_capitulo_tipico: float | None = None
+    """US$ para ler um capítulo típico (12 mil tokens, 9 leituras de 1.200 tokens de saída) **com** o cache do capítulo: o número que dá para comparar
+    modelos lado a lado (o preço por milhão de tokens, sozinho, não diz quanto um capítulo custa). Nulo = o catálogo não tem o preço."""
+
+    custo_do_capitulo_tipico_sem_cache: float | None = None
+    """O mesmo, se o cache não pegasse."""
 
 
 @dataclass
