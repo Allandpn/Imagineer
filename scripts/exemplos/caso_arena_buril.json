@@ -1,0 +1,38 @@
+{
+  "livro": "A vontade de muitos (fatos parafraseados, sem o texto do livro)",
+  "capitulo": 21,
+  "tipo": "cena",
+  "texto": "Vis, que conta a história em primeira pessoa, está na arena em semiescuridão. O chão é de pedras molhadas e quebradas. Ao redor, arquibancadas vermelhas, restos de um navio e um lago que vai secando; chamas laranja-escuras ainda ardem. Estevan está sentado de pernas cruzadas, com a cabeça baixa, e segura a mão de Vis para consolá-la. Vis encosta o buril no pescoço de Estevan, a quem Estevan chama de Diago. O buril fura a pele, e uma linha fina de sangue desce pelo pescoço. Mais tarde, Vis sairá da arena arrastando-se por uma escada.",
+  "cena": {
+    "titulo": "O buril no pescoço",
+    "descricao": "Vis segura o buril no pescoço de Estevan, que está sentado e segura a mão dela.",
+    "trecho": "O buril perfurou sua pele."
+  },
+  "participantes": [
+    {
+      "nome": "Vis",
+      "tipo": "PERSONAGEM",
+      "aparencia": "Aparência fixa: narradora, conta a história em primeira pessoa\nNeste instante: de pé ao lado de Estevan, segurando o buril"
+    },
+    {
+      "nome": "Estevan",
+      "tipo": "PERSONAGEM",
+      "aparencia": "Aparência fixa: homem mais velho\nNeste instante: sentado de pernas cruzadas, cabeça baixa"
+    }
+  ],
+  "deve_aparecer": [
+    "Vis segurando o buril encostado no pescoço de Estevan",
+    "Estevan sentado de pernas cruzadas, de cabeça baixa",
+    "Estevan segurando a mão de Vis",
+    "uma linha fina de sangue no pescoço de Estevan",
+    "pedras molhadas e quebradas no chão",
+    "arquibancadas vermelhas ao fundo",
+    "luz fraca, semiescuridão, com chamas laranja-escuras"
+  ],
+  "nao_deve_aparecer": [
+    "Estevan enfiando o buril no próprio pescoço",
+    "alguém se aproximando ou se ajoelhando",
+    "Vis subindo a escada",
+    "uma terceira pessoa em primeiro plano"
+  ]
+}
