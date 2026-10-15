@@ -499,3 +499,60 @@ def teste_ct6_estatisticas_de_leitura_so_somam_a_propria_pessoa(cliente: TestCli
 
     _como(sessao_com_tabelas, DONO_ID)
     assert [l["titulo"] for l in cliente.get("/estatisticas/leitura").json()["livros"]] == ["Do dono"]
+
+
+def teste_ct6_rotas_de_sugestoes_acrescimos_audios_e_videos_tambem_nao_vazam(
+    cliente: TestClient, sessao_com_tabelas: Session, usar_provedor_falso
+) -> None:
+    """A varredura principal só conhece alguns ids; estas rotas (sugestões, acréscimos de identidade, narrações guardadas e vídeos), que a IDE
+    acrescentou depois, têm ids próprios e passam por aqui com linhas criadas à mão para o dono."""
+    from imagineer.modelos import (
+        AudioDeCapitulo,
+        HistoricoIdentidadeElemento,
+        SituacaoDoAudio,
+        SugestaoDeCena,
+        SugestaoDeElemento,
+        TipoElemento,
+        Video,
+    )
+
+    ids = _cenario_do_dono(cliente, sessao_com_tabelas, usar_provedor_falso)
+    sessao = sessao_com_tabelas
+    sugestao_elemento = SugestaoDeElemento(capitulo_id=ids["capitulo_id"], tipo=TipoElemento.PERSONAGEM, nome="Fulano", modelo="m")
+    sugestao_cena = SugestaoDeCena(capitulo_id=ids["capitulo_id"], titulo="Uma cena", modelo="m")
+    acrescimo = HistoricoIdentidadeElemento(elemento_id=ids["elemento_id"], capitulo_id=ids["capitulo_id"], descricao="algo novo sobre quem é")
+    video = Video(frame_id=ids["frame_id"], caminho_arquivo="videos/inexistente.mp4", tamanho_em_bytes=1)
+    audio = AudioDeCapitulo(capitulo_id=ids["capitulo_id"], modelo="m", voz="", situacao=SituacaoDoAudio.PRONTO)
+    sessao.add_all([sugestao_elemento, sugestao_cena, acrescimo, video, audio])
+    sessao.commit()
+    por_nome = {
+        "sugestao_elemento_id": sugestao_elemento.id,
+        "sugestao_cena_id": sugestao_cena.id,
+        "acrescimo_id": acrescimo.id,
+        "video_id": video.id,
+        "audio_id": audio.id,
+    }
+    maria = _pessoa(sessao, "maria@exemplo.com")
+    _como(sessao, maria.id)
+
+    cobertas = 0
+    for caminho, metodos in aplicacao.openapi()["paths"].items():
+        nomes = re.findall(r"{(\w+)}", caminho)
+        if not nomes or any(n not in por_nome for n in nomes):
+            continue
+        url = caminho.format(**{n: por_nome[n] for n in nomes})
+        for metodo in metodos:
+            corpo = {} if metodo not in ("get", "delete") else None
+            resposta = cliente.request(metodo.upper(), url, json=corpo) if corpo is not None else cliente.request(metodo.upper(), url)
+            if metodo in ("get", "delete"):
+                assert resposta.status_code == 404, f"{metodo.upper()} {caminho} deixou outra pessoa passar: {resposta.status_code} {resposta.text[:200]}"
+            else:
+                assert resposta.status_code in (404, 405, 422), f"{metodo.upper()} {caminho}: {resposta.status_code} {resposta.text[:200]}"
+            cobertas += 1
+    assert cobertas >= 9  # as dez rotas da lista (PATCH e PUT de posição podem ter corpo obrigatório)
+
+    # Nada do dono foi tocado.
+    _como(sessao, DONO_ID)
+    sessao.expire_all()
+    for modelo, id_ in ((SugestaoDeElemento, sugestao_elemento.id), (SugestaoDeCena, sugestao_cena.id), (HistoricoIdentidadeElemento, acrescimo.id), (Video, video.id), (AudioDeCapitulo, audio.id)):
+        assert sessao.get(modelo, id_) is not None, modelo.__name__
