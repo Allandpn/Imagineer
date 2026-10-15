@@ -244,3 +244,10 @@ GET {{baseUrl}}/configuracao/modelos
 X-Chave-API-OpenRouter: sk-or-...
 X-Chave-API-Fal: ...
 X-Chave-API-Replicate: r8_...
+
+
+### Para cada item da configuração de modelos, os modelos sugeridos (item 4.10, SG1 a SG10). Não grava nada nem gasta IA. Aplicar = o PUT /configuracao de sempre.
+GET {{baseUrl}}/configuracao/modelos-sugeridos
+
+### O mesmo, mostrando o que vale NESTE livro (a troca do livro ou, sem ela, o global)
+GET {{baseUrl}}/configuracao/modelos-sugeridos?livro_id={{livroId}}

@@ -82,3 +82,75 @@ RECOMENDACOES: dict[Nivel, dict[Papel, Recomendacao]] = {
     },
 }
 """A tabela curada (proposta inicial do item 4.10, LM14)."""
+
+
+# --------------------------------------------------------------------------- #
+# Sugestões por item da configuração (item 4.10, SG1 a SG10)
+# --------------------------------------------------------------------------- #
+
+
+class TipoDeCampo(str, enum.Enum):
+    """De que catálogo vêm as sugestões de um item."""
+
+    TEXTO = "texto"
+    IMAGEM = "imagem"
+    VOZ = "voz"
+
+
+@dataclass(frozen=True)
+class CampoDeModelo:
+    """Um item da tela de modelos: o campo que se grava, como se chama e de onde vêm as sugestões dele."""
+
+    campo: str
+    """O nome em ``PUT /configuracao`` e em ``PUT /livros/{id}/modelos`` (``modelo_leitura``...)."""
+    rotulo: str
+    descricao: str
+    tipo: TipoDeCampo
+    papel: Papel | None = None
+    """Os sete papéis de texto da tabela ``RECOMENDACOES`` (os mesmos dos níveis): as sugestões saem dela."""
+    sugestoes: dict[Nivel, Recomendacao] | None = None
+    """Os itens de texto que **não** são papéis de nível (perfil, conferência): têm a própria tabela, e o nível **não** os grava (SG3)."""
+    exige_imagem: bool = False
+    """O modelo precisa **ler imagens** (a conferência da imagem): o catálogo diz se lê, e a sugestão avisa."""
+
+
+_PERFIL = (
+    "uma chamada por livro: vale pagar mais; os dois mais caros citaram referências de arte coerentes nos testes de 02/10/2026, o barato saiu genérico"
+)
+_CONFERENCIA = "olha uma imagem e a lista do que devia aparecer; precisa ler imagens"
+
+CAMPOS_DE_MODELO: tuple[CampoDeModelo, ...] = (
+    CampoDeModelo("modelo_extracao", "Identificar elementos e cenas", "Lê o capítulo e sugere os elementos e as cenas (a análise do capítulo).", TipoDeCampo.TEXTO, Papel.EXTRACAO),
+    CampoDeModelo("modelo_leitura", "Ler cada elemento e cena", "Relê o capítulo para descrever a aparência de cada elemento e o dossiê de cada cena.", TipoDeCampo.TEXTO, Papel.LEITURA),
+    CampoDeModelo("modelo_prompt", "Montar o prompt de imagem", "Escreve o prompt de imagem a partir da cena ou do retrato.", TipoDeCampo.TEXTO, Papel.PROMPT),
+    CampoDeModelo("modelo_traducao", "Traduzir os prompts", "Traduz o prompt entre inglês e português.", TipoDeCampo.TEXTO, Papel.TRADUCAO),
+    CampoDeModelo("modelo_suavizacao", "Suavizar um prompt recusado", "Reescreve só os trechos que o provedor de imagem recusou.", TipoDeCampo.TEXTO, Papel.SUAVIZACAO),
+    CampoDeModelo("modelo_video", "Montar o prompt de vídeo", "Escreve o prompt de vídeo de uma cena.", TipoDeCampo.TEXTO, Papel.VIDEO),
+    CampoDeModelo("modelo_reserva", "Modelo reserva", "Assume a chamada se o modelo principal falhar.", TipoDeCampo.TEXTO, Papel.RESERVA),
+    CampoDeModelo(
+        "modelo_perfil",
+        "Sugerir o perfil de renderização",
+        "Sugere o estilo visual do livro (usa a busca na web).",
+        TipoDeCampo.TEXTO,
+        sugestoes={
+            Nivel.ECONOMICO: Recomendacao("openai/gpt-4o-mini", "o mais barato; a sugestão tende a sair genérica"),
+            Nivel.EQUILIBRADO: Recomendacao("google/gemini-2.5-flash", _PERFIL),
+            Nivel.QUALIDADE: Recomendacao("anthropic/claude-haiku-4.5", "testado em 02/10/2026: sugestões com referências de arte coerentes nas três categorias"),
+        },
+    ),
+    CampoDeModelo(
+        "modelo_conferencia",
+        "Conferir a imagem gerada",
+        "Compara a imagem com a lista do que devia aparecer na cena.",
+        TipoDeCampo.TEXTO,
+        sugestoes={
+            Nivel.ECONOMICO: Recomendacao("google/gemini-2.5-flash-lite", _CONFERENCIA + "; o mais barato"),
+            Nivel.EQUILIBRADO: Recomendacao("google/gemini-2.5-flash", _CONFERENCIA + "; mais atento aos detalhes"),
+            Nivel.QUALIDADE: Recomendacao("anthropic/claude-haiku-4.5", _CONFERENCIA + "; o mais cuidadoso dos três"),
+        },
+        exige_imagem=True,
+    ),
+    CampoDeModelo("modelo_imagem", "Gerar a imagem", "O modelo que desenha a imagem a partir do prompt.", TipoDeCampo.IMAGEM),
+    CampoDeModelo("modelo_narracao", "Narrar com voz de IA", "O modelo de voz que fala o capítulo.", TipoDeCampo.VOZ),
+)
+"""Os itens da tela de modelos, **na ordem da tela** (SG1). Cada um vira uma linha com o botão **Sugeridos**."""

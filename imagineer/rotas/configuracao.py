@@ -14,9 +14,21 @@ from imagineer.ia.catalogo_de_texto import Capacidades, capacidades_de, e_rapido
 from imagineer.ia.provedor import ErroDoProvedorIA, ProvedorIA, e_variante_em_lote, mensagem_de_variante_em_lote
 from imagineer.ia.provedores import PROVEDORES, Provedor
 from imagineer.modelos import ModoDeNarracao, MotorDeNarracao, PrioridadeIA, Usuario
+from imagineer.rotas._comum import buscar_livro
 from imagineer.servicos.catalogo_de_modelos_de_imagem import chave_do_modelo_de_imagem, montar_catalogo, testar_modelo_de_imagem
 from imagineer.servicos.estimativa_de_leitura import custo_do_capitulo_tipico
-from imagineer.servicos.modelos_recomendados import CAMPO_DA_CONFIGURACAO, RECOMENDACOES, Nivel, Papel, Recomendacao
+from imagineer.servicos.idioma_das_vozes import fala_portugues
+from imagineer.servicos.modelos_do_livro import configuracao_do_livro
+from imagineer.servicos.modelos_recomendados import (
+    CAMPO_DA_CONFIGURACAO,
+    CAMPOS_DE_MODELO,
+    RECOMENDACOES,
+    CampoDeModelo,
+    Nivel,
+    Papel,
+    Recomendacao,
+    TipoDeCampo,
+)
 from imagineer.servicos.configuracao_ia import (
     construir_provedor,
     ler_modelo_reserva,
@@ -630,6 +642,176 @@ def listar_modelos_recomendados() -> list[NivelRecomendado]:
         )
         for nivel, por_papel in RECOMENDACOES.items()
     ]
+
+
+class SugestaoDeModelo(BaseModel):
+    """Um modelo sugerido para um item da configuração, com o que o catálogo diz dele **agora** (SG2). Os campos que não se aplicam ao tipo do item vêm nulos."""
+
+    nivel: Nivel | None = Field(description="`ECONOMICO`, `EQUILIBRADO` ou `QUALIDADE`; nulo nas sugestões de imagem e de voz, que não têm nível.")
+    modelo: str = Field(description="O id, como se grava no campo (`PUT /configuracao`) ou na troca por livro.")
+    motivo: str
+    disponivel: bool = Field(description="O modelo existe no catálogo agora. Se não, o app mostra a sugestão apagada e sem toque.")
+    em_uso: bool = Field(description="É o modelo que vale hoje para este item (na configuração, ou no livro se `livro_id` veio).")
+    contexto: int | None = None
+    preco_entrada: float | None = Field(default=None, description="Texto: US$ por milhão de tokens de entrada.")
+    preco_saida: float | None = Field(default=None, description="Texto: US$ por milhão de tokens de saída.")
+    raciocinio_obrigatorio: bool | None = None
+    rapido: bool | None = None
+    aceita_imagem: bool | None = Field(default=None, description="Só no item que olha imagens (a conferência): o modelo lê imagens. `false` = não serve.")
+    custo_do_capitulo_tipico: float | None = Field(default=None, description="Só nos itens que leem o capítulo: US$ de um capítulo típico, com cache.")
+    preco_por_imagem: float | None = Field(default=None, description="Só na imagem: US$ por imagem (medido ou de tabela); nulo = ainda sem preço.")
+    preco_por_caractere: float | None = Field(default=None, description="Só na voz: US$ por caractere; nulo = o modelo cobra por token ou por segundo.")
+    gratuito: bool | None = None
+    fala_portugues: bool | None = Field(default=None, description="Só na voz (PD12): `true` fala português.")
+
+
+class ItemDaConfiguracaoComSugestoes(BaseModel):
+    """Um item da tela de modelos e as sugestões dele (SG1)."""
+
+    campo: str = Field(description="O campo que se grava: `modelo_leitura`, `modelo_imagem`, `modelo_narracao`...")
+    rotulo: str
+    descricao: str
+    tipo: TipoDeCampo
+    atual: str | None = Field(description="O modelo que vale hoje para este item; nulo = nenhum escolhido.")
+    sugestoes: list[SugestaoDeModelo]
+
+
+def _sugestao_de_texto(
+    nivel: Nivel, recomendacao: Recomendacao, catalogo: dict[str, Capacidades], atual: str | None, exige_imagem: bool
+) -> SugestaoDeModelo:
+    """A sugestão de um item de texto: a mesma conta das recomendações dos níveis (LM14), mais ``em_uso`` e, se o item olha imagens, ``aceita_imagem``."""
+    base = _recomendacao_do_papel(Papel.EXTRACAO, recomendacao, catalogo)  # o papel não importa aqui: só se aproveita a conta do catálogo
+    capacidades = catalogo.get(recomendacao.modelo)
+    return SugestaoDeModelo(
+        nivel=nivel,
+        modelo=recomendacao.modelo,
+        motivo=recomendacao.motivo,
+        disponivel=base.disponivel,
+        em_uso=recomendacao.modelo == atual,
+        contexto=base.contexto,
+        preco_entrada=base.preco_entrada,
+        preco_saida=base.preco_saida,
+        raciocinio_obrigatorio=base.raciocinio_obrigatorio,
+        rapido=base.rapido,
+        aceita_imagem=(capacidades.aceita_imagem if capacidades is not None else None) if exige_imagem else None,
+        custo_do_capitulo_tipico=base.custo_do_capitulo_tipico,
+    )
+
+
+def _sugestoes_de_imagem(sessao: Session, provedor: ProvedorIA, atual: str | None) -> list[SugestaoDeModelo]:
+    """Os modelos de imagem que o sistema oferece de início (os de ``MODELOS_DE_IMAGEM_PADRAO``), com o preço do catálogo de imagem (MI1) quando se sabe."""
+    from imagineer.modelos.configuracao import MODELOS_DE_IMAGEM_PADRAO
+
+    notas = {
+        MODELOS_DE_IMAGEM_PADRAO[0]: "o padrão do sistema; recusa alguns prompts mais delicados",
+        MODELOS_DE_IMAGEM_PADRAO[1]: "aceitou, em 02/10/2026, prompts que o padrão recusou",
+        MODELOS_DE_IMAGEM_PADRAO[2]: "aceitou, em 02/10/2026, prompts que o padrão recusou",
+    }
+    # "Existe agora" vem da lista do OpenRouter (o ``disponivel`` do catálogo de imagem quer dizer "está na lista de escolha", que não é isto);
+    # se a lista não pôde ser lida, não se sabe, e não se bloqueia por falta de dado.
+    try:
+        existentes: set[str] | None = {m.id for m in provedor.listar_modelos_de_imagem()}
+    except ErroDoProvedorIA:
+        existentes = None
+    try:
+        entradas, _aviso = montar_catalogo(sessao, obter_ou_criar(sessao), provedor)
+    except ErroDoProvedorIA:
+        entradas = []
+    por_id = {e.id: e for e in entradas}
+    sugestoes = []
+    for modelo in MODELOS_DE_IMAGEM_PADRAO:
+        entrada = por_id.get(modelo)
+        sugestoes.append(
+            SugestaoDeModelo(
+                nivel=None,
+                modelo=modelo,
+                motivo=notas.get(modelo, "oferecido pelo sistema"),
+                disponivel=existentes is None or modelo in existentes,
+                em_uso=modelo == atual,
+                preco_por_imagem=None if entrada is None or entrada.preco_por_imagem is None else float(entrada.preco_por_imagem),
+            )
+        )
+    return sugestoes
+
+
+def _sugestoes_de_voz(provedor: ProvedorIA, atual: str | None) -> list[SugestaoDeModelo]:
+    """Os modelos de voz mais baratos **que falam português** (os três primeiros) e um gratuito para testar. Sem palpite de qualidade: só o que o catálogo informa."""
+    try:
+        modelos = provedor.listar_modelos_de_voz()
+    except ErroDoProvedorIA:
+        return []
+    falam = [m for m in modelos if fala_portugues(m.id, m.vozes) is True]
+    pagos = sorted((m for m in falam if not m.gratuito and m.preco_por_caractere is not None), key=lambda m: m.preco_por_caractere)[:3]
+    gratuito = next((m for m in falam if m.gratuito), None)
+    sugestoes = []
+    for posicao, m in enumerate(pagos, start=1):
+        mil = float(m.preco_por_caractere) * 1000
+        sugestoes.append(
+            SugestaoDeModelo(
+                nivel=None,
+                modelo=m.id,
+                motivo=f"fala português; {'o mais barato' if posicao == 1 else f'o {posicao}º mais barato'} dos que falam (US$ {mil:.4f} por mil caracteres)",
+                disponivel=True,
+                em_uso=m.id == atual,
+                preco_por_caractere=float(m.preco_por_caractere),
+                gratuito=False,
+                fala_portugues=True,
+            )
+        )
+    if gratuito is not None:
+        sugestoes.append(
+            SugestaoDeModelo(
+                nivel=None,
+                modelo=gratuito.id,
+                motivo="fala português e é gratuito: bom para testar (costuma ter fila)",
+                disponivel=True,
+                em_uso=gratuito.id == atual,
+                preco_por_caractere=0.0,
+                gratuito=True,
+                fala_portugues=True,
+            )
+        )
+    return sugestoes
+
+
+@rotas.get(
+    "/modelos-sugeridos",
+    response_model=list[ItemDaConfiguracaoComSugestoes],
+    summary="Para cada item da configuração de modelos, os modelos sugeridos",
+)
+def listar_modelos_sugeridos(
+    livro_id: int | None = Query(default=None, description="Se vier, `atual` e `em_uso` mostram o que vale **neste livro** (troca do livro ou, sem ela, o global)."),
+    sessao: Session = Depends(obter_sessao),
+    provedor: ProvedorIA = Depends(obter_provedor),
+) -> list[ItemDaConfiguracaoComSugestoes]:
+    """SG1 a SG6: um item por linha da tela de modelos, **na ordem da tela**, cada um com as suas sugestões e o que o catálogo diz de cada uma **agora**
+    (preço, rapidez, se existe). Os itens de texto trazem uma sugestão por nível; imagem e voz trazem as que o catálogo sustenta. **Não grava nada** e
+    **não gasta IA**: aplicar uma sugestão é um `PUT /configuracao` (ou `PUT /livros/{id}/modelos`) com o campo e o modelo."""
+    configuracao = configuracao_do_livro(sessao, buscar_livro(sessao, livro_id) if livro_id is not None else None)
+    catalogo = _catalogo_de_capacidades()
+    itens = []
+    for item in CAMPOS_DE_MODELO:
+        atual = (getattr(configuracao, item.campo, None) or "").strip() or None
+        if item.tipo == TipoDeCampo.TEXTO:
+            por_nivel = sugestoes_do_item(item)
+            sugestoes = [_sugestao_de_texto(nivel, rec, catalogo, atual, item.exige_imagem) for nivel, rec in por_nivel.items()]
+        elif item.tipo == TipoDeCampo.IMAGEM:
+            sugestoes = _sugestoes_de_imagem(sessao, provedor, atual)
+        else:
+            sugestoes = _sugestoes_de_voz(provedor, atual)
+        itens.append(
+            ItemDaConfiguracaoComSugestoes(
+                campo=item.campo, rotulo=item.rotulo, descricao=item.descricao, tipo=item.tipo, atual=atual, sugestoes=sugestoes
+            )
+        )
+    return itens
+
+
+def sugestoes_do_item(item: CampoDeModelo) -> dict[Nivel, Recomendacao]:
+    """As sugestões de um item de texto: as do papel (a tabela dos níveis) ou as próprias do item (perfil, conferência)."""
+    if item.papel is not None:
+        return {nivel: por_papel[item.papel] for nivel, por_papel in RECOMENDACOES.items()}
+    return item.sugestoes or {}
 
 
 @rotas.put(
