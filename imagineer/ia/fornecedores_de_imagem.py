@@ -44,7 +44,7 @@ def separar_fornecedor(modelo: str) -> tuple[str, str]:
     """Separa o fornecedor do id (F1). Devolve ``("openrouter", id)`` se não há prefixo reconhecido.
 
     O prefixo só vale se for ``openrouter``, ``fal`` ou ``replicate`` **e** não tiver barra antes dos dois
-    pontos: os sufixos do OpenRouter (``openai/gpt-oss-120b:batch``) não são fornecedor.
+    pontos: os sufixos do OpenRouter (``openai/gpt-oss-120b:free``) não são fornecedor.
     """
     prefixo, separador, resto = modelo.partition(":")
     if separador and "/" not in prefixo and prefixo.strip().lower() in ("openrouter", *FORNECEDORES_EXTERNOS):

@@ -3,10 +3,11 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao
+from imagineer.ia.provedor import e_variante_em_lote, mensagem_de_variante_em_lote
 from imagineer.modelos import Livro
 from imagineer.rotas._comum import buscar_livro
 from imagineer.servicos.configuracao_ia import obter_ou_criar
@@ -33,6 +34,17 @@ class TrocasDeModelos(BaseModel):
     modelo_video: str | None = Field(default=None, max_length=200)
     modelo_narracao: str | None = Field(default=None, max_length=200)
     narracao_voz: str | None = Field(default=None, max_length=100)
+
+    @field_validator(
+        "modelo_extracao", "modelo_prompt", "modelo_leitura", "modelo_reserva", "modelo_conferencia", "modelo_perfil", "modelo_imagem",
+        "modelo_suavizacao", "modelo_traducao", "modelo_video", "modelo_narracao",
+    )
+    @classmethod
+    def _sem_variante_em_lote(cls, valor):
+        """Recusa (422) um id ``:batch``: é a variante de lote, que a conversa não aceita (15/10/2026)."""
+        if e_variante_em_lote(valor):
+            raise ValueError(mensagem_de_variante_em_lote(valor))
+        return valor
 
 
 class ModeloEmUso(BaseModel):

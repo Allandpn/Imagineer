@@ -550,9 +550,9 @@ def teste_f1_openrouter_com_prefixo_explicito_manda_o_id_sem_o_prefixo() -> None
 def teste_f1_sufixo_de_openrouter_com_dois_pontos_nao_e_cortado() -> None:
     provedor, chamadas = _provedor_com_fornecedores(None)
 
-    provedor.gerar_imagem("x", "openai/gpt-oss-120b:batch")
+    provedor.gerar_imagem("x", "openai/gpt-oss-120b:free")
 
-    assert json.loads(chamadas[0].content)["model"] == "openai/gpt-oss-120b:batch"
+    assert json.loads(chamadas[0].content)["model"] == "openai/gpt-oss-120b:free"
 
 
 def teste_f2_so_os_fornecedores_com_chave_tem_gerador() -> None:

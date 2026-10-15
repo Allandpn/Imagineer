@@ -5,13 +5,13 @@ from typing import Annotated
 
 from decimal import Decimal, InvalidOperation
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
 from imagineer.banco.sessao import obter_sessao, obter_usuario
 from imagineer.configuracao import obter_configuracoes
 from imagineer.ia.catalogo_de_texto import Capacidades, capacidades_de, e_rapido, ler_catalogo
-from imagineer.ia.provedor import ErroDoProvedorIA, ProvedorIA
+from imagineer.ia.provedor import ErroDoProvedorIA, ProvedorIA, e_variante_em_lote, mensagem_de_variante_em_lote
 from imagineer.ia.provedores import PROVEDORES, Provedor
 from imagineer.modelos import ModoDeNarracao, MotorDeNarracao, PrioridadeIA, Usuario
 from imagineer.servicos.catalogo_de_modelos_de_imagem import chave_do_modelo_de_imagem, montar_catalogo, testar_modelo_de_imagem
@@ -191,6 +191,18 @@ class ConfiguracaoNova(BaseModel):
     prioridade_ia: PrioridadeIA | None = None
     narracao_motor: MotorDeNarracao | None = None
     modelo_narracao: str | None = Field(default=None, max_length=200)
+
+    @field_validator(
+        "modelo_extracao", "modelo_prompt", "modelo_leitura", "modelo_conferencia", "modelo_reserva", "modelo_perfil", "modelo_imagem",
+        "modelo_suavizacao", "modelo_traducao", "modelo_video", "modelo_narracao", "modelos_de_imagem",
+    )
+    @classmethod
+    def _sem_variante_em_lote(cls, valor):
+        """Recusa (422) um id ``:batch`` na hora de gravar: ele só falharia depois, em inglês, na primeira chamada (15/10/2026)."""
+        for id_ in valor if isinstance(valor, list) else [valor]:
+            if e_variante_em_lote(id_):
+                raise ValueError(mensagem_de_variante_em_lote(id_))
+        return valor
     narracao_modo: ModoDeNarracao | None = None
     narracao_voz: str | None = Field(default=None, max_length=100)
     narracao_instrucoes: str | None = Field(default=None, max_length=2000)

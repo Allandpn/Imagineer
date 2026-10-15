@@ -32,6 +32,32 @@ class ModeloNaoEscolhido(ErroDoProvedorIA):
     """Nenhum modelo foi escolhido para esta operação (item 4.3)."""
 
 
+SUFIXO_DE_LOTE = ":batch"
+"""O OpenRouter lista, ao lado de cada modelo, uma variante ``:batch`` por **metade do preço**. Ela é do **processamento em lote** (assíncrono) e o
+endpoint de conversa a recusa (``404 ... cannot be used with the chat/completions endpoint``, achado em 15/10/2026 com ``google/gemini-4-argon:batch``).
+Nenhuma chamada do servidor usa esse processamento, então o sufixo nunca vale aqui."""
+
+
+def e_variante_em_lote(id_do_modelo: str | None) -> bool:
+    """O id é de uma variante ``:batch``, que o servidor não consegue usar?"""
+    return (id_do_modelo or "").strip().lower().endswith(SUFIXO_DE_LOTE)
+
+
+def mensagem_de_variante_em_lote(id_do_modelo: str) -> str:
+    """O aviso, em português, que diz o que fazer: usar o mesmo modelo **sem** o sufixo (que custa o dobro)."""
+    sem_sufixo = id_do_modelo.strip()[: -len(SUFIXO_DE_LOTE)]
+    return (
+        f"O modelo {id_do_modelo.strip()} é a variante de processamento em lote (assíncrona) e não funciona na conversa. "
+        f"Escolha {sem_sufixo}, a versão sem ':batch' (custa cerca do dobro)."
+    )
+
+
+def exigir_modelo_sem_lote(id_do_modelo: str | None) -> None:
+    """Levanta ``ModeloNaoEscolhido`` (422) se o id for de uma variante ``:batch``; vazio e outros ids passam."""
+    if e_variante_em_lote(id_do_modelo):
+        raise ModeloNaoEscolhido(mensagem_de_variante_em_lote(id_do_modelo or ""))
+
+
 class TextoLongoDemais(ErroDoProvedorIA):
     """O texto não cabe na janela de contexto do modelo escolhido.
 

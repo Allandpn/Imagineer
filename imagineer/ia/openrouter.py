@@ -69,6 +69,8 @@ from imagineer.ia.provedor import (
     TextoLongoDemais,
     UsoDaChamada,
     VestimentaIdentificada,
+    e_variante_em_lote,
+    exigir_modelo_sem_lote,
 )
 from imagineer.ia.tarefas import (  # noqa: F401 - as temperaturas são usadas aqui e importadas daqui por quem já as importava
     ORDEM_DOS_ESFORCOS,
@@ -1066,7 +1068,7 @@ class ProvedorOpenRouter(ProvedorIA):
 
         modelos = []
         for bruto in brutos:
-            if not _e_modelo_de_texto(bruto):
+            if not _e_modelo_de_texto(bruto) or e_variante_em_lote(bruto.get("id")):  # a variante ``:batch`` não serve à conversa
                 continue
             capacidades = capacidades_de(bruto)  # LM16: o que decide a escolha de um modelo para ler um livro
             modelos.append(
@@ -1094,7 +1096,7 @@ class ProvedorOpenRouter(ProvedorIA):
         dados = self._pedir("GET", "/models?output_modalities=image")
         modelos = []
         for bruto in dados.get("data", []):
-            if not bruto.get("id") or bruto["id"].startswith("openrouter/"):  # "openrouter/auto" é um roteador, não um modelo
+            if not bruto.get("id") or bruto["id"].startswith("openrouter/") or e_variante_em_lote(bruto["id"]):  # "openrouter/auto" é um roteador; ":batch" é lote
                 continue
             preco = bruto.get("pricing") or {}
             modelos.append(
@@ -1119,7 +1121,7 @@ class ProvedorOpenRouter(ProvedorIA):
         dados = self._pedir("GET", "/models?output_modalities=speech")
         modelos = []
         for bruto in dados.get("data", []):
-            if not bruto.get("id"):
+            if not bruto.get("id") or e_variante_em_lote(bruto["id"]):
                 continue
             preco = bruto.get("pricing") or {}
             entrada, saida = _decimal_ou_nulo(preco.get("prompt")), _decimal_ou_nulo(preco.get("completion"))
@@ -1145,6 +1147,7 @@ class ProvedorOpenRouter(ProvedorIA):
         """Fala o texto pelo endpoint de voz do OpenRouter (``/audio/speech``, compatível com o da OpenAI) e devolve o MP3 (NA1)."""
         if not modelo:
             raise ModeloNaoEscolhido("Nenhum modelo de narração foi escolhido. Escolha um em Configurações → Narração.")
+        exigir_modelo_sem_lote(modelo)
         if not self._chave_api:
             raise ChaveDeApiAusente(
                 "Não há chave de API do OpenRouter configurada. Defina a variável de ambiente CHAVE_API_OPENROUTER ou mande a sua chave pelo app."
@@ -1492,6 +1495,7 @@ class ProvedorOpenRouter(ProvedorIA):
             raise ModeloNaoEscolhido(
                 "Nenhum modelo de imagem foi escolhido. Configure 'modelo_imagem' em /configuracao."
             )
+        exigir_modelo_sem_lote(modelo)
         fornecedor, id_do_modelo = separar_fornecedor(modelo)
         if fornecedor != "openrouter":
             return self._gerar_em_outro_fornecedor(
@@ -1672,6 +1676,7 @@ class ProvedorOpenRouter(ProvedorIA):
             raise ModeloNaoEscolhido(
                 "Nenhum modelo foi escolhido. Configure um em /configuracao."
             )
+        exigir_modelo_sem_lote(modelo)  # 15/10/2026: sem isto o OpenRouter respondia um 404 em inglês
         if not self._chave_api:
             raise ChaveDeApiAusente(
                 "Não há chave de API do OpenRouter configurada. Envie a sua no "
