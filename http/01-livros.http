@@ -71,6 +71,16 @@ Content-Type: application/json
   "titulo":  "A Vontade de Muitos"
 }
 
+### Define quem narra o livro em primeira pessoa (item 4.9, FL17)
+# narrador_elemento_id: um PERSONAGEM deste livro (404 se for de outro livro ou de outra pessoa; 422 se não for personagem).
+# Mandar null tira a marca (o livro volta a ser de terceira pessoa). A IA passa a saber que "eu", "me" e "meu" no trecho são dele.
+PATCH {{baseUrl}}/livros/{{livroId}}
+Content-Type: application/json
+
+{
+  "narrador_elemento_id": 1
+}
+
 ### Remove o livro — apaga capítulos, elementos, frames, prompts e imagens em cascata
 # DELETE {{baseUrl}}/livros/{{livroId}}
 

@@ -1322,6 +1322,7 @@ class ProvedorOpenRouter(ProvedorIA):
         trecho: str | None = None,
         id_do_capitulo: int | None = None,
         fim_do_capitulo_anterior: str | None = None,
+        narrador: str | None = None,
     ) -> FrameFundamentado:
         """Pede ao modelo para conferir a cena contra o capítulo (item 4.4). Com ``fim_do_capitulo_anterior`` (item 4.11, AF3), a IA pode herdar dele o cenário."""
         lista = "\n".join(f"- {p}" for p in participantes) or "(nenhum)"
@@ -1336,6 +1337,8 @@ class ProvedorOpenRouter(ProvedorIA):
         )
         if trecho:
             variavel += f"\n\nTRECHO DO LIVRO EM QUE A CENA ACONTECE (literal, as palavras do autor):\n{trecho}"
+        if narrador:
+            variavel += f"\n\n{linha_do_narrador(narrador)}"
         if fim_do_capitulo_anterior:
             # Depois do capítulo (que é o prefixo em cache) e do resto do que varia: herdar o cenário (item 4.11, AF3).
             variavel += (
@@ -1362,6 +1365,7 @@ class ProvedorOpenRouter(ProvedorIA):
         elementos_vinculados: list[str] | None = None,
         trecho_do_livro: str | None = None,
         dossie: dict | None = None,
+        narrador: str | None = None,
     ) -> PromptMontado:
         """Pede ao modelo o prompt de imagem (passo 8). Com ``dossie`` (item 4.9, FL9, FL12), a lista confirmada é a lista fechada da cena."""
         lista = "\n".join(f"- {elemento}" for elemento in elementos) or "(nenhum)"
@@ -1376,6 +1380,8 @@ class ProvedorOpenRouter(ProvedorIA):
             pedido += f"\n\nELEMENTOS VINCULADOS AO SUJEITO (aparecem junto dele neste retrato):\n{vinculados}"
         if dossie:
             pedido += f"\n\n{texto_dos_presentes(dossie)}"
+        if narrador:
+            pedido += f"\n\n{linha_do_narrador(narrador)}"
         if trecho_do_livro:
             pedido += f"\n\nTRECHO DO LIVRO (o que o autor escreveu neste momento; confira com ele a ação, os objetos e a luz):\n{trecho_do_livro}"
         if contexto_do_livro:
@@ -2500,6 +2506,15 @@ ROTULOS_DO_DOSSIE = (("onde", "LUGAR"), ("luz_e_clima", "LUZ E CLIMA"), ("acao",
 def presentes_incluidos(dossie: dict) -> list[dict]:
     """Os presentes que a pessoa deixou na cena (``incluir`` verdadeiro; o que não diz nada conta como incluído)."""
     return [p for p in dossie.get("presentes") or [] if p.get("incluir", True)]
+
+
+def linha_do_narrador(narrador: str) -> str:
+    """A linha fixa de um livro narrado em primeira pessoa (item 4.9, FL17): diz **quem é o "eu"** do trecho, para a IA não atribuir a outro
+    o que o narrador faz (visto numa cena em que o narrador feria o outro e o prompt trocava os dois). Vai na parte variável do pedido."""
+    return (
+        f"NARRAÇÃO: o livro é narrado em primeira pessoa por {narrador}. 'Eu', 'me', 'meu' e 'minha' no trecho significam sempre {narrador}, "
+        f"e o que o narrador faz, é ele quem faz. Descreva a cena em terceira pessoa; o nome dele só aparece se ele é o retratado ou está na lista da cena."
+    )
 
 
 def texto_dos_presentes(dossie: dict) -> str:

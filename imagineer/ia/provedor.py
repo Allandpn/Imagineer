@@ -580,6 +580,7 @@ class ProvedorIA(ABC):
         trecho: str | None = None,
         id_do_capitulo: int | None = None,
         fim_do_capitulo_anterior: str | None = None,
+        narrador: str | None = None,
     ) -> FrameFundamentado:
         """A leitura profunda de um frame do tipo CENA — item 4.4.
 
@@ -600,6 +601,7 @@ class ProvedorIA(ABC):
                 tem uma registrada.
             modelo: o identificador do modelo a usar.
             id_do_capitulo: como em ``sugerir_estado`` (4.10, LM11).
+            narrador: o nome de quem narra o livro em primeira pessoa (item 4.9, FL17); ``None`` = terceira pessoa.
         """
 
     @abstractmethod
@@ -637,6 +639,7 @@ class ProvedorIA(ABC):
         elementos_vinculados: list[str] | None = None,
         trecho_do_livro: str | None = None,
         dossie: dict | None = None,
+        narrador: str | None = None,
     ) -> PromptMontado:
         """Monta o prompt de imagem a partir do que foi escolhido (passo 8).
 
@@ -656,6 +659,7 @@ class ProvedorIA(ABC):
             trecho_do_livro: o trecho literal do capítulo em que a cena acontece (FD7).
             dossie: só numa cena (item 4.9, FL9, FL12): o dossiê **confirmado**. A lista de presentes que ele traz é a lista fechada de quem e do
                 que aparece, e o prompt é escrito uma frase por figura. Com ele, o ``contexto_do_livro`` não vai (o dossiê já o substitui).
+            narrador: o nome de quem narra o livro em primeira pessoa (FL17); ``None`` = terceira pessoa.
         """
 
     @abstractmethod

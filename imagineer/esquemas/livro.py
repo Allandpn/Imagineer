@@ -126,6 +126,10 @@ class LivroDetalhe(LivroResumo):
 
     identificador_epub: str | None
     perfil_renderizacao_padrao_id: int | None
+    narrador_elemento_id: int | None = Field(
+        default=None,
+        description="O personagem que narra o livro em primeira pessoa (item 4.9, FL17); nulo = narração em terceira pessoa.",
+    )
     metadados_pendentes: list[str] = Field(
         default_factory=list,
         description=(

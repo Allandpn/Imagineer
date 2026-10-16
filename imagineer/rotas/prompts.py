@@ -411,6 +411,7 @@ def criar_prompt(
                 trecho_do_livro=frame.trecho,
                 # FL9, FL12: com o dossiê (confirmado ou lido agora), a lista de presentes é a lista fechada da cena e ele já substitui o contexto antigo.
                 dossie=dossie,
+                narrador=_nome_do_narrador(livro),
             )
 
     texto_final = resultado.texto
@@ -961,6 +962,11 @@ def _sugerir_identidade_se_necessario(
     )
 
 
+def _nome_do_narrador(livro: Livro) -> str | None:
+    """O nome de quem narra o livro em primeira pessoa (FL17), ou ``None`` se ele é de terceira pessoa."""
+    return livro.narrador_elemento.nome if livro.narrador_elemento is not None else None
+
+
 def _nomes_dos_elementos(frame: Frame) -> list[str]:
     return [estado.elemento.nome for estado in frame.estados_elemento]
 
@@ -989,6 +995,7 @@ def _ler_o_dossie(
         id_do_capitulo=frame.capitulo_id,
         # Item 4.11, AF3: o fim do capítulo anterior, para a IA herdar o cenário que o capítulo atual não descreve.
         fim_do_capitulo_anterior=fim_do_capitulo_anterior(sessao, frame.capitulo),
+        narrador=_nome_do_narrador(frame.capitulo.livro),
     )
     if fundamentado.dossie is not None:
         guardado = guardar_dossie(frame, fundamentado.dossie, fundamentado.contexto, entrada_dos_participantes(frame), _nomes_dos_elementos(frame))

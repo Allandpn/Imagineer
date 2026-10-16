@@ -130,7 +130,7 @@ class Elemento(Base):
     """Quando o elemento foi para a **lixeira** (LT4); nulo = ativo. Some do livro; leva estados, identidade e retratos. O nome continua
     ocupado (a unicidade de livro, tipo e nome vale também para ele)."""
 
-    livro: Mapped["Livro"] = relationship()  # noqa: F821
+    livro: Mapped["Livro"] = relationship(foreign_keys=[livro_id])  # noqa: F821  # livro_id: o livro também aponta um elemento (o narrador, FL17)
 
     imagem_ancora_padrao: Mapped["Imagem | None"] = relationship()  # noqa: F821
 
