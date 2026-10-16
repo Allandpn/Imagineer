@@ -3912,6 +3912,13 @@ Quatorze pedidos do Allan depois de usar o app (a lista dele repetia o número 9
 - **Testes:** servidor — `teste_pd_vestimenta.py` (13), `teste_narracao_por_ia.py` (+8: PCM, lembrança por modelo, idioma), `teste_leitura.py` (+1), `teste_rotas_sugestoes.py` (+2); app — `NomeDoPosterTest`, `OrdemDaBibliotecaTest`, e casos novos em `PromptDeVideoTest`, `RegrasDoLayoutDoPainelTest`, `ConfirmarElementosTest`, `RepositorioDeElementosTest`, `ElementosTest`, `NarracaoPorIaTest` e `DicionariosENarracaoTest`. O desenho (Compose) é validado no tablet.
 
 
+**Barra de baixo na leitura do capítulo (15/10/2026, pedido do Allan; BC1 a BC5; especificado, a implementar).** Escolhas minhas onde o Allan não decidiu estão marcadas **(proposta)** e se trocam sem custo.
+- **BC1 — o que é.** Uma barra de navegação na base da tela do Capítulo, a mesma do livro (LY1): **ícone com a legenda pequena embaixo**. Quatro destinos: **Biblioteca**, **Configurações**, **Elementos** e **Cenas**. Nenhum fica marcado (o capítulo não é nenhum deles).
+- **BC2 — quando aparece.** Some ao rolar o texto para baixo e volta ao rolar para cima (e no topo e no fim do texto), **junto com a barra do topo**, pela mesma regra de rolagem.
+- **BC3 — quando não aparece (proposta).** Fica escondida enquanto o **painel de IA está em tela cheia por cima do texto** (celular), no modo de **marcar parágrafos** (LV4, que tem a própria barra embaixo) e no modo **Posicionar** (PM1), para não empilhar duas barras nem tapar o aviso.
+- **BC4 — para onde cada ícone leva.** **Biblioteca:** volta à biblioteca, fechando as telas do livro que estiverem abertas. **Configurações:** abre as Configurações por cima do capítulo. **Elementos** e **Cenas:** abrem a tela do livro por cima do capítulo, então **voltar traz o leitor de volta ao capítulo (proposta)**; o capítulo guarda a posição de leitura de sempre. Elementos e Cenas ficam apagados até a tela saber de qual livro é o capítulo.
+- **BC5 — o que não muda.** Só app; nenhuma rota nova. A barra de cima, o botão de IA (✦) e o painel seguem como estão; o botão de IA sobe junto para ficar acima da barra.
+
 ### 7.6 Frame
 
 > **Substituído pelo painel de IA do capítulo (15/10/2026).** O app **não tem** tela própria de Frame: a rota provisória (`Frame`) foi removida porque nenhuma tela navegava para ela. O que este item previa vive nos itens 7.5b a 7.5h: criar retrato e cena, editar e apagar o frame, gerar/copiar/compartilhar prompt. **Lacunas conhecidas** (ver pendência P8 na Etapa 8): trocar qual estado de um elemento vale no frame (chip "Estado: Capítulo N") e editar horário, clima e humor da cena. O texto abaixo fica como o desenho original.
