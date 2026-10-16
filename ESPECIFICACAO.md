@@ -2273,8 +2273,6 @@ Decisões de arquitetura, tomadas antes de escrever qualquer código Kotlin — 
 @Serializable object Biblioteca                                    // 7.2 — tela inicial
 @Serializable data class Livro(val livroId: Int)                   // 7.4
 @Serializable data class Capitulo(val capituloId: Int)              // 7.5
-@Serializable data class Frame(val frameId: Int)                    // 7.6
-@Serializable data class Prompt(val frameId: Int, val promptId: Int? = null)  // 7.7
 @Serializable data class ElementosDoLivro(val livroId: Int)         // 7.8
 @Serializable object PerfisDeRenderizacao                           // 7.9
 @Serializable object Configuracao                                   // 7.10
@@ -3916,6 +3914,8 @@ Quatorze pedidos do Allan depois de usar o app (a lista dele repetia o número 9
 
 ### 7.6 Frame
 
+> **Substituído pelo painel de IA do capítulo (15/10/2026).** O app **não tem** tela própria de Frame: a rota provisória (`Frame`) foi removida porque nenhuma tela navegava para ela. O que este item previa vive nos itens 7.5b a 7.5h: criar retrato e cena, editar e apagar o frame, gerar/copiar/compartilhar prompt. **Lacunas conhecidas** (ver pendência P8 na Etapa 8): trocar qual estado de um elemento vale no frame (chip "Estado: Capítulo N") e editar horário, clima e humor da cena. O texto abaixo fica como o desenho original.
+
 O recorte de um capítulo que vai virar uma imagem — um retrato solo ou uma cena, passo 6.4.
 
 - **Rotas**: `POST /capitulos/{id}/frames`, `GET /frames/{id}`, `PATCH /frames/{id}`, `PUT /frames/{id}/estados`.
@@ -3926,6 +3926,8 @@ O recorte de um capítulo que vai virar uma imagem — um retrato solo ou uma ce
 **Wireframe revisado (29/09/2026, Bloco C):** a distinção `PERSONAGEM`/`CENA` — que no texto acima é só "só para `tipo=CENA`" — virou duas telas de protótipo diferentes, porque a diferença não é cosmética: um retrato mostra um único elemento com botão "Trocar elemento" (nunca "adicionar"), enquanto a cena mostra vários com "+ Adicionar elemento". Também ficou mais claro no protótipo que o vínculo de um elemento ao frame não é genérico — é um **Estado específico** daquele elemento (`estados_ids` marcados via `PUT /frames/{id}/estados`), por isso cada elemento na lista agora mostra um chip "Estado: Capítulo N" com link pra trocar qual estado vale ali. Editar e apagar o frame também viraram menu de três pontos, mesmo padrão do item 7.4.
 
 ### 7.7 Prompt
+
+> **Substituído pelo painel de IA do capítulo (15/10/2026).** A rota provisória (`Prompt`) foi removida do app. Gerar, copiar, compartilhar, importar imagem, gerar imagem e o histórico de prompts acontecem nos cartões do painel (itens 7.5b a 7.5h, G1 a G13). O texto abaixo fica como o desenho original.
 
 Passos 8 a 11 — onde o texto vira, de fato, o insumo para a imagem, e onde a imagem volta para o catálogo.
 
@@ -4128,3 +4130,4 @@ Revisão de arquitetura (não é busca por bug específico) comparando o backend
 ### Moderação
 O usuário terá a opcção de desabilitar o safety_check para conteudos que possam ser moderados pelo provedrao padrao(open_router).
 Nesse caso ele utilizara o provedor do replicate e um modelo que permita "disable_safety_checker": True. a escolha do modelo será feita por testes durante o desenvolvimento.
+- [ ] **P8 — Lacunas do antigo item 7.6 (app).** Como a tela de Frame foi substituída pelo painel de IA (15/10/2026), duas coisas que ela cobriria precisam ser conferidas no painel e, se faltarem, entrar nele: (1) **trocar qual estado de um elemento vale no frame** (`PUT /frames/{id}/estados`; a fatia N8 deixou isso de fora); (2) **editar horário, clima e humor** de uma cena (`PATCH /frames/{id}`). *Especificado; não implementado.*
