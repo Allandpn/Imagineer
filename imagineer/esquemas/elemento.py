@@ -175,6 +175,13 @@ class Artefato(BaseModel):
         default=None,
         description="RETRATO ou PAISAGEM, pelo vídeo real: paisagem ocupa a largura da área de leitura e retrato, a metade (VD17). Nulo sem tamanho (o app trata como paisagem).",
     )
+    elementos: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Só nos artefatos de CENA (item 7.5b, LF4): os nomes de quem participa dela, sem repetir. O nome é o do cadastro quando o participante "
+            "está casado com um elemento; senão, o que a IA sugeriu. Vazia nos de ELEMENTO e nas cenas sem participante. É o que a tela Cenas filtra."
+        ),
+    )
 
 
 class ArtefatosDoCapitulo(BaseModel):
