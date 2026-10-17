@@ -37,6 +37,14 @@ from imagineer.ia.catalogo_de_texto import (
     ler_catalogo,
     obter_capacidades,
 )
+from imagineer.ia.claude_code import (
+    PROVEDOR_NO_USO as PROVEDOR_DO_CLAUDE_CODE,
+    ExecutorDoClaudeCode,
+    RespostaDoClaudeCode,
+    apelido_do_modelo,
+    e_modelo_do_claude_code,
+    modelos_do_claude_code,
+)
 from imagineer.ia.fornecedores_de_imagem import (
     NOMES_DOS_FORNECEDORES,
     VARIAVEIS_DA_CHAVE,
@@ -1032,7 +1040,10 @@ class ProvedorOpenRouter(ProvedorIA):
         geradores_de_imagem: dict[str, GeradorDeImagemExterno] | None = None,
         dormir: Callable[[float], None] = time.sleep,
         modelo_reserva: str | None = None,
+        claude_code: ExecutorDoClaudeCode | None = None,
     ):
+        self._claude_code = claude_code
+        """Quem roda o Claude Code (4.13, CC3). Nulo = desligado: os modelos ``claude-code/...`` somem da lista e uma chamada a eles dá erro claro."""
         self._modelo_reserva = modelo_reserva
         """O modelo a que o OpenRouter recorre se o principal de uma chamada de texto falhar (4.10, LM13). Nulo = sem reserva."""
         self._dormir = dormir
@@ -1093,6 +1104,9 @@ class ProvedorOpenRouter(ProvedorIA):
                     custo_do_capitulo_tipico_sem_cache=None if sem_cache is None else float(round(sem_cache, 6)),
                 )
             )
+
+        if self._claude_code is not None:
+            modelos.extend(modelos_do_claude_code())  # 4.13, CC3: sem chave e sem custo por chamada, só com o provedor ligado
 
         return sorted(modelos, key=lambda m: (not m.gratuito, m.nome.lower()))
 
@@ -1688,6 +1702,8 @@ class ProvedorOpenRouter(ProvedorIA):
                 "Nenhum modelo foi escolhido. Configure um em /configuracao."
             )
         exigir_modelo_sem_lote(modelo)  # 15/10/2026: sem isto o OpenRouter respondia um 404 em inglês
+        if e_modelo_do_claude_code(modelo):
+            return self._conversar_com_claude_code(modelo, instrucao, pedido, operacao=operacao, esperar_json=esperar_json)
         if not self._chave_api:
             raise ChaveDeApiAusente(
                 "Não há chave de API do OpenRouter configurada. Envie a sua no "
@@ -1748,6 +1764,61 @@ class ProvedorOpenRouter(ProvedorIA):
                 )
 
         return texto
+
+    def _conversar_com_claude_code(
+        self,
+        modelo: str,
+        instrucao: str,
+        pedido: str | list[dict] | PedidoComCapitulo,
+        *,
+        operacao: str,
+        esperar_json: bool | None,
+    ) -> str:
+        """A mesma conversa de ``_conversar``, mas pelo Claude Code do servidor (4.13, CC1 a CC7).
+
+        Fica de fora o que é do OpenRouter: temperatura, limite de saída, raciocínio, cache explícito, modelos alternativos e a busca na web
+        (o Claude Code roda sem ferramentas, CC5). Fica igual o que importa para o resto do sistema: a mesma instrução, o mesmo pedido, a
+        mesma repetição quando o JSON não vem e o mesmo registro de uso.
+        """
+        if self._claude_code is None:
+            raise ErroDoProvedorIA(
+                "Claude indisponível: o Claude Code não está ligado neste servidor. Escolha outro modelo ou ligue-o (IMAGINEER_CLAUDE_CODE=1)."
+            )
+        if isinstance(pedido, list):
+            # A conferência de uma imagem manda blocos com a imagem dentro; sem ferramentas, o Claude Code não a recebe (CC1).
+            raise ErroDoProvedorIA("Claude indisponível: o Claude pela assinatura ainda não lê imagens. Escolha outro modelo para esta tarefa.")
+        texto_do_pedido = pedido if isinstance(pedido, str) else _mensagem_do_usuario(modelo, pedido, com_cache=False)
+        if esperar_json is None:
+            esperar_json = perfil_da(operacao).esquema is not None
+
+        resposta = self._claude_code.conversar(apelido_do_modelo(modelo), instrucao, texto_do_pedido)
+        self._avisar_uso_do_claude_code(operacao, modelo, resposta)
+        if not resposta.cortada and esperar_json and _extrair_json(resposta.texto) is None:
+            # Respondeu em prosa em vez de JSON: um pedido igual costuma dar certo (como o LM6). As duas respostas gastaram a cota.
+            resposta = self._claude_code.conversar(apelido_do_modelo(modelo), instrucao, texto_do_pedido)
+            self._avisar_uso_do_claude_code(operacao, modelo, resposta)
+        if resposta.cortada:
+            raise ErroDoProvedorIA(f"A resposta do modelo {modelo} foi cortada por passar do limite. Escolha outro modelo ou um capítulo menor.")
+        return resposta.texto
+
+    def _avisar_uso_do_claude_code(self, operacao: str, modelo: str, resposta: RespostaDoClaudeCode) -> None:
+        """Anota a chamada em ``usos_ia`` (CC7): ``custo`` **nulo**, porque a assinatura não cobra por chamada. Nunca derruba a chamada."""
+        if self._ao_usar is None:
+            return
+        try:
+            self._ao_usar(
+                UsoDaChamada(
+                    operacao=operacao,
+                    modelo=modelo,
+                    tokens_entrada=resposta.tokens_entrada,
+                    tokens_saida=resposta.tokens_saida,
+                    custo=None,
+                    provedor=PROVEDOR_DO_CLAUDE_CODE,
+                    tokens_em_cache=resposta.tokens_em_cache,
+                )
+            )
+        except Exception:  # noqa: BLE001 - de propósito: métrica nunca derruba a chamada
+            logging.getLogger(__name__).exception("Não foi possível anotar o consumo da chamada ao Claude Code.")
 
     def _enviar_conversa(self, modelo: str, corpo: dict) -> tuple[dict, dict]:
         """Manda o pedido de conversa e devolve ``(resposta, corpo que de fato foi aceito)``.

@@ -175,6 +175,19 @@ Por que é seguro: o servidor só aceita o cabeçalho de identidade vindo do pro
 
 As chaves de IA do servidor (OpenRouter, fal.ai, Replicate) são **suas**: as outras pessoas usam a própria chave do OpenRouter, informada no app. Para liberar as chaves do servidor a alguém: `PATCH /admin/usuarios/{id}` com `{"usa_chaves_do_servidor": true}` (veja `http/00-saude.http`). `GET /admin/usuarios` mostra as contas, o uso de espaço de cada uma e a cota; `GET/PUT /admin/limites` muda os limites do servidor.
 
+## 7. Ligar o Claude (assinatura) como modelo de texto
+
+Opcional (item 4.13 da especificação). O servidor roda o **Claude Code** dentro do container, logado na sua assinatura, e o app passa a ter os modelos "Claude Opus/Sonnet/Haiku (assinatura)" na lista. Só texto: imagem, vídeo e voz continuam nos outros provedores. É uma zona cinzenta dos termos da Anthropic, com o risco aceito pelo Allan para uso leve e pessoal (CC9). Para desligar: tire `IMAGINEER_CLAUDE_CODE` do `.env`.
+
+1. No `.env` do Pi: `INSTALAR_CLAUDE_CODE=1` e `IMAGINEER_CLAUDE_CODE=1`.
+2. `docker compose up -d --build` (a primeira vez baixa o programa para dentro da imagem).
+3. **Entrar uma vez, à mão:** `docker compose exec api claude`, escolha o login da **assinatura** (não a chave de API) e conclua o login no navegador. Saia com `/exit`. O login fica no volume `claude_code`, que sobrevive a atualizações.
+4. No app: Configuração → escolha um modelo "Claude … (assinatura)" para a tarefa que quiser.
+
+- **Se o login expirar** ou a **cota semanal acabar**, o app mostra "Claude indisponível: …" e **não** troca de modelo sozinho (CC4). Repita o passo 3 ou escolha outro modelo.
+- **Uma chamada de cada vez**, com limite de 300 s (`IMAGINEER_CLAUDE_CODE_TEMPO_LIMITE` muda).
+- **Nunca** ponha `ANTHROPIC_API_KEY` no `.env` esperando "ajudar": o servidor a tira do ambiente do Claude Code de propósito, para não trocar a assinatura por cobrança por token.
+
 ## Lista rápida
 
 - **Só código:** `git push` → no Pi, `git pull && docker compose up -d --build`.
