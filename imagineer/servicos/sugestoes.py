@@ -167,6 +167,11 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
         sessao.add(linha)
         elementos_desta_rodada[chave_normalizada(item.tipo, item.nome)] = linha
 
+    # VA1: o elemento salvo que o texto cita e a IA esqueceu também entra, já vinculado.
+    for nova in sugestoes_de_elementos_citados(sessao, capitulo, elementos_desta_rodada, extracao.modelo):
+        sessao.add(nova)
+        elementos_desta_rodada[chave_normalizada(nova.tipo, nova.nome)] = nova
+
     for cena in extracao.cenas:
         if texto_normalizado(cena.titulo) in titulos_de_cenas_descartadas:
             continue
@@ -200,6 +205,57 @@ def _gerar_sugestoes(sessao: Session, provedor: ProvedorIA, capitulo: Capitulo) 
     capitulo.sugestoes_geradas_em = datetime.now(timezone.utc)
     sessao.add(capitulo)
     sessao.commit()
+
+
+TIPOS_ACHADOS_PELO_NOME_NO_TEXTO = (
+    TipoElemento.PERSONAGEM,
+    TipoElemento.CRIATURA,
+    TipoElemento.GRUPO,
+    TipoElemento.AMBIENTE,
+)
+"""Os tipos cujo nome, citado inteiro no capítulo, basta para vincular (VA2). Objeto e veículo ficam de fora: nomes comuns
+("cama", "papel") dariam ruído."""
+
+
+def sugestoes_de_elementos_citados(
+    sessao: Session,
+    capitulo: Capitulo,
+    ja_tratados: dict[tuple[TipoElemento, str], SugestaoDeElemento],
+    modelo: str,
+) -> list[SugestaoDeElemento]:
+    """Sugestões **já vinculadas** para os elementos salvos cujo nome inteiro aparece no texto e a IA não listou (VA1 a VA3).
+
+    ``ja_tratados`` são as sugestões do capítulo que sobrevivem à rodada (confirmadas e descartadas) mais as que a IA acabou de
+    criar: quem já está lá não é repetido. Os objetos novos ainda não foram gravados, por isso a checagem é pela chave de nome e
+    pelo ``elemento_id`` das que já existem.
+    """
+    texto = texto_normalizado(capitulo.texto)
+    ja_vinculados = {s.elemento_id for s in ja_tratados.values() if s.elemento_id is not None}
+    novas: list[SugestaoDeElemento] = []
+    elementos = sessao.scalars(
+        select(Elemento).where(
+            Elemento.livro_id == capitulo.livro_id,
+            Elemento.apagado_em.is_(None),
+            Elemento.tipo.in_(TIPOS_ACHADOS_PELO_NOME_NO_TEXTO),
+        )
+    )
+    for elemento in elementos:
+        nome = texto_normalizado(elemento.nome)
+        if not nome or elemento.id in ja_vinculados or chave_normalizada(elemento.tipo, elemento.nome) in ja_tratados:
+            continue
+        if re.search(rf"(?<![a-z0-9]){re.escape(nome)}(?![a-z0-9])", texto):
+            novas.append(
+                SugestaoDeElemento(
+                    capitulo_id=capitulo.id,
+                    tipo=elemento.tipo,
+                    nome=elemento.nome,
+                    manter_estado_atual=True,
+                    modelo=modelo,
+                    elemento_id=elemento.id,
+                    casamento_automatico=True,
+                )
+            )
+    return novas
 
 
 def casar_sugestoes_pendentes(sessao: Session, capitulo_id: int, livro_id: int) -> None:

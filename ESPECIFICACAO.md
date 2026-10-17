@@ -1639,6 +1639,18 @@ Migration `a92e5f1c8d3b`. 4 testes novos (311 no total). Verificado contra `Prov
 - **App (AF8), em linguagem simples:** em *O que vai aparecer* há um bloco **Cenário e fotografia** com os 7 campos editáveis, cada um com uma etiqueta discreta: "do texto", "herdado do anterior", "sugerido" ou, se você mexeu, "editado por você". Confirmar a lista manda o cenário junto (só os campos com texto; um campo que você apagou vai como vazio para apagar no servidor); o servidor é quem decide que o campo virou palavra sua. O bloco só aparece se o servidor leu um cenário (servidor ou dossiê antigo não mostram). Na ficha do elemento, cada estado mostra o cenário lido, só para ler. Testes: `CenarioDoDossieTest` (11).
 - **Testes:** `teste_af_cenario_da_cena.py` (25) e `teste_af_cenario_do_elemento.py` (25); ajustados os testes que fixavam o retrato neutro de criatura/objeto/lugar (agora só grupo e pessoa) e o limite da leitura.
 
+### 4.12 Elementos salvos citados no capítulo entram na análise, mesmo se a IA esquecer (especificado em 16/10/2026, pedido do Allan; VA1 a VA3)
+
+**O pedido (Allan, 16/10/2026):** *"A análise do capítulo não está vinculando aos personagens já salvos. Teste em A vontade de muitos, capítulo XXII."*
+
+**O que os dados reais mostram (Pi, capítulo XXII, id 549):** as 11 sugestões que a IA devolveu estão todas vinculadas. O problema é o que **ela não devolveu**: Caeror (16 citações), Veridius (13), Lanistia (12), Advenius (4), Sedotia (2), Nateo e Sextus (1), todos já salvos no livro, nunca viram sugestão do capítulo. O servidor só vinculava o que o modelo listava.
+
+- **VA1:** ao final da análise, o servidor procura no texto do capítulo o **nome inteiro** (sem acento nem caixa, palavra inteira) de cada elemento salvo do livro. Quem aparece e ainda não tem sugestão neste capítulo ganha uma sugestão **já vinculada** (`casamento_automatico = true`, `manter_estado_atual = true`). Não depende de o modelo lembrar (mesmo princípio do PD3).
+- **VA2:** vale só para **personagem, criatura, grupo e ambiente**. Objeto e veículo ficam de fora: nomes comuns ("cama", "papel") gerariam ruído.
+- **VA3:** não recria o que a pessoa **descartou**, nem o que já está vinculado neste capítulo; elementos na lixeira não entram.
+- **Teste:** `testes/teste_va_elementos_citados.py`.
+- **Implementado (16/10/2026), em linguagem simples:** depois que a IA responde, o servidor lê o texto e, para cada personagem, criatura, grupo ou ambiente já salvo cujo nome aparece inteiro, cria a sugestão já ligada ao elemento se ela ainda não existir (`sugestoes_de_elementos_citados`, em `servicos/sugestoes.py`). Sem migração nem rota nova. 3 testes novos; suíte inteira: 2103 passam. **Falta:** atualizar o Pi e reanalisar o capítulo XXII para conferir Caeror, Veridius e Lanistia.
+
 ## Etapa 5 — Decisões Técnicas e Justificativas
 
 | Decisão | Motivo |
