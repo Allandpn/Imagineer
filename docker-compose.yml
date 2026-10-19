@@ -3,7 +3,11 @@
 
 services:
   api:
-    build: .
+    build:
+      context: .
+      args:
+        # 1 = instala o Claude Code na imagem (item 4.13). Veja o SERVIDOR.md, seção 7.
+        INSTALAR_CLAUDE_CODE: ${INSTALAR_CLAUDE_CODE:-0}
     # Reinicia sozinho se cair ou se o Raspberry Pi for reiniciado — o servidor
     # roda 24/7 e não deve depender de alguém subir o serviço à mão.
     restart: unless-stopped
@@ -19,6 +23,9 @@ services:
       DIRETORIO_IMAGENS: /dados/imagens
       # Os dicionários StarDict (RL19) ficam numa pasta do servidor, fora do git e fora da imagem; aqui ela é montada abaixo.
       DIRETORIO_DICIONARIOS: /dicionarios
+      # Onde o Claude Code guarda o login da assinatura (item 4.13, CC2): num volume, para sobreviver a rebuilds. Sem o Claude Code ligado,
+      # a variável e o volume não fazem nada.
+      CLAUDE_CONFIG_DIR: /dados/claude-code
     ports:
       # A porta de FORA é configurável (PORTA_API no .env; padrão 8000): num Raspberry Pi que já
       # roda outros sistemas, a 8000 pode estar ocupada. A de dentro do container é sempre 8000.
@@ -30,6 +37,8 @@ services:
       # banco (o banco guarda só a referência). Por ser um volume, sobrevivem
       # a rebuilds e remoções do container.
       - imagens:/dados/imagens
+      # O login do Claude Code (item 4.13): são credenciais, então ficam em volume próprio, fora do git e fora da imagem.
+      - claude_code:/dados/claude-code
       # A pasta dictdata/ (centenas de MB) entra somente leitura: o servidor só lê os dicionários. Se a pasta não existir,
       # o Docker cria uma vazia e a consulta de dicionário apenas devolve "nada encontrado".
       - ./dictdata:/dicionarios:ro
@@ -65,3 +74,4 @@ services:
 volumes:
   dados_banco:
   imagens:
+  claude_code:

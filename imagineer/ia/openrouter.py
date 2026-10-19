@@ -37,6 +37,14 @@ from imagineer.ia.catalogo_de_texto import (
     ler_catalogo,
     obter_capacidades,
 )
+from imagineer.ia.claude_code import (
+    PROVEDOR_NO_USO as PROVEDOR_DO_CLAUDE_CODE,
+    ExecutorDoClaudeCode,
+    RespostaDoClaudeCode,
+    apelido_do_modelo,
+    e_modelo_do_claude_code,
+    modelos_do_claude_code,
+)
 from imagineer.ia.fornecedores_de_imagem import (
     NOMES_DOS_FORNECEDORES,
     VARIAVEIS_DA_CHAVE,
@@ -1032,7 +1040,10 @@ class ProvedorOpenRouter(ProvedorIA):
         geradores_de_imagem: dict[str, GeradorDeImagemExterno] | None = None,
         dormir: Callable[[float], None] = time.sleep,
         modelo_reserva: str | None = None,
+        claude_code: ExecutorDoClaudeCode | None = None,
     ):
+        self._claude_code = claude_code
+        """Quem roda o Claude Code (4.13, CC3). Nulo = desligado: os modelos ``claude-code/...`` somem da lista e uma chamada a eles dá erro claro."""
         self._modelo_reserva = modelo_reserva
         """O modelo a que o OpenRouter recorre se o principal de uma chamada de texto falhar (4.10, LM13). Nulo = sem reserva."""
         self._dormir = dormir
@@ -1093,6 +1104,9 @@ class ProvedorOpenRouter(ProvedorIA):
                     custo_do_capitulo_tipico_sem_cache=None if sem_cache is None else float(round(sem_cache, 6)),
                 )
             )
+
+        if self._claude_code is not None:
+            modelos.extend(modelos_do_claude_code())  # 4.13, CC3: sem chave e sem custo por chamada, só com o provedor ligado
 
         return sorted(modelos, key=lambda m: (not m.gratuito, m.nome.lower()))
 
@@ -1322,6 +1336,7 @@ class ProvedorOpenRouter(ProvedorIA):
         trecho: str | None = None,
         id_do_capitulo: int | None = None,
         fim_do_capitulo_anterior: str | None = None,
+        narrador: str | None = None,
     ) -> FrameFundamentado:
         """Pede ao modelo para conferir a cena contra o capítulo (item 4.4). Com ``fim_do_capitulo_anterior`` (item 4.11, AF3), a IA pode herdar dele o cenário."""
         lista = "\n".join(f"- {p}" for p in participantes) or "(nenhum)"
@@ -1336,6 +1351,8 @@ class ProvedorOpenRouter(ProvedorIA):
         )
         if trecho:
             variavel += f"\n\nTRECHO DO LIVRO EM QUE A CENA ACONTECE (literal, as palavras do autor):\n{trecho}"
+        if narrador:
+            variavel += f"\n\n{linha_do_narrador(narrador)}"
         if fim_do_capitulo_anterior:
             # Depois do capítulo (que é o prefixo em cache) e do resto do que varia: herdar o cenário (item 4.11, AF3).
             variavel += (
@@ -1362,6 +1379,7 @@ class ProvedorOpenRouter(ProvedorIA):
         elementos_vinculados: list[str] | None = None,
         trecho_do_livro: str | None = None,
         dossie: dict | None = None,
+        narrador: str | None = None,
     ) -> PromptMontado:
         """Pede ao modelo o prompt de imagem (passo 8). Com ``dossie`` (item 4.9, FL9, FL12), a lista confirmada é a lista fechada da cena."""
         lista = "\n".join(f"- {elemento}" for elemento in elementos) or "(nenhum)"
@@ -1376,6 +1394,8 @@ class ProvedorOpenRouter(ProvedorIA):
             pedido += f"\n\nELEMENTOS VINCULADOS AO SUJEITO (aparecem junto dele neste retrato):\n{vinculados}"
         if dossie:
             pedido += f"\n\n{texto_dos_presentes(dossie)}"
+        if narrador:
+            pedido += f"\n\n{linha_do_narrador(narrador)}"
         if trecho_do_livro:
             pedido += f"\n\nTRECHO DO LIVRO (o que o autor escreveu neste momento; confira com ele a ação, os objetos e a luz):\n{trecho_do_livro}"
         if contexto_do_livro:
@@ -1682,6 +1702,8 @@ class ProvedorOpenRouter(ProvedorIA):
                 "Nenhum modelo foi escolhido. Configure um em /configuracao."
             )
         exigir_modelo_sem_lote(modelo)  # 15/10/2026: sem isto o OpenRouter respondia um 404 em inglês
+        if e_modelo_do_claude_code(modelo):
+            return self._conversar_com_claude_code(modelo, instrucao, pedido, operacao=operacao, esperar_json=esperar_json)
         if not self._chave_api:
             raise ChaveDeApiAusente(
                 "Não há chave de API do OpenRouter configurada. Envie a sua no "
@@ -1742,6 +1764,61 @@ class ProvedorOpenRouter(ProvedorIA):
                 )
 
         return texto
+
+    def _conversar_com_claude_code(
+        self,
+        modelo: str,
+        instrucao: str,
+        pedido: str | list[dict] | PedidoComCapitulo,
+        *,
+        operacao: str,
+        esperar_json: bool | None,
+    ) -> str:
+        """A mesma conversa de ``_conversar``, mas pelo Claude Code do servidor (4.13, CC1 a CC7).
+
+        Fica de fora o que é do OpenRouter: temperatura, limite de saída, raciocínio, cache explícito, modelos alternativos e a busca na web
+        (o Claude Code roda sem ferramentas, CC5). Fica igual o que importa para o resto do sistema: a mesma instrução, o mesmo pedido, a
+        mesma repetição quando o JSON não vem e o mesmo registro de uso.
+        """
+        if self._claude_code is None:
+            raise ErroDoProvedorIA(
+                "Claude indisponível: o Claude Code não está ligado neste servidor. Escolha outro modelo ou ligue-o (IMAGINEER_CLAUDE_CODE=1)."
+            )
+        if isinstance(pedido, list):
+            # A conferência de uma imagem manda blocos com a imagem dentro; sem ferramentas, o Claude Code não a recebe (CC1).
+            raise ErroDoProvedorIA("Claude indisponível: o Claude pela assinatura ainda não lê imagens. Escolha outro modelo para esta tarefa.")
+        texto_do_pedido = pedido if isinstance(pedido, str) else _mensagem_do_usuario(modelo, pedido, com_cache=False)
+        if esperar_json is None:
+            esperar_json = perfil_da(operacao).esquema is not None
+
+        resposta = self._claude_code.conversar(apelido_do_modelo(modelo), instrucao, texto_do_pedido)
+        self._avisar_uso_do_claude_code(operacao, modelo, resposta)
+        if not resposta.cortada and esperar_json and _extrair_json(resposta.texto) is None:
+            # Respondeu em prosa em vez de JSON: um pedido igual costuma dar certo (como o LM6). As duas respostas gastaram a cota.
+            resposta = self._claude_code.conversar(apelido_do_modelo(modelo), instrucao, texto_do_pedido)
+            self._avisar_uso_do_claude_code(operacao, modelo, resposta)
+        if resposta.cortada:
+            raise ErroDoProvedorIA(f"A resposta do modelo {modelo} foi cortada por passar do limite. Escolha outro modelo ou um capítulo menor.")
+        return resposta.texto
+
+    def _avisar_uso_do_claude_code(self, operacao: str, modelo: str, resposta: RespostaDoClaudeCode) -> None:
+        """Anota a chamada em ``usos_ia`` (CC7): ``custo`` **nulo**, porque a assinatura não cobra por chamada. Nunca derruba a chamada."""
+        if self._ao_usar is None:
+            return
+        try:
+            self._ao_usar(
+                UsoDaChamada(
+                    operacao=operacao,
+                    modelo=modelo,
+                    tokens_entrada=resposta.tokens_entrada,
+                    tokens_saida=resposta.tokens_saida,
+                    custo=None,
+                    provedor=PROVEDOR_DO_CLAUDE_CODE,
+                    tokens_em_cache=resposta.tokens_em_cache,
+                )
+            )
+        except Exception:  # noqa: BLE001 - de propósito: métrica nunca derruba a chamada
+            logging.getLogger(__name__).exception("Não foi possível anotar o consumo da chamada ao Claude Code.")
 
     def _enviar_conversa(self, modelo: str, corpo: dict) -> tuple[dict, dict]:
         """Manda o pedido de conversa e devolve ``(resposta, corpo que de fato foi aceito)``.
@@ -2514,6 +2591,15 @@ ROTULOS_DO_DOSSIE = (("onde", "LUGAR"), ("luz_e_clima", "LUZ E CLIMA"), ("acao",
 def presentes_incluidos(dossie: dict) -> list[dict]:
     """Os presentes que a pessoa deixou na cena (``incluir`` verdadeiro; o que não diz nada conta como incluído)."""
     return [p for p in dossie.get("presentes") or [] if p.get("incluir", True)]
+
+
+def linha_do_narrador(narrador: str) -> str:
+    """A linha fixa de um livro narrado em primeira pessoa (item 4.9, FL17): diz **quem é o "eu"** do trecho, para a IA não atribuir a outro
+    o que o narrador faz (visto numa cena em que o narrador feria o outro e o prompt trocava os dois). Vai na parte variável do pedido."""
+    return (
+        f"NARRAÇÃO: o livro é narrado em primeira pessoa por {narrador}. 'Eu', 'me', 'meu' e 'minha' no trecho significam sempre {narrador}, "
+        f"e o que o narrador faz, é ele quem faz. Descreva a cena em terceira pessoa; o nome dele só aparece se ele é o retratado ou está na lista da cena."
+    )
 
 
 def texto_dos_presentes(dossie: dict) -> str:

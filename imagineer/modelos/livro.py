@@ -97,6 +97,16 @@ class Livro(Base):
     registrado no próprio Prompt.
     """
 
+    narrador_elemento_id: Mapped[int | None] = mapped_column(
+        # use_alter: livros e elementos se apontam (o elemento é do livro; o livro aponta o narrador), então esta chave é criada à parte.
+        # SET NULL: apagar o personagem não pode apagar o livro; o livro volta a ser de terceira pessoa.
+        ForeignKey("elementos.id", ondelete="SET NULL", use_alter=True, name="fk_livros_narrador_elemento_id_elementos"),
+    )
+    """Quem narra o livro, se ele é contado em **primeira pessoa** (item 4.9, FL17); nulo = terceira pessoa (o comportamento de sempre).
+    Quando preenchido, a IA recebe a linha "o eu do trecho é este personagem", para não atribuir a outro o que o narrador faz."""
+
+    narrador_elemento: Mapped["Elemento | None"] = relationship(foreign_keys=[narrador_elemento_id])  # noqa: F821
+
     perfil_renderizacao_padrao: Mapped["PerfilRenderizacao | None"] = relationship()  # noqa: F821
 
     modelos: Mapped[dict | None] = mapped_column(JSON)

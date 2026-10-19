@@ -74,6 +74,16 @@ class Configuracoes(BaseSettings):
             )
         return self
 
+    claude_code_ativo: bool = Field(default=False, validation_alias=AliasChoices("IMAGINEER_CLAUDE_CODE"))
+    """Liga o Claude Code do servidor como provedor de texto (4.13, CC3). Desligado por padrão: ligar é uma escolha do dono, que antes precisa
+    ter instalado o ``claude`` e entrado nele com a assinatura (``SERVIDOR.md``)."""
+
+    claude_code_comando: str = Field(default="claude", validation_alias=AliasChoices("IMAGINEER_CLAUDE_CODE_COMANDO"))
+    """O programa a executar. Só muda se o ``claude`` não estiver no PATH do servidor (o caminho completo)."""
+
+    claude_code_tempo_limite: int = Field(default=300, validation_alias=AliasChoices("IMAGINEER_CLAUDE_CODE_TEMPO_LIMITE"))
+    """Segundos que uma chamada ao Claude Code pode levar (CC4)."""
+
     diretorio_imagens: str = "/dados/imagens"
     """Pasta onde as imagens do catálogo são gravadas (nunca no banco — só a referência)."""
 

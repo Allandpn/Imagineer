@@ -285,6 +285,7 @@ class ProvedorFalso(ProvedorIA):
         trecho: str | None = None,
         id_do_capitulo: int | None = None,
         fim_do_capitulo_anterior: str | None = None,
+        narrador: str | None = None,
     ) -> FrameFundamentado:
         chamada = {
             "texto_capitulo": texto_capitulo,
@@ -302,6 +303,8 @@ class ProvedorFalso(ProvedorIA):
             chamada["id_do_capitulo"] = id_do_capitulo
         if fim_do_capitulo_anterior:  # idem: só quando há capítulo anterior
             chamada["fim_do_capitulo_anterior"] = fim_do_capitulo_anterior
+        if narrador:  # idem: só quando o livro tem narrador em primeira pessoa (FL17)
+            chamada["narrador"] = narrador
         self.chamadas_de_fundamentacao.append(chamada)
         if self._erro is not None:
             raise self._erro
@@ -318,6 +321,7 @@ class ProvedorFalso(ProvedorIA):
         elementos_vinculados: list[str] | None = None,
         trecho_do_livro: str | None = None,
         dossie: dict | None = None,
+        narrador: str | None = None,
     ) -> PromptMontado:
         chamada = {
             "descricao_do_frame": descricao_do_frame,
@@ -333,6 +337,8 @@ class ProvedorFalso(ProvedorIA):
             chamada["trecho_do_livro"] = trecho_do_livro
         if dossie is not None:  # só aparece quando a rota o passa, para os testes de antes não mudarem
             chamada["dossie"] = dossie
+        if narrador:
+            chamada["narrador"] = narrador
         self.chamadas_de_prompt.append(chamada)
         if self._erro is not None:
             raise self._erro

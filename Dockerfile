@@ -18,6 +18,16 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# O Claude Code como provedor de texto (item 4.13) é opcional: só entra na imagem com INSTALAR_CLAUDE_CODE=1 (no .env ou na linha de
+# comando do compose). O instalador oficial põe o programa em /root/.local/bin; o link o deixa no PATH. Fica antes do "COPY . ." para
+# uma mudança de código não baixar o programa de novo.
+ARG INSTALAR_CLAUDE_CODE=0
+RUN if [ "$INSTALAR_CLAUDE_CODE" = "1" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/* && \
+        curl -fsSL https://claude.ai/install.sh | bash && \
+        ln -s /root/.local/bin/claude /usr/local/bin/claude; \
+    fi
+
 COPY . .
 
 EXPOSE 8000

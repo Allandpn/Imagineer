@@ -17,6 +17,7 @@ from functools import partial
 from sqlalchemy.orm import Session
 
 from imagineer.configuracao import obter_configuracoes
+from imagineer.ia.claude_code import ExecutorDoClaudeCode, ExecutorPorSubprocesso
 from imagineer.ia.fornecedores_de_imagem import montar_geradores
 from imagineer.ia.openrouter import ProvedorOpenRouter
 from imagineer.ia.provedor import ProvedorIA
@@ -97,6 +98,22 @@ def _chave_de_imagem(do_cabecalho: str | None, do_servidor: str, usuario: Usuari
     return do_servidor if usuario is None or usuario.usa_chaves_do_servidor else None
 
 
+def executor_do_claude_code(usuario: Usuario | None = None) -> ExecutorDoClaudeCode | None:
+    """O Claude Code do servidor, **se** está ligado e **se** esta pessoa pode usá-lo (4.13, CC3 e CC8).
+
+    A assinatura é do Allan: vale a mesma regra da chave do servidor (CT9), ``usa_chaves_do_servidor``. ``usuario=None`` é o comportamento de antes
+    das contas (testes e segundo plano): pode.
+    """
+    configuracoes = obter_configuracoes()
+    if not configuracoes.claude_code_ativo:
+        return None
+    if usuario is not None and not usuario.usa_chaves_do_servidor:
+        return None
+    return ExecutorPorSubprocesso(
+        comando=(configuracoes.claude_code_comando,), tempo_limite=configuracoes.claude_code_tempo_limite
+    )
+
+
 def construir_provedor(
     cabecalho: str | None = None,
     usuario: Usuario | None = None,
@@ -120,6 +137,7 @@ def construir_provedor(
     return ProvedorOpenRouter(
         chave_api=resolver_chave(cabecalho, usuario).valor,
         modelo_reserva=modelo_reserva,
+        claude_code=executor_do_claude_code(usuario),
         ao_usar=gravar_uso if usuario is None else partial(gravar_uso, usuario_id=usuario.id),
         geradores_de_imagem=montar_geradores(
             _chave_de_imagem(chave_fal, configuracoes.chave_api_fal, usuario),

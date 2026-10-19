@@ -41,6 +41,7 @@ from imagineer.modelos import (
     Favorito,
     TipoDeFavorito,
     Capitulo,
+    Elemento,
     EstadoElemento,
     Frame,
     Imagem,
@@ -50,6 +51,7 @@ from imagineer.modelos import (
     Prompt,
     SugestaoDeCena,
     SugestaoDeElemento,
+    TipoElemento,
 )
 from imagineer.rotas._comum import (
     buscar_livro as _buscar_livro,
@@ -340,6 +342,9 @@ def ajustar_livro(
     if campos.get("perfil_renderizacao_padrao_id") is not None:
         _exigir_perfil(sessao, campos["perfil_renderizacao_padrao_id"])
 
+    if campos.get("narrador_elemento_id") is not None:
+        _exigir_narrador(sessao, livro, campos["narrador_elemento_id"])
+
     for campo, valor in campos.items():
         setattr(livro, campo, valor)
 
@@ -512,6 +517,15 @@ def _um_se_ignorado():
     return case((Capitulo.ignorado.is_(True), 1), else_=0).cast(Integer)
 
 
+def _exigir_narrador(sessao: Session, livro: Livro, elemento_id: int) -> None:
+    """O narrador tem de ser um **personagem deste livro** (FL17). De outro livro ou de outra pessoa, "não existe" (404, como no resto)."""
+    elemento = buscar_visivel(sessao, Elemento, elemento_id)
+    if elemento is None or elemento.livro_id != livro.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Não existe elemento com id {elemento_id} neste livro.")
+    if elemento.tipo != TipoElemento.PERSONAGEM:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Só um personagem pode ser o narrador do livro.")
+
+
 def _campos_do_livro(livro: Livro) -> dict:
     """Os campos do livro que aparecem tanto no resumo quanto no detalhe."""
     return {
@@ -628,6 +642,7 @@ def _detalhe_do_livro(sessao: Session, livro: Livro) -> LivroDetalhe:
         **_campos_do_livro(livro),
         identificador_epub=livro.identificador_epub,
         perfil_renderizacao_padrao_id=livro.perfil_renderizacao_padrao_id,
+        narrador_elemento_id=livro.narrador_elemento_id,
         metadados_pendentes=_metadados_pendentes(livro),
         total_de_capitulos=len(capitulos),
         capitulos_ignorados=sum(1 for c in capitulos if c.ignorado),

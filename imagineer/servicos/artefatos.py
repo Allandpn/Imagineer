@@ -76,6 +76,21 @@ def _situacao_e_imagem(frame: Frame | None, *, confirmado: bool) -> tuple[Situac
     return SituacaoDoArtefato.CONFIRMADO, None
 
 
+def _nomes_dos_participantes(cena: SugestaoDeCena | None, frame: Frame | None) -> list[str]:
+    """Os nomes de quem participa de uma cena, sem repetir e na ordem em que aparecem (item 7.5b, LF4).
+
+    Cena que já virou frame: valem os elementos **ligados a ele** (o que a pessoa confirmou). Senão, os participantes que a IA sugeriu, com o nome
+    do cadastro quando estão casados com um elemento.
+    """
+    if frame is not None and frame.estados_elemento:
+        nomes = [estado.elemento.nome for estado in frame.estados_elemento]
+    elif cena is not None:
+        nomes = [p.elemento.nome if p.elemento is not None else p.nome for p in cena.participantes]
+    else:
+        nomes = []
+    return list(dict.fromkeys(nome for nome in nomes if nome))
+
+
 def _sem_repetidas(sugestoes: list[SugestaoDeElemento]) -> list[SugestaoDeElemento]:
     """Uma sugestão por elemento: duas sugestões do mesmo elemento (ou do mesmo tipo e nome, se ainda
     não casadas) desenhariam o mesmo ícone duas vezes no mesmo parágrafo.
@@ -184,6 +199,7 @@ def artefatos_do_capitulo(sessao: Session, capitulo: Capitulo) -> list[Artefato]
                     else cena.posicao_no_texto
                 ),
                 situacao=situacao,
+                elementos=_nomes_dos_participantes(cena, cena.frame),
                 **_campos_da_imagem(ultima),
                 **_campos_do_video(cena.frame),
             )
@@ -202,6 +218,7 @@ def artefatos_do_capitulo(sessao: Session, capitulo: Capitulo) -> list[Artefato]
                     rotulo=frame.titulo,
                     posicao_no_texto=frame.posicao_no_texto,
                     situacao=situacao,
+                    elementos=_nomes_dos_participantes(None, frame),
                     **_campos_da_imagem(ultima),
                     **_campos_do_video(frame),
                 )

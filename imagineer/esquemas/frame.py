@@ -305,6 +305,10 @@ class LivroAjuste(BaseModel):
     autor: str | None = Field(default=None, max_length=300)
     idioma: str | None = Field(default=None, max_length=20)
     perfil_renderizacao_padrao_id: int | None = None
+    narrador_elemento_id: int | None = Field(
+        default=None,
+        description="O personagem que narra o livro em primeira pessoa (FL17); nulo tira a marca (o livro volta a ser de terceira pessoa).",
+    )
 
 
 class ImagemCanonicaNova(BaseModel):
