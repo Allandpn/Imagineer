@@ -24,6 +24,14 @@ class ErroDoProvedorIA(Exception):
     """
 
 
+class LeituraSemConteudo(ErroDoProvedorIA):
+    """O modelo respondeu um JSON válido, mas sem nada aproveitável na leitura de um elemento (4.4).
+
+    É um erro à parte porque não é falha do provedor: o elemento pode simplesmente não aparecer no capítulo. Quem chama decide
+    seguir sem essa leitura em vez de abortar o que estava fazendo.
+    """
+
+
 class ChaveDeApiAusente(ErroDoProvedorIA):
     """Não há chave de API configurada — nem no ambiente, nem no banco."""
 

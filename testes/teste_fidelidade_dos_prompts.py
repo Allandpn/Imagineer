@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from imagineer.ia import openrouter
 from imagineer.ia.falso import MODELO_FALSO, ProvedorFalso
 from imagineer.ia.openrouter import ENDERECO_BASE, ProvedorOpenRouter
+from imagineer.ia.provedor import LeituraSemConteudo
 from imagineer.modelos import Elemento, TipoElemento
 from imagineer.servicos.aparencia_de_elemento import aparencia_fixa_de
 from imagineer.servicos.perfis_de_fabrica import PERFIS_DE_FABRICA
@@ -140,6 +141,27 @@ def teste_estado_ja_lido_volta_como_registrado_na_releitura(cliente: TestClient,
 
     assert provedor.chamadas_de_estado[0]["estado_atual"] is None  # primeira leitura: era só o rascunho
     assert provedor.chamadas_de_estado[1]["estado_atual"] == ESTADO_LIDO  # a segunda parte do que a primeira leu
+
+
+def teste_leitura_sem_conteudo_de_um_elemento_nao_derruba_o_prompt(cliente: TestClient, usar_provedor_falso) -> None:
+    """19/10: o modelo devolveu um JSON vazio para um elemento e a geração do prompt inteira dava 502."""
+
+    class ProvedorQueNaoAchaOElemento(ProvedorFalso):
+        def sugerir_estado(self, *args, **kwargs):
+            super().sugerir_estado(*args, **kwargs)
+            raise LeituraSemConteudo("O modelo devolveu um JSON sem nada aproveitável.")
+
+    provedor = ProvedorQueNaoAchaOElemento(prompt="p", estado=ESTADO_LIDO)
+    livro = _preparar(cliente, usar_provedor_falso, provedor)
+    c1 = livro["capitulos"][0]
+    jon = _elemento(cliente, livro["id"], identidade="Bastardo.", estado={"capitulo_id": c1["id"], "descricao": "Bastardo."})
+    estado_id = jon["estados"][0]["id"]
+
+    _prompt_do_estado(cliente, c1["id"], estado_id)  # o prompt sai (201), com o que o estado já tinha
+
+    assert len(provedor.chamadas_de_estado) == 1
+    _prompt_do_estado(cliente, c1["id"], estado_id)
+    assert len(provedor.chamadas_de_estado) == 2  # não ficou marcado como lido: a próxima geração tenta de novo
 
 
 # --------------------------------------------------------------------------- #

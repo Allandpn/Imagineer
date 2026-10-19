@@ -5,6 +5,7 @@ levá-lo a uma ferramenta de geração de imagem fora do sistema, e trazer o
 resultado de volta para o catálogo.
 """
 
+import logging
 import mimetypes
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -41,6 +42,7 @@ from imagineer.ia.catalogo_de_texto import obter_capacidades
 from imagineer.ia.openrouter import ROTULO_DA_VESTIMENTA_DO_RETRATO, presentes_incluidos
 from imagineer.ia.provedor import (
     ErroDoProvedorIA,
+    LeituraSemConteudo,
     ModeloNaoEscolhido,
     ProvedorIA,
 )
@@ -883,24 +885,13 @@ def _fazer_leitura_profunda(
 
     for estado in a_reler:
         capitulo_de_origem = sessao.get(Capitulo, estado.capitulo_id)
-        sugestao = provedor.sugerir_estado(
-            texto_capitulo=capitulo_de_origem.texto,
-            tipo=estado.elemento.tipo,
-            nome=estado.elemento.nome,
-            # FD3: a identidade que o livro já revelou até este capítulo, e não só a inicial.
-            descricao_do_elemento=identidade_vigente(sessao, estado.elemento, capitulo_de_origem.ordem),
-            # FD1: o rascunho de identidade não é aparência: sem isto, "jovem nobre exilado" voltava como aparência quando o
-            # capítulo não descrevia a pessoa.
-            estado_atual=None if e_rascunho_de_identidade(sessao, estado) else estado.descricao,
-            modelo=modelo,
-            # FD2: o que o elemento já tinha de fixo num capítulo anterior já lido.
-            aparencia_anterior=aparencia_fixa_anterior(sessao, estado),
-            # LM11: as leituras de um capítulo vão em rajada, e o provedor reaproveita o cache do capítulo entre elas.
-            id_do_capitulo=capitulo_de_origem.id,
-            # Item 4.11, AF5: o cenário do estado anterior do mesmo elemento e o fim do capítulo anterior, para herdar o que este capítulo não diz.
-            cenario_anterior=cenario_anterior_do_elemento(sessao, estado) if le_cenario(estado) else None,
-            fim_do_capitulo_anterior=fim_do_capitulo_anterior(sessao, capitulo_de_origem) if le_cenario(estado) else None,
-        )
+        try:
+            sugestao = _ler_o_estado(provedor, estado, capitulo_de_origem, modelo, sessao)
+        except LeituraSemConteudo:
+            # O modelo não achou nada do elemento neste capítulo: segue com o que o estado já tinha, em vez de derrubar a
+            # geração do prompt inteiro. Sem marcar como lido, a próxima geração tenta de novo.
+            logging.getLogger(__name__).warning("Leitura profunda sem conteúdo: %s, capítulo %s.", estado.elemento.nome, capitulo_de_origem.id)
+            continue
         estado.descricao = sugestao.descricao
         # FL3, FL4: a linha do tempo do elemento no capítulo, com a posição de cada momento achada no texto.
         estado.momentos = momentos_com_posicao(sugestao.momentos, capitulo_de_origem.texto)
@@ -909,6 +900,28 @@ def _fazer_leitura_profunda(
         sessao.add(estado)
 
         _sugerir_identidade_se_necessario(sessao, provedor, estado, capitulo_de_origem, modelo)
+
+
+def _ler_o_estado(provedor: ProvedorIA, estado: EstadoElemento, capitulo_de_origem: Capitulo, modelo: str, sessao: Session):
+    """A chamada ``sugerir_estado`` de um estado, com tudo que a leitura precisa (4.4, FD1 a FD3, LM11, AF5)."""
+    return provedor.sugerir_estado(
+        texto_capitulo=capitulo_de_origem.texto,
+        tipo=estado.elemento.tipo,
+        nome=estado.elemento.nome,
+        # FD3: a identidade que o livro já revelou até este capítulo, e não só a inicial.
+        descricao_do_elemento=identidade_vigente(sessao, estado.elemento, capitulo_de_origem.ordem),
+        # FD1: o rascunho de identidade não é aparência: sem isto, "jovem nobre exilado" voltava como aparência quando o
+        # capítulo não descrevia a pessoa.
+        estado_atual=None if e_rascunho_de_identidade(sessao, estado) else estado.descricao,
+        modelo=modelo,
+        # FD2: o que o elemento já tinha de fixo num capítulo anterior já lido.
+        aparencia_anterior=aparencia_fixa_anterior(sessao, estado),
+        # LM11: as leituras de um capítulo vão em rajada, e o provedor reaproveita o cache do capítulo entre elas.
+        id_do_capitulo=capitulo_de_origem.id,
+        # Item 4.11, AF5: o cenário do estado anterior do mesmo elemento e o fim do capítulo anterior, para herdar o que este capítulo não diz.
+        cenario_anterior=cenario_anterior_do_elemento(sessao, estado) if le_cenario(estado) else None,
+        fim_do_capitulo_anterior=fim_do_capitulo_anterior(sessao, capitulo_de_origem) if le_cenario(estado) else None,
+    )
 
 
 def _sugerir_identidade_se_necessario(

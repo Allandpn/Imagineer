@@ -61,6 +61,7 @@ from imagineer.ia.provedor import (
     ConteudoRecusado,
     ElementoSugerido,
     ErroDoProvedorIA,
+    LeituraSemConteudo,
     EstadoSugerido,
     ExtracaoDeElementos,
     FrameFundamentado,
@@ -2487,7 +2488,8 @@ def _interpretar_estado(resposta: str) -> str:
         # primeiro momento (4.9, FL3), então a resposta é aproveitada em vez de recusada.
         instante = _instante_do_primeiro_momento(resposta)
         if instante is None:
-            raise ErroDoProvedorIA(
+            logging.getLogger(__name__).warning("Leitura do estado sem conteúdo. Resposta do modelo: %.1500s", resposta)
+            raise LeituraSemConteudo(
                 "O modelo devolveu um JSON sem os campos 'aparencia_fixa' e 'instante' e sem nenhum momento com conteúdo."
             )
 
