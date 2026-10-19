@@ -56,7 +56,7 @@ Allan está aprendendo a programar através deste projeto e quer entender o sist
 O app Android (repositório `Allandpn/Imagineer-App`) consome esta API e segue esta especificação.
 
 - **`ESPECIFICACAO.md` é a única cópia editável.** O app não guarda cópia própria, então as duas versões não têm como divergir.
-- **O Claude do app também escreve aqui**, quando o app precisa de uma mudança de rota, de campo ou de tela. Só **documentação**: o código da API não é alterado a partir de uma sessão do app.
+- **O Claude do app também escreve aqui**, quando o app precisa de uma mudança de rota, de campo ou de tela. Desde 19/10/2026 o Allan também autorizou a sessão do app a **alterar o código da API** (cópia local em `G:\Git\Apps\_api_specpi`), seguindo o fluxo de trabalho acima.
 - **Regras de convivência** (valem para quem escrever, aqui ou no app):
   - **sessão remota (nuvem), sem o Allan presente:** branch curta, criada a partir da `main` **atualizada**,
     e pull request — nunca push direto na `main`;

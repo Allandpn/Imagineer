@@ -2404,11 +2404,15 @@ def _interpretar_estado(resposta: str) -> str:
     if aparencia_fixa is None and instante is None:
         # Resposta no formato antigo (um campo só): ainda vale, para não perder o que o modelo escreveu.
         descricao = _texto_ou_nulo(bruto.get("descricao"))
-        if descricao is None:
+        if descricao is not None:
+            return descricao if ambiente is None else f"{descricao}\n{ROTULO_DO_AMBIENTE} {ambiente}"
+        # Só `momentos` preenchido (o modelo pôs tudo na lista e deixou os dois campos de cima nulos): o `instante` vale o
+        # primeiro momento (4.9, FL3), então a resposta é aproveitada em vez de recusada.
+        instante = _instante_do_primeiro_momento(resposta)
+        if instante is None:
             raise ErroDoProvedorIA(
-                "O modelo devolveu um JSON sem os campos 'aparencia_fixa' e 'instante'."
+                "O modelo devolveu um JSON sem os campos 'aparencia_fixa' e 'instante' e sem nenhum momento com conteúdo."
             )
-        return descricao if ambiente is None else f"{descricao}\n{ROTULO_DO_AMBIENTE} {ambiente}"
 
     linhas = []
     if aparencia_fixa:
@@ -2418,6 +2422,16 @@ def _interpretar_estado(resposta: str) -> str:
     if ambiente:
         linhas.append(f"{ROTULO_DO_AMBIENTE} {ambiente}")
     return "\n".join(linhas)
+
+
+def _instante_do_primeiro_momento(resposta: str) -> str | None:
+    """O texto do ``instante`` montado a partir do primeiro momento da resposta (4.9, FL3); ``None`` se não há momento com conteúdo."""
+    momentos = _interpretar_momentos(resposta)
+    if not momentos:
+        return None
+    primeiro = momentos[0]
+    partes = [primeiro.roupa, primeiro.estado_fisico, primeiro.expressao_e_postura, primeiro.humor]
+    return ". ".join(parte.rstrip(".") for parte in partes if parte) or None
 
 
 def _herancas_do_cenario(tipo: TipoElemento, cenario_anterior: dict | None, fim_do_capitulo_anterior: str | None) -> str:

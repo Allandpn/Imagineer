@@ -712,6 +712,35 @@ def teste_sugerir_estado_aceita_o_formato_antigo_de_um_campo() -> None:
     assert sugestao.descricao == "Capa de pele.\nOnde está: Um salão de pedra."
 
 
+def teste_sugerir_estado_so_com_momentos_usa_o_primeiro_como_instante() -> None:
+    """19/10: o modelo deixou `aparencia_fixa` e `instante` nulos e pôs tudo em `momentos`; antes isso dava erro."""
+    resposta = json.dumps(
+        {
+            "aparencia_fixa": None,
+            "instante": "",
+            "ambiente": "Um salão de pedra.",
+            "momentos": [
+                {"ancora": "Kadmons entrou", "roupa": "Capa de pele.", "estado_fisico": "Ferido no braço", "humor": None},
+                {"ancora": "Mais tarde", "roupa": "Túnica limpa", "estado_fisico": None},
+            ],
+        }
+    )
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    sugestao = provedor.sugerir_estado("texto", TipoElemento.PERSONAGEM, "Kadmons", None, None, "algum/modelo")
+
+    assert sugestao.descricao == "Neste instante: Capa de pele. Ferido no braço\nOnde está: Um salão de pedra."
+    assert len(sugestao.momentos) == 2
+
+
+def teste_sugerir_estado_sem_nada_util_continua_dando_erro() -> None:
+    resposta = json.dumps({"aparencia_fixa": None, "instante": None, "momentos": [{"ancora": "x"}]})
+    provedor = _provedor({"/chat/completions": _resposta_de_conversa(resposta)})
+
+    with pytest.raises(ErroDoProvedorIA):
+        provedor.sugerir_estado("texto", TipoElemento.PERSONAGEM, "Kadmons", None, None, "algum/modelo")
+
+
 def teste_sugerir_estado_manda_so_o_elemento_pedido() -> None:
     """A rota manda o nome do elemento e o texto do capítulo — nada mais."""
     capturado = {}
