@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from imagineer.modelos import Capitulo, Livro
-from imagineer.servicos.busca_no_texto import normalizar_termo, procurar
+from imagineer.servicos.busca_no_texto import normalizar_termo, procurar, procurar_com_limite
 
 
 # --------------------------------------------------------------------------- #
@@ -53,6 +53,34 @@ def teste_a_posicao_conta_em_utf16_depois_de_um_emoji() -> None:
     (achado,) = procurar(texto, "mundo")
 
     assert achado.posicao_no_texto == 7  # e não 6
+
+
+def teste_com_limite_so_monta_os_primeiros_mas_conta_todos() -> None:
+    texto = "dragão " * 1000
+
+    achados, total = procurar_com_limite(texto, "dragao", 3)
+
+    assert total == 1000
+    assert [a.posicao_no_texto for a in achados] == [0, 7, 14]  # os mesmos primeiros que a busca sem limite acharia
+    assert achados == procurar(texto, "dragao")[:3]
+
+
+def teste_com_limite_zero_so_conta() -> None:
+    achados, total = procurar_com_limite("dragão e dragão", "dragao", 0)
+
+    assert achados == [] and total == 2
+
+
+def teste_uma_palavra_comum_num_livro_grande_responde_rapido() -> None:
+    """A causa de 'servidor indisponível' (22/10/2026): montar todas as ocorrências de uma palavra comum, capítulo por capítulo, estourava o tempo no Pi."""
+    import time
+
+    capitulo = ("o buril de Vis na arena. " * 40 + "\n\n") * 400  # ~ 400 mil caracteres, 16 mil achados
+    inicio = time.perf_counter()
+    for _ in range(10):  # dez capítulos
+        procurar_com_limite(capitulo, "de", 100)
+
+    assert time.perf_counter() - inicio < 3  # antes do ajuste, dezenas de segundos
 
 
 def teste_termo_vazio_ou_ausente_nao_acha_nada() -> None:

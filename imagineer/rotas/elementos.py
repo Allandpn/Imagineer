@@ -15,6 +15,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from imagineer.banco.sessao import obter_sessao
 from imagineer.esquemas.elemento import (
+    AparicaoDoElemento,
+    AparicoesDoElemento,
     CenaDoElemento,
     ElementoAjuste,
     ElementoDetalhe,
@@ -41,6 +43,7 @@ from imagineer.rotas._comum import (
     buscar_livro as _buscar_livro,
 )
 from imagineer.servicos.imagens_reduzidas import orientacao_de
+from imagineer.servicos.posicao_no_texto import comeco_do_paragrafo, posicao_da_primeira_mencao
 from imagineer.servicos.lixeira import mover_elemento_para_a_lixeira
 from imagineer.rotas._elementos_comum import (
     buscar_capitulo_do_livro,
@@ -176,6 +179,8 @@ def galeria_do_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao
                             altura=imagem.altura,
                             orientacao=orientacao.value if orientacao else None,
                             modelo=imagem.modelo,
+                            modelo_do_prompt=prompt.modelo_ia,
+                            posicao_no_texto=frame.posicao_no_texto,
                             origem=imagem.origem.value,
                             sem_filtro_de_seguranca=imagem.sem_filtro_de_seguranca,
                             data_importacao=imagem.data_importacao,
@@ -198,11 +203,50 @@ def galeria_do_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao
                     total_de_imagens=len(todas),
                     imagem_id=ultima.id if ultima else None,
                     imagem_orientacao=orientacao.value if orientacao else None,
+                    posicao_no_texto=frame.posicao_no_texto,
                 )
     return GaleriaDoElemento(
         imagens=sorted(imagens.values(), key=lambda i: i.id, reverse=True),
         cenas=sorted(cenas.values(), key=lambda c: (c.ordem_do_capitulo, c.frame_id)),
     )
+
+
+@rotas.get(
+    "/{elemento_id}/aparicoes",
+    response_model=AparicoesDoElemento,
+    summary="Os capítulos em que o elemento é mencionado (a primeira aparição vem primeiro)",
+)
+def aparicoes_do_elemento(elemento_id: int, sessao: Session = Depends(obter_sessao)) -> AparicoesDoElemento:
+    """Em que capítulos o nome do elemento aparece, e onde, na ordem do livro (AP1). Nunca chama a IA.
+
+    Serve a quem percebe, lá na frente, que um personagem era importante e **não o catalogou**: o primeiro item é a primeira aparição, e o
+    trecho mostra o parágrafo, que costuma trazer a aparência. A busca é a da posição dos artefatos (nome completo, ou o pedaço que é nome
+    próprio); capítulos arquivados ficam de fora.
+    """
+    elemento = _buscar_elemento(sessao, elemento_id)
+    com_estado = {e.capitulo_id for e in elemento.estados}
+    aparicoes: list[AparicaoDoElemento] = []
+    consulta = (
+        select(Capitulo.id, Capitulo.ordem, Capitulo.titulo, Capitulo.texto)
+        .where(Capitulo.livro_id == elemento.livro_id, Capitulo.ignorado.is_(False))
+        .order_by(Capitulo.ordem)
+    )
+    for capitulo_id, ordem, titulo, texto in sessao.execute(consulta).yield_per(20):
+        posicao = posicao_da_primeira_mencao(texto, elemento.nome)
+        if posicao is None:
+            continue
+        aparicoes.append(
+            AparicaoDoElemento(
+                capitulo_id=capitulo_id,
+                capitulo_ordem=ordem,
+                capitulo_titulo=titulo,
+                posicao_no_texto=posicao,
+                trecho=comeco_do_paragrafo(texto, posicao),
+                primeira=not aparicoes,
+                tem_estado=capitulo_id in com_estado,
+            )
+        )
+    return AparicoesDoElemento(elemento_id=elemento.id, nome=elemento.nome, aparicoes=aparicoes)
 
 
 @rotas.patch("/{elemento_id}", response_model=ElementoDetalhe, summary="Ajusta um elemento")

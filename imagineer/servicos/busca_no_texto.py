@@ -68,22 +68,35 @@ def _texto_normalizado(texto: str) -> tuple[str, list[int] | None]:
 
 def procurar(texto: str, termo: str) -> list[Achado]:
     """Todos os achados de ``termo`` em ``texto``, na ordem em que aparecem (sem sobreposição)."""
+    achados, _ = procurar_com_limite(texto, termo, None)
+    return achados
+
+
+def procurar_com_limite(texto: str, termo: str, limite: int | None) -> tuple[list[Achado], int]:
+    """Os ``limite`` primeiros achados **e o total** (todos contados). ``limite=None`` = todos.
+
+    Montar um ``Achado`` custa caro (a posição em UTF-16 e o parágrafo varrem o texto desde o começo), e uma palavra comum acha milhares de vezes
+    por capítulo. Quem só mostra 100 ocorrências não precisa montar as outras: aqui elas só são **contadas**, que é uma busca de texto simples.
+    """
     procurado = normalizar_termo(termo)
     if not procurado:
-        return []
+        return [], 0
     normalizado, origem = _texto_normalizado(texto)
 
     achados: list[Achado] = []
+    total = 0
     inicio = normalizado.find(procurado)
     while inicio != -1:
         fim = inicio + len(procurado)
-        if origem is None:
-            de, ate = inicio, fim
-        else:
-            de, ate = origem[inicio], origem[fim - 1] + 1
-        achados.append(_montar_achado(texto, de, ate))
+        total += 1
+        if limite is None or len(achados) < limite:
+            if origem is None:
+                de, ate = inicio, fim
+            else:
+                de, ate = origem[inicio], origem[fim - 1] + 1
+            achados.append(_montar_achado(texto, de, ate))
         inicio = normalizado.find(procurado, fim)
-    return achados
+    return achados, total
 
 
 def _montar_achado(texto: str, de: int, ate: int) -> Achado:

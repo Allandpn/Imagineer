@@ -694,6 +694,12 @@ class ImagemDoElemento(BaseModel):
     altura: int | None = None
     orientacao: str | None = Field(default=None, description="`RETRATO` ou `PAISAGEM` pela imagem real; nulo sem dimensões.")
     modelo: str | None = None
+    modelo_do_prompt: str | None = Field(
+        default=None, description="O modelo de **texto** que montou o prompt desta imagem (nulo se o prompt foi escrito à mão ou a imagem foi importada)."
+    )
+    posicao_no_texto: int | None = Field(
+        default=None, description="Onde o retrato se prende no capítulo (UTF-16, início de um parágrafo); nulo = sem posição. O app rola até lá."
+    )
     origem: str = Field(description="`IMPORTADA` ou `GERADA`.")
     sem_filtro_de_seguranca: bool = False
     data_importacao: datetime
@@ -714,6 +720,29 @@ class CenaDoElemento(BaseModel):
     total_de_imagens: int
     imagem_id: int | None = Field(default=None, description="A imagem canônica da cena ou, sem escolha, a mais recente (CAN5); nulo se ainda não tem.")
     imagem_orientacao: str | None = None
+    posicao_no_texto: int | None = Field(
+        default=None, description="Onde a cena acontece no capítulo (UTF-16, início de um parágrafo); nulo = sem posição. O app rola até lá."
+    )
+
+
+class AparicaoDoElemento(BaseModel):
+    """Um capítulo em que o elemento é mencionado: a primeira menção dele ali, para a pessoa ir ler a descrição (item 6.3, AP1)."""
+
+    capitulo_id: int
+    capitulo_ordem: int
+    capitulo_titulo: str | None = None
+    posicao_no_texto: int = Field(description="O início do parágrafo da primeira menção neste capítulo (UTF-16): para onde o app rola.")
+    trecho: str = Field(description="O começo desse parágrafo (até 300 caracteres), para a pessoa reconhecer se ele descreve o elemento.")
+    primeira: bool = Field(description="É a **primeira aparição no livro** (o primeiro item da lista).")
+    tem_estado: bool = Field(description="O elemento já tem um estado (descrição) cadastrado neste capítulo.")
+
+
+class AparicoesDoElemento(BaseModel):
+    """Os capítulos em que o elemento aparece, na ordem do livro."""
+
+    elemento_id: int
+    nome: str
+    aparicoes: list[AparicaoDoElemento]
 
 
 class GaleriaDoElemento(BaseModel):

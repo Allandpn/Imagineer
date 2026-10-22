@@ -215,4 +215,10 @@ POST {{baseUrl}}/lixeira/elementos/{{elementoId}}/restaurar
 # imagens: as dos retratos dele (mais recentes primeiro), com o capitulo e a ancora marcada.
 # cenas: onde ele participa, por ordem narrativa, com os outros participantes e a imagem mais recente (ou sem imagem).
 # Nunca gasta IA. A lista do livro (GET /livros/{id}/elementos) traz "imagem_de_capa_id" (FI4).
+# Cada imagem traz "modelo" (de imagem) e "modelo_do_prompt" (de texto); imagens e cenas trazem "posicao_no_texto" (para rolar o capitulo ate la).
 GET {{baseUrl}}/elementos/{{elementoId}}/galeria
+
+### Os capitulos em que o elemento e mencionado, a primeira aparicao primeiro (P9, AP1)
+# Para achar onde um personagem entra pela primeira vez (onde costuma estar a descricao dele). Nunca gasta IA.
+# Cada item: capitulo, posicao_no_texto (inicio do paragrafo), trecho, primeira, tem_estado.
+GET {{baseUrl}}/elementos/{{elementoId}}/aparicoes

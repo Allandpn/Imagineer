@@ -9,7 +9,7 @@ from imagineer.esquemas.busca import OcorrenciaNoTexto, ResultadoDaBusca
 from imagineer.servicos.acesso import usuario_ou_dono
 from imagineer.modelos import Capitulo, Livro
 from imagineer.rotas._comum import buscar_capitulo as _buscar_capitulo, buscar_livro as _buscar_livro
-from imagineer.servicos.busca_no_texto import procurar
+from imagineer.servicos.busca_no_texto import procurar_com_limite
 
 rotas = APIRouter(prefix="/busca", tags=["Busca"])
 
@@ -47,21 +47,22 @@ def buscar(
     total = 0
     # yield_per: o texto de uma biblioteca inteira não cabe numa leitura só; lê um punhado de capítulos por vez.
     for livro, livro_titulo, capitulo, ordem, capitulo_titulo, texto in sessao.execute(consulta).yield_per(20):
-        for achado in procurar(texto, q):
-            total += 1
-            if len(ocorrencias) < limite:
-                ocorrencias.append(
-                    OcorrenciaNoTexto(
-                        livro_id=livro,
-                        livro_titulo=livro_titulo,
-                        capitulo_id=capitulo,
-                        capitulo_ordem=ordem,
-                        capitulo_titulo=capitulo_titulo,
-                        posicao_no_texto=achado.posicao_no_texto,
-                        inicio_do_paragrafo=achado.inicio_do_paragrafo,
-                        trecho=achado.trecho,
-                        inicio_no_trecho=achado.inicio_no_trecho,
-                        fim_no_trecho=achado.fim_no_trecho,
-                    )
+        # Só monta as ocorrências que ainda cabem no limite; o resto é apenas contado (uma palavra comum acha milhares de vezes por capítulo).
+        achados, no_capitulo = procurar_com_limite(texto, q, limite - len(ocorrencias))
+        total += no_capitulo
+        for achado in achados:
+            ocorrencias.append(
+                OcorrenciaNoTexto(
+                    livro_id=livro,
+                    livro_titulo=livro_titulo,
+                    capitulo_id=capitulo,
+                    capitulo_ordem=ordem,
+                    capitulo_titulo=capitulo_titulo,
+                    posicao_no_texto=achado.posicao_no_texto,
+                    inicio_do_paragrafo=achado.inicio_do_paragrafo,
+                    trecho=achado.trecho,
+                    inicio_no_trecho=achado.inicio_no_trecho,
+                    fim_no_trecho=achado.fim_no_trecho,
                 )
+            )
     return ResultadoDaBusca(termo=q, total=total, ocorrencias=ocorrencias, truncado=total > len(ocorrencias))
