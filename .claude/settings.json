@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker compose logs:*)",
+      "Bash(docker compose up -d --build:*)",
+      "Bash(docker compose exec api alembic current:*)",
+      "Bash(docker compose exec api alembic heads:*)",
+      "Bash(docker compose exec api alembic check:*)",
+      "Bash(docker compose exec -T db pg_dump:*)",
+      "Bash(curl http://localhost:8000/saude:*)",
+      "Bash(ls:*)",
+      "Bash(df:*)"
+    ],
+    "deny": [
+      "Bash(docker compose down:*)",
+      "Bash(docker volume:*)",
+      "Bash(docker system prune:*)",
+      "Bash(rm:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)"
+    ]
+  }
+}
